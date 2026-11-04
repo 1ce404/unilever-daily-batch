@@ -1,6 +1,6 @@
 # unilever-daily-batch
 
-Claude Code skill：联合利华（清扬）千川混剪视频每日批量生产的流程串联。
+Agent skill：联合利华（清扬）千川混剪视频每日批量生产的流程串联。
 
 ```
 飞书排期 → 每 10 条一个 brief 写底稿 → 机器检查 → 人审 → 审过的文案交给 Clipo Remix
@@ -19,17 +19,19 @@ Claude Code skill：联合利华（清扬）千川混剪视频每日批量生产
 
 ## 安装
 
-放进 Claude Code 的 skills 目录：
+克隆到你的 agent 读取 skills 的目录，比如：
 
 ```bash
-git clone https://github.com/1ce404/unilever-daily-batch ~/.claude/skills/unilever-daily-batch
+git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/unilever-daily-batch
 ```
+
+入口是 `SKILL.md`，支持 skills 的 agent（Claude Code、Codex、Cursor 等）都能用。
 
 依赖：Python 3.9+（只用标准库）、[`lark-cli`](https://github.com/larksuite)（读飞书文档）、能访问 Clipo Remix。
 
 ## 用法
 
-在 Claude Code 里说「跑今天的排期」「做 11.5 的清扬」「审完了，开始生产」「今天到哪了」。完整流程见 [SKILL.md](SKILL.md)。
+对 agent 说「跑今天的排期」「做 11.5 的清扬」「审完了，开始生产」「今天到哪了」。完整流程见 [SKILL.md](SKILL.md)。
 
 ## 目录
 
