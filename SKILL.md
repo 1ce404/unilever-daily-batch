@@ -1,6 +1,6 @@
 ---
 name: unilever-daily-batch
-description: 联合利华（清扬等）千川混剪视频每日批量生产的流程串联。按飞书排期表取当天任务 → 每 10 条一个 brief 写底稿 → 机器 QC → 人审 → 审过的文案交给 Clipo Remix（画面、配音、BGM、字幕、贴图、音效由平台产品提示词决定）一次多生成、渲染、AI 审核 → 出交付清单，不够数就补。用户说「跑今天的排期」「清扬今天的脚本」「做 11.4 的」「1030 的 brief」「审完了，开始生产」「看下今天生产结果」「今天到哪了」「联合利华批量视频」时使用。
+description: 联合利华（清扬、力士）千川混剪视频每日批量生产的流程串联。按飞书排期表（力士没有排期表，按每天固定条数）取当天任务 → 每 10 条一个 brief 写底稿 → 机器 QC → 人审 → 审过的文案交给 Clipo Remix（画面、配音、BGM、字幕、贴图、音效由平台产品提示词决定）一次多生成、渲染、AI 审核 → 出交付清单，不够数就补。用户说「跑今天的排期」「清扬今天的脚本」「力士今天的」「做 11.4 的」「1030 的 brief」「审完了，开始生产」「看下今天生产结果」「今天到哪了」「联合利华批量视频」时使用。
 ---
 
 # 联合利华每日批量混剪
@@ -23,14 +23,21 @@ description: 联合利华（清扬等）千川混剪视频每日批量生产的�
    → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单
 ```
 
-在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = `/Users/bingmeishi/Projects/myskill/runs/YYYYMMDD`，`$C` = `qingyang`。
+在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = `/Users/bingmeishi/Projects/myskill/runs/YYYYMMDD`，`$C` = 品牌：`qingyang` 或 `lux`。
+
+**每天两个品牌各跑一遍**，共用同一个 `$R`：清扬 brief 编号 `MMDD-Bxx`，力士 `MMDD-Lxx`，脚本按品牌只读自己的 brief；力士的待审文档、报告、交付清单文件名带 `-lux`。
+
+| 品牌 | 产品（`config/<品牌>/<key>.json`） | 每天多少条 |
+|---|---|---|
+| 清扬 `qingyang` | `2x` 控油蓬松洗发水、`huxi` 控油呼吸瓶、`selenium` 二硫化硒蓝C瓶 | 看飞书排期表 |
+| 力士 `lux` | `jingyou` 精油香氛洗发水、`mist` 小香瓶 | 没有排期表，固定：精油香氛 40、小香瓶 10（`config/lux.json` 的 `daily_quota`） |
 
 | 文件 | 用途 |
 |---|---|
 | [references/writing.md](references/writing.md) | ④ 怎么写：范本标准、角度轮换、产品名位置、硬性要求、brief 格式 |
-| `gold/qingyang.json` | 范本库，每条标了 `product`，只和同产品比。用户说好的脚本加进来，标 `"status": "confirmed"` |
-| [config/qingyang.json](config/qingyang.json) | 清扬品牌共用：资料来源、店铺→产品、禁用词、文案长度、生成数量、`open_questions` 待确认项 |
-| `config/qingyang/<产品>.json` | 每个产品一份：`2x` 控油蓬松洗发水、`huxi` 控油呼吸瓶、`selenium` 二硫化硒蓝C瓶。产品名、平台 id、卖点说法、机制、CTA、卡审词、串系列词、素材画面、固定要求 `rules` |
+| `gold/<品牌>.json` | 范本库，每条标了 `product`，只和同产品比。用户说好的脚本加进来，标 `"status": "confirmed"` |
+| `config/<品牌>.json` | 品牌共用：资料来源、店铺→产品（或 `daily_quota` 固定条数）、禁用词、文案长度、生成数量、`open_questions` 待确认项 |
+| `config/<品牌>/<产品>.json` | 每个产品一份：产品名、平台 id、卖点说法、机制、CTA、卡审词、串系列词、受众、素材画面、固定要求 `rules` |
 | [references/clipo-api.md](references/clipo-api.md) | Clipo 接口、平台怎么建脚本、生成失败怎么办 |
 | [references/qc-rules.md](references/qc-rules.md) | QC 文档 → config 的对应；驳回怎么处理 |
 | [references/new-brand.md](references/new-brand.md) | 接入力士 / 多芬 / HC 等新品牌 |
@@ -41,7 +48,7 @@ description: 联合利华（清扬等）千川混剪视频每日批量生产的�
 QC 文档和昨天比有变化，读清扬段：新卡审词、新机制先改 config（改机制更新 `verified_on`）。
 
 **② 拆 brief** `parse_schedule.py --config $C --run $R --date 2026-11-04`
-核对打印的表：店铺都映射到产品。找不到当天的行就停，告诉用户排期没更新。用户只要某个产品时，其它产品的 brief 挪到 `briefs-other/`。
+清扬：核对打印的表，店铺都映射到产品；找不到当天的行就停，告诉用户排期没更新。力士：按 `daily_quota` 直接拆，不读排期。用户只要某个产品时，其它产品的 brief 挪到 `briefs-other/`。
 
 **③ 平台体检** `clipo_batch.py preflight --config $C --run $R`
 查平台上每个产品：能不能打开、有没有可用素材、产品描述里机制对不对、有没有建脚本提示词、提示词里写的音效贴图分类平台上有没有、审核提示词的产品名对不对。有问题告诉用户去平台改，不自己改平台。

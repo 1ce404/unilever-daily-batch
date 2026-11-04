@@ -18,7 +18,7 @@ from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import display_len, load_config, load_gold, normalize_copy, split_clauses, visible_len
+from common import day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
 
 PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元|拍[一二三四五六七八九十\d]+发[一二三四五六七八九十\d]+|\d+\s*[gG克]")
 
@@ -267,7 +267,7 @@ def main():
     args = ap.parse_args()
     cfg = load_config(args.config)
     run = Path(args.run)
-    every = [json.loads(p.read_text()) for p in sorted((run / "briefs").glob("*.json"))]
+    every = day_briefs(run, cfg)
     cross = lint_day(every, cfg)
     for k, v in lint_variety(every, cfg, run).items():
         cross.setdefault(k, []).extend(v)
@@ -285,7 +285,7 @@ def main():
             print("    ✗", m)
         for m in warns:
             print("    !", m)
-    (run / "lint.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+    (run / out_name(cfg, "lint.json")).write_text(json.dumps(report, ensure_ascii=False, indent=2))
     sys.exit(1 if bad else 0)
 
 

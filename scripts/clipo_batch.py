@@ -26,10 +26,11 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import approval_problem, load_config, normalize_copy
+from common import approval_problem, day_briefs, load_config, normalize_copy, out_name
 from lint_copy import lint_brief, lint_script, lint_text, seg_text
 
 BASE = None
+CFG = None
 
 
 def api(method, path, body=None, timeout=180, tries=3):
@@ -56,7 +57,7 @@ def api(method, path, body=None, timeout=180, tries=3):
 
 class State:
     def __init__(self, run):
-        self.path = Path(run) / "clipo" / "state.json"
+        self.path = Path(run) / "clipo" / out_name(CFG, "state.json")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {"videos": {}}
 
@@ -69,9 +70,7 @@ class State:
 
 
 def load_briefs(run, only=None):
-    paths = sorted((Path(run) / "briefs").glob("*.json"))
-    briefs = [json.loads(p.read_text()) for p in paths]
-    return [b for b in briefs if not only or b["brief_id"] == only]
+    return [b for b in day_briefs(run, CFG) if not only or b["brief_id"] == only]
 
 
 # ---------- preflight ----------
@@ -127,7 +126,7 @@ def cmd_preflight(cfg, run, args):
         if not desc_ok(p):
             print("   ⚠️ 平台产品描述为空（AI 审核拿不到产品事实）")
         desc = p.get("description") or ""
-        if not any(n in desc for n in prod["mechanism"]["allowed_numbers"]):
+        if prod["mechanism"]["allowed_numbers"] and not any(n in desc for n in prod["mechanism"]["allowed_numbers"]):
             print(f"   ⚠️ 平台产品描述里没有当前机制 {prod['mechanism']['spoken']}（描述会喂给 AI 审核，旧机制会导致误判）")
         prompts = {x["prompt_type"]: x for x in api("GET", f"/products/{pid}/prompts")}
         create = prompts.get("video_script_create") or {}
@@ -139,7 +138,9 @@ def cmd_preflight(cfg, run, args):
                 print(f"   ⚠️ 建脚本提示词里写的分类平台上没有：{'、'.join(gone)}（平台不报错、直接不配，告诉用户改提示词里的分类名）")
         review = (prompts.get("video_cut_review") or {}).get("prompt") or ""
         m = re.search(r"产品专属标准[｜|]([^】\]\n]+)", review)
-        if m and m.group(1).strip() not in (p["name"], prod["full_name"]) and prod["full_name"] not in m.group(1):
+        names = [p["name"], prod["full_name"]] + prod["name_aliases"]
+        core = lambda x: re.sub(r"^(清扬|力士|lux|LUX)[\d.]*-?|mist|\s", "", x)
+        if m and not any(core(n) in core(m.group(1)) or core(m.group(1)) in core(n) for n in names):
             print(f"   ⚠️ 审核提示词的产品专属标准写的是「{m.group(1).strip()}」，不是这个产品，告诉用户改")
         if not (create.get("prompt") or "").strip():
             print("   ❌ 平台产品没有建脚本提示词 video_script_create：片子的配音、画面、贴图音效都靠它，先让用户在平台写好")
@@ -151,7 +152,7 @@ def cmd_preflight(cfg, run, args):
                     "empty_tags": empty, "description": desc}
         bad |= total == 0
     (Path(run) / "clipo").mkdir(parents=True, exist_ok=True)
-    (Path(run) / "clipo" / "preflight.json").write_text(json.dumps(out, ensure_ascii=False, indent=2))
+    (Path(run) / "clipo" / out_name(cfg, "preflight.json")).write_text(json.dumps(out, ensure_ascii=False, indent=2))
     sys.exit(1 if bad else 0)
 
 
@@ -520,10 +521,10 @@ def cmd_report(cfg, run, args):
     for kind, vids in buckets.items():
         summary.append(f"- **{kind}** {len(vids)} 条：{'、'.join(vids[:12])}{' …' if len(vids) > 12 else ''} → {REJECT_ACTION[kind]}")
     lines[2:2] = summary + [""]
-    (Path(run) / "report.md").write_text("\n".join(lines))
+    (Path(run) / out_name(cfg, "report.md")).write_text("\n".join(lines))
     (Path(run) / "report.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2))
     print("\n".join(summary))
-    print(f"→ {Path(run) / 'report.md'}")
+    print(f"→ {Path(run) / out_name(cfg, 'report.md')}")
     write_delivery(st, briefs, run)
 
 
@@ -556,12 +557,12 @@ def write_delivery(st, briefs, run):
     head = [f"# {Path(run).name} 交付清单", "",
             f"**交付 {total} / {need} 条**{'，全部够数' if total >= need else f'，还差 {need - total} 条（topup）'}。"
             f"共生成 {gen} 条，AI 审核通过 {passed} 条（{passed / max(gen, 1):.0%}）。", ""]
-    (Path(run) / "delivery.md").write_text("\n".join(head + out))
-    print(f"→ {Path(run) / 'delivery.md'}（交付 {total}/{need}）")
+    (Path(run) / out_name(CFG, "delivery.md")).write_text("\n".join(head + out))
+    print(f"→ {Path(run) / out_name(CFG, 'delivery.md')}（交付 {total}/{need}）")
 
 
 def main():
-    global BASE
+    global BASE, CFG
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "report", "status"])
     ap.add_argument("--config", required=True)
@@ -577,6 +578,7 @@ def main():
     args = ap.parse_args()
     cfg = load_config(args.config)
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
+    CFG = cfg
     {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "report": cmd_report,
      "status": cmd_status}[args.cmd](cfg, args.run, args)
 

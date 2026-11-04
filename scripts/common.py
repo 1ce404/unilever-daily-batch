@@ -122,3 +122,21 @@ def load_gold(cfg, product_key=None):
     p = SKILL_DIR / "gold" / f"{cfg['brand_key']}.json"
     scripts = json.loads(p.read_text())["scripts"] if p.exists() else []
     return [g for g in scripts if not product_key or g.get("product", "2x") == product_key]
+
+
+def day_briefs(run, cfg):
+    """All briefs of this brand in a day folder (several brands share runs/<day>/briefs/)."""
+    out = []
+    for p in sorted((Path(run) / "briefs").glob("*.json")):
+        b = json.loads(p.read_text())
+        if b.get("brand", cfg["brand_key"]) == cfg["brand_key"]:
+            out.append(b)
+    return out
+
+
+def out_name(cfg, name):
+    """Per-brand file name inside a day folder. 清扬 keeps the bare names (existing runs)."""
+    if cfg["brand_key"] == "qingyang":
+        return name
+    stem, dot, ext = name.partition(".")
+    return f"{stem}-{cfg['brand_key']}{dot}{ext}"

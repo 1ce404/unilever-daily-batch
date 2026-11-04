@@ -3,8 +3,8 @@
 
     python3 scripts/parse_schedule.py --config qingyang --run runs/20261030 --date 2026-10-30
 
-Reads  runs/<day>/sources/schedule.txt
-Writes runs/<day>/schedule.json         every schedule row for that date (incl. 新增 tables) + section notes
+Reads  runs/<day>/sources/schedule.txt, or config.daily_quota for brands without a schedule doc (LUX)
+Writes runs/<day>/schedule-<brand>.json every row for that date (incl. 新增 tables) + section notes
        runs/<day>/briefs/<id>.json      one stub per brief; the agent fills persona + segments
 """
 import argparse
@@ -86,19 +86,25 @@ def main():
     cfg = load_config(args.config)
     run = Path(args.run)
     day = date.fromisoformat(args.date)
-    rows = rows_for((run / "sources" / "schedule.txt").read_text(), day)
+    if cfg.get("daily_quota"):
+        # brands without a schedule doc: the same products and counts every day (config.daily_quota)
+        rows = [{"store": q.get("store", cfg["brand"]), "product_key": q["product"], "direction": q.get("direction", "日常"),
+                 "selling_point": "", "audience": q.get("audience", ""), "quantity": q["quantity"],
+                 "section": "daily_quota", "section_notes": q.get("note", "")} for q in cfg["daily_quota"]]
+    else:
+        rows = rows_for((run / "sources" / "schedule.txt").read_text(), day)
     if not rows:
         raise SystemExit(f"排期里找不到 {day.month}.{day.day} 的行：排期可能还没更新到这一天")
 
-    (run / "schedule.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2))
+    (run / f"schedule-{cfg['brand_key']}.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2))
     bdir = run / "briefs"
     bdir.mkdir(exist_ok=True)
     size, n = cfg["brief_size"], 0
     for row in rows:
-        pk = product_key(cfg, row.get("store", "")) or product_key(cfg, row.get("direction", ""))
+        pk = row.get("product_key") or product_key(cfg, row.get("store", "")) or product_key(cfg, row.get("direction", ""))
         for j in range(math.ceil(row["quantity"] / size)):
             n += 1
-            bid = f"{day:%m%d}-B{n:02d}"
+            bid = f"{day:%m%d}-{cfg.get('brief_prefix', 'B')}{n:02d}"
             path = bdir / f"{bid}.json"
             if path.exists() or (args.product and pk != args.product):
                 continue  # never clobber a brief the agent or reviewer already worked on
@@ -125,7 +131,7 @@ def main():
         print(f"{row.get('store','')!r:28} {row.get('direction','')[:30]:32} {row.get('selling_point',''):14} "
               f"{row.get('audience',''):6} {row['quantity']:>3} -> product={pk} [{row['section']}]")
     print(f"\n{len(rows)} 行排期 → {n} 个 brief（每 {size} 条一个），stub 在 {bdir}")
-    missing = [r for r in rows if not product_key(cfg, r.get('store', ''))]
+    missing = [r for r in rows if not (r.get("product_key") or product_key(cfg, r.get('store', '')))]
     if missing:
         print("⚠️ 以下店铺没有映射到产品，需要在 config.store_to_product 补：", {r['store'] for r in missing})
 

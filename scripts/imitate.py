@@ -14,7 +14,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import load_config, load_gold
+from common import day_briefs, load_config, load_gold
 from lint_copy import earlier_copy, skeleton
 from ref_scripts import print_edits
 
@@ -33,7 +33,7 @@ def main():
     if not gold:
         raise SystemExit(f"gold/{cfg['brand_key']}.json 里没有 {brief['product_key']} 的范本：先从团队已交付脚本里挑几条放进去")
 
-    today = [json.loads(p.read_text()) for p in sorted((run / "briefs").glob("*.json"))]
+    today = day_briefs(run, cfg)
     today = [b for b in today if b.get("segments")]
 
     std = [g for g in gold if g.get("status") == "confirmed"] or gold

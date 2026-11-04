@@ -1,0 +1,139 @@
+{
+  "brand": "力士",
+  "brand_key": "lux",
+  "sources": {
+    "schedule": null,
+    "recent_scripts": "https://tezign.feishu.cn/wiki/D1EOw4Y1Hi3CNUkmf51c1Kh5nFe",
+    "history_scripts": "https://tezign.feishu.cn/wiki/JC0cwK32kilC3bkBVKOcYz2unlx",
+    "qc": "https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb",
+    "recent_scripts_section": "LUX 1.0",
+    "qc_custom_sections": [
+      "Lux1.0",
+      "Lux（精油、香氛、水润）"
+    ]
+  },
+  "daily_quota": [
+    {
+      "product": "jingyou",
+      "store": "力士",
+      "direction": "日常",
+      "quantity": 40,
+      "note": "用户 11-04：力士没有排期表，精油香氛洗发水每天固定 40 条"
+    },
+    {
+      "product": "mist",
+      "store": "力士",
+      "direction": "日常",
+      "quantity": 10,
+      "note": "用户 11-04：mist 小香瓶每天固定 10 条"
+    }
+  ],
+  "brief_prefix": "L",
+  "brief_size": 10,
+  "generate_factor": 3.0,
+  "_generate_factor_note": "沿用清扬的 3 倍；力士还没有实际通过率，跑一批后按实际调",
+  "generate_chunk": 15,
+  "store_to_product": {
+    "精油香氛": "jingyou",
+    "小香瓶": "mist",
+    "mist": "mist"
+  },
+  "banned_words": {
+    "error": [
+      "修护",
+      "修复",
+      "修回来",
+      "原价",
+      "拉满",
+      "性价比",
+      "首选",
+      "唯一",
+      "顶级",
+      "国家级",
+      "最高级",
+      "全网",
+      "领先",
+      "史上",
+      "最低价",
+      "历史最低",
+      "立即见效",
+      "立刻见效",
+      "一次解决",
+      "秒变",
+      "根治",
+      "治疗",
+      "国际",
+      "养生",
+      "头皮健康"
+    ],
+    "warn": [
+      "长效",
+      "持久",
+      "临床",
+      "专家",
+      "医生",
+      "伪体香"
+    ],
+    "regex_error": [
+      "最(?!近|后|初|终|早|晚)",
+      "第一(?!次|步|眼|天|口)",
+      "(?<![第\\d.])\\d+\\s*(小时|天|周)"
+    ],
+    "scene_warn": [],
+    "regex_warn": [
+      "(?<![第每])[一二三四五六七八九十两几]+\\s*(个)?(小时|天|周)(?!天|下来|到晚)"
+    ]
+  },
+  "copy_limits": {
+    "clause_hard_max": 20,
+    "clause_warn_max": 12,
+    "clause_warn_min": 1,
+    "combo_chars_min": 75,
+    "combo_chars_max": 150,
+    "chars_per_second": 5.5,
+    "_note": "整条 75~150 字（约 15~25 秒，实测 5.5 字/秒含气口）",
+    "similar_max": 0.35,
+    "history_days": 7,
+    "_similar_note": "去掉产品名、卖点术语、机制后，非 CTA 文字和任一范本 / 近 7 天同产品的稿 / 当天其它稿比，相似度不得超过 35%。标定：用户 11.02 认可的 7 条彼此最高 32%；11.03/11.04 逐句仿写出来的 24%~61%、且段落顺序相同 + 2~4 句开头相同，用户说像抄",
+    "name_not_before": 2,
+    "_name_note": "用户 11.04：产品名尽量不在前两段出现（前面先讲头发状态）；说到产品的那一句要说完整产品名，不能用「这瓶」「它」代替",
+    "_clause_note": "短句按显示宽度算（汉字 1、半角字母数字 0.5）：> 12 提醒（单屏一行，clipo-remix-ai 和团队字幕规范都是 12），> 20 报错"
+  },
+  "clipo": {
+    "base_url": "https://clipo-remix.tezign.com",
+    "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效、改写规则都由平台产品提示词（video_script_create / video_script_rewrite / video_cut_review）管，skill 不再配置。submit 让平台按提示词建脚本，只把审过的文案逐字交给它，再核对一遍"
+  },
+  "naming": "{date}-{brief_no}-V{n:02d}-{product}-{selling_point}",
+  "open_questions": [
+    {
+      "about": "mist",
+      "q": "产品名用哪个：团队交付稿一直写「力士小香瓶」，平台审核提示词要求「力士mist小香瓶，产品名不得出错」。两边不一致，AI 审核可能把「力士小香瓶」判成名字错"
+    },
+    {
+      "about": "all",
+      "q": "结尾：两个产品的平台审核提示词都要求「戳直播间」，团队交付稿写的是「进直播间下单」。要不要统一成「戳直播间」"
+    },
+    {
+      "about": "all",
+      "q": "受众是女生，但两个产品的建脚本提示词没指定配音选女声（清扬二硫化硒写了「这个产品的tts选女声」），会配成男声"
+    },
+    {
+      "about": "all",
+      "q": "机制：近期交付稿都不念机制，只说进直播间。现在要不要念机制、念什么"
+    },
+    {
+      "about": "all",
+      "q": "平台描述里的「72 小时法式奢香」「72 小时持久留香」「大牌同款 / 香奈儿」，按 QC（不写时间、不写国际）和团队交付稿都不念，确认"
+    }
+  ],
+  "review": {
+    "doc_parent_token": null,
+    "notify_chat_id": null
+  },
+  "campaign": {
+    "name": "双十一",
+    "until": "2026-11-11",
+    "_note": "节点期内每条 CTA 或机制句带上节点词（团队 10.19 后脚本约一半带双十一）"
+  },
+  "_products_note": "每个产品一个文件：config/lux/<product_key>.json（jingyou 精油香氛洗发水 / mist 小香瓶）"
+}

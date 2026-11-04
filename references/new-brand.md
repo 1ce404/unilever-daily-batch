@@ -14,6 +14,7 @@
 | `banned_words` | 通用三类保留；加上该品牌定制段（例：Lux 1.0「国际」「拉满」；Dove-PC「最」「修护」「提亮」→ 焕亮；Lux「养生」「头皮健康」） |
 | `products.*.footage` | 看该产品平台素材（非风险切片）的描述，按段写下有哪些画面，写文案时对照 |
 | `naming` | 品牌的命名规则 |
+| `daily_quota` / `brief_prefix` | 没有排期表的品牌：每天固定的产品和条数（例 `config/lux.json`），brief 编号前缀区分品牌（清扬 B、力士 L） |
 
 **配音、字幕、BGM、画面、贴图、音效不在 skill 里配**：在平台给该产品写好提示词 `video_script_create`（QC 文档里的限制，如 AHC 只要女声、只要蓝底白字字幕，HC 要氛围感 BGM，都写进去）。这一步由用户在平台做。
 

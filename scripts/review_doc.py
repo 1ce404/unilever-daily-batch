@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import SKILL_DIR, copy_hash, lark_fetch, load_config, parse_table
+from common import SKILL_DIR, copy_hash, day_briefs, lark_fetch, load_config, out_name, parse_table
 from lint_copy import lint_brief, lint_day, lint_variety, seg_text
 
 ROLE_CN = {"hook": "钩子", "pain": "痛点", "product": "产品", "selling": "卖点", "effect": "体感", "cta": "CTA"}
@@ -65,7 +65,7 @@ def closest_cell(b):
 
 
 def render(cfg, run):
-    briefs = [json.loads(p.read_text()) for p in sorted((run / "briefs").glob("*.json"))]
+    briefs = day_briefs(run, cfg)
     day = briefs[0]["date"] if briefs else ""
     rows_xml, md = [], [f"# {cfg['brand']} {day} 脚本待审", ""]
     cross = lint_day(briefs, cfg)
@@ -101,9 +101,9 @@ def render(cfg, run):
            "<col width=\"80\"/><col width=\"420\"/><col width=\"180\"/><col width=\"180\"/><col width=\"120\"/></colgroup>"
            "<thead><tr>" + "".join(f"<th>{h}</th>" for h in HEAD) + "</tr></thead><tbody>"
            + "".join(rows_xml) + "</tbody></table>")
-    (run / "review.xml").write_text(xml)
-    (run / "review.md").write_text("\n".join(md))
-    print(f"{len(briefs)} 个 brief → {run / 'review.xml'} / {run / 'review.md'}")
+    (run / out_name(cfg, "review.xml")).write_text(xml)
+    (run / out_name(cfg, "review.md")).write_text("\n".join(md))
+    print(f"{len(briefs)} 个 brief → {run / out_name(cfg, 'review.xml')} / {run / out_name(cfg, 'review.md')}")
 
 
 def parse_copy(text):
