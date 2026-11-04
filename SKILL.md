@@ -1,0 +1,84 @@
+---
+name: unilever-daily-batch
+description: 联合利华（清扬等）千川混剪视频每日批量生产的流程串联。按飞书排期表取当天任务 → 每 10 条一个 brief 写底稿 → 机器 QC → 人审 → 审过的文案交给 Clipo Remix（画面、配音、BGM、字幕、贴图、音效由平台产品提示词决定）一次多生成、渲染、AI 审核 → 出交付清单，不够数就补。用户说「跑今天的排期」「清扬今天的脚本」「做 11.4 的」「1030 的 brief」「审完了，开始生产」「看下今天生产结果」「今天到哪了」「联合利华批量视频」时使用。
+---
+
+# 联合利华每日批量混剪
+
+排期上每一行 = 店铺 × 内容方向 × 测试卖点 × 测试人群 × 数量。**每 10 条一个 brief，一个 brief = 一条底稿**。Clipo 按底稿改写出多种说法（CTA 不改）；平台 AI 审核通过的才算可交付。
+
+**这个 skill 只串流程，不管片子怎么剪。** 画面、配音、BGM、字幕、贴图、音效、改写规则都在平台的产品提示词里（`video_script_create` 等），要改去平台改。skill 负责：排期 → 文案 → 人审 → 把审过的文案原样交给平台 → 盯生成 → 凑够可交付数 → 交付清单。
+
+四条设计：
+
+- **范本定标准，不当模板。** `gold/` 里用户确认过的脚本定口吻、长短、能写什么；每条底稿自己定角度和句子，每句都要有素材画面接得住。lint 会拦照抄
+- **人只审底稿，必须人审。** lint 查底稿，`poll` 查每条改写，平台 AI 审核查成片
+- **文案的事实只有一个来源**：`config/<brand>.json`（品牌共用）+ `config/<brand>/<产品>.json`（每个产品）。产品规则变了只改那个产品的文件
+- **按可交付数交付。** 通过率约 40%，一次生成排期的 3 倍，不够再补，直到每个 brief 够数
+
+不知道做到哪了，先跑 `status`，它会给出下一步（离线）。
+
+```
+① 拉资料 → ② 拆 brief → ③ 平台体检 → ④ 写底稿 → ⑤ lint
+   → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单
+```
+
+在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = `/Users/bingmeishi/Projects/myskill/runs/YYYYMMDD`，`$C` = `qingyang`。
+
+| 文件 | 用途 |
+|---|---|
+| [references/writing.md](references/writing.md) | ④ 怎么写：范本标准、角度轮换、产品名位置、硬性要求、brief 格式 |
+| `gold/qingyang.json` | 范本库，每条标了 `product`，只和同产品比。用户说好的脚本加进来，标 `"status": "confirmed"` |
+| [config/qingyang.json](config/qingyang.json) | 清扬品牌共用：资料来源、店铺→产品、禁用词、文案长度、生成数量、`open_questions` 待确认项 |
+| `config/qingyang/<产品>.json` | 每个产品一份：`2x` 控油蓬松洗发水、`huxi` 控油呼吸瓶、`selenium` 二硫化硒蓝C瓶。产品名、平台 id、卖点说法、机制、CTA、卡审词、串系列词、素材画面、固定要求 `rules` |
+| [references/clipo-api.md](references/clipo-api.md) | Clipo 接口、平台怎么建脚本、生成失败怎么办 |
+| [references/qc-rules.md](references/qc-rules.md) | QC 文档 → config 的对应；驳回怎么处理 |
+| [references/new-brand.md](references/new-brand.md) | 接入力士 / 多芬 / HC 等新品牌 |
+
+## 每日流程
+
+**① 拉资料** `fetch_sources.py --config $C --run $R`
+QC 文档和昨天比有变化，读清扬段：新卡审词、新机制先改 config（改机制更新 `verified_on`）。
+
+**② 拆 brief** `parse_schedule.py --config $C --run $R --date 2026-11-04`
+核对打印的表：店铺都映射到产品。找不到当天的行就停，告诉用户排期没更新。用户只要某个产品时，其它产品的 brief 挪到 `briefs-other/`。
+
+**③ 平台体检** `clipo_batch.py preflight --config $C --run $R`
+查平台上每个产品：能不能打开、有没有可用素材、产品描述里机制对不对、有没有建脚本提示词、提示词里写的音效贴图分类平台上有没有、审核提示词的产品名对不对。有问题告诉用户去平台改，不自己改平台。
+
+**④ 写底稿** `imitate.py --config $C --run $R --brief <id>`
+它列出确认稿（看标准）、本品事实、每段素材里有什么画面、近几天用过的段落顺序和句首。**先定角度再写句子**，不在范本句子上换词。brief 里填 `gold_id`（最接近的标准稿）、`angle`、`persona`、`segments`。用户给了结构就照结构写，填 `template`，每段写主版 `text` + 备选 `alt` 两版给人挑。详见 [writing.md](references/writing.md)。
+
+**⑤ lint** `lint_copy.py --config $C --run $R`
+错误清零才能给人审。查事实、合规、产品名位置，以及**是不是照抄**（跟范本 / 近 7 天 / 当天其它稿相似度 > 35%，或段落顺序 + 2 句开头一样）。不查文风。
+
+**⑥ 待审 ⏸** `review_doc.py render --config $C --run $R` → `review.md` / `review.xml`
+把每条脚本完整发给用户看（每条标出最像哪条旧稿和相似度）。要发飞书：`lark-cli docs +create --content @$R/review.xml`，**第一次往飞书写、往群里发之前先问用户**放哪。**然后停下等审核**。
+
+**⑦ 记录审核**
+- 用户在对话里说通过：`review_doc.py approve --brief <id> --by 用户 --note "<原话>"`
+- 飞书审完：`review_doc.py sync --doc <链接>`，审核人改过的句子记进 `learned/`
+
+**只有这两条路能标通过**，都会记下当时的文案。手改 `status`、审过后又改文案，`submit` 都会拦下，要重新给人看。
+
+**⑧ 生产**
+```bash
+python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run   # 报总条数给用户确认（消耗额度）
+python3 -I scripts/clipo_batch.py submit --config $C --run $R
+python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后台跑
+```
+- 先让平台按产品提示词建脚本，把审过的文案逐字交给它；建完核对每段一字不差、CTA 没开改写，对不上就删掉不生成
+- 每个 brief 生成 排期 × `generate_factor`（3）条，拆成每轮 ≤ `generate_chunk`（15）条提交
+- 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
+- 跑完有 brief 不够数：`topup --dry-run` 报补多少，用户确认后 `topup`，再 `poll`。用同一份审过的脚本，不用重审
+
+**⑨ 交付** `clipo_batch.py report --config $C --run $R` → `report.md`（每条结果和驳回原因）+ `delivery.md`（每个 brief 挑够排期条数，其余备用）
+回复用户：每个 brief 可交付 / 排期条数、驳回原因分类、没生产的、要人决定的事。有 brief 不够数就不说「全部够数」。
+
+## 铁律
+
+1. **脚本必须人审**：「直接生成」不等于审过，先给人看脚本；不填审核结论
+2. **提交前报条数**：每次 submit / topup 都先 dry-run，告诉用户要生成多少条，确认后再提交
+3. **事实只来自 config 和当天资料**；改写违规一律当驳回；CTA 和 `lock` 段不改写
+4. **不替人改共享的东西**：不改客户共享文档（含「Y26-联合利华脚本合集」），不改 / 删平台上的产品、素材、分类和提示词。片子的样子要变，告诉用户去改平台提示词
+5. **学到的写回去**：卡审词、机制、素材画面进 config；用户说好的脚本进 `gold/`；平台那边的问题（素材、提示词）告诉用户；不只留在聊天里

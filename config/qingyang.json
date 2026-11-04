@@ -1,0 +1,153 @@
+{
+  "brand": "清扬",
+  "brand_key": "qingyang",
+  "sources": {
+    "schedule": "https://tezign.feishu.cn/wiki/OY8iwoVfxiH0YikS2d6cPR1XnWf",
+    "recent_scripts": "https://tezign.feishu.cn/wiki/D1EOw4Y1Hi3CNUkmf51c1Kh5nFe",
+    "history_scripts": "https://tezign.feishu.cn/wiki/JC0cwK32kilC3bkBVKOcYz2unlx",
+    "qc": "https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb",
+    "delivered_reference": "https://unilever.tezign.com/dam_enterprise/group/151509",
+    "recent_scripts_section": "清扬",
+    "qc_custom_sections": [
+      "清扬2x、控油呼吸瓶"
+    ]
+  },
+  "brief_size": 10,
+  "generate_factor": 3.0,
+  "_generate_factor_note": "每个 brief 一次生成 排期条数 × 这个倍数。平台 AI 审核通过率 11.03 实测 34~53%（平均 44%），按二项分布，排期 10 条生成 30 条约 90% 一次够数；不够再 topup。只有可交付的才进交付清单",
+  "generate_chunk": 15,
+  "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒：11.03 B04 一次要 30 条超时，整轮 0 条落地。所以一个 brief 要生成的条数拆成每轮 ≤ 这个数分别提交，一轮失败不连累其它轮",
+  "store_to_product": {
+    "清扬官方旗舰店": "2x",
+    "旗舰": "2x",
+    "洗护号": "huxi",
+    "清扬洗护号直播间": "huxi",
+    "Cyber": "selenium",
+    "二硫化硒": "selenium"
+  },
+  "banned_words": {
+    "error": [
+      "头皮闷堵",
+      "修护",
+      "修复",
+      "修回来",
+      "原价",
+      "拉满",
+      "性价比",
+      "源头",
+      "根源",
+      "首选",
+      "唯一",
+      "顶级",
+      "国家级",
+      "最高级",
+      "全网",
+      "领先",
+      "史上",
+      "最低价",
+      "历史最低",
+      "立即见效",
+      "立刻见效",
+      "一次解决",
+      "秒变",
+      "根治",
+      "治疗",
+      "防脱",
+      "生发"
+    ],
+    "warn": [
+      "长效",
+      "持久",
+      "养生",
+      "头皮健康",
+      "临床",
+      "专家",
+      "医生",
+      "OCT抑屑因子",
+      "抑屑因子"
+    ],
+    "regex_error": [
+      "最(?!近|后|初|终|早|晚)",
+      "第一(?!次|步|眼|天|口)",
+      "(?<![第\\d.])\\d+\\s*(小时|天|周)"
+    ],
+    "allow_exceptions": [
+      "双重酰胺修护组合"
+    ],
+    "scene_warn": [
+      "下班",
+      "上班",
+      "公司",
+      "工位",
+      "通勤",
+      "地铁",
+      "开会",
+      "约会",
+      "打球",
+      "球场",
+      "健身",
+      "沙发",
+      "回家",
+      "进门",
+      "饭局",
+      "吃饭",
+      "拍照",
+      "凑近",
+      "靠近",
+      "凑过",
+      "闻到",
+      "递东西"
+    ],
+    "regex_warn": [
+      "(?<![第每])[一二三四五六七八九十两几]+\\s*(个)?(小时|天|周)(?!天|下来|到晚)"
+    ]
+  },
+  "copy_limits": {
+    "clause_hard_max": 20,
+    "clause_warn_max": 12,
+    "clause_warn_min": 1,
+    "combo_chars_min": 75,
+    "combo_chars_max": 150,
+    "chars_per_second": 5.5,
+    "_note": "整条 75~150 字（约 15~25 秒，实测 5.5 字/秒含气口）",
+    "similar_max": 0.35,
+    "history_days": 7,
+    "_similar_note": "去掉产品名、卖点术语、机制后，非 CTA 文字和任一范本 / 近 7 天同产品的稿 / 当天其它稿比，相似度不得超过 35%。标定：用户 11.02 认可的 7 条彼此最高 32%；11.03/11.04 逐句仿写出来的 24%~61%、且段落顺序相同 + 2~4 句开头相同，用户说像抄",
+    "name_not_before": 2,
+    "_name_note": "用户 11.04：产品名尽量不在前两段出现（前面先讲头发状态）；说到产品的那一句要说完整产品名，不能用「这瓶」「它」代替",
+    "_clause_note": "短句按显示宽度算（汉字 1、半角字母数字 0.5）：> 12 提醒（单屏一行，clipo-remix-ai 和团队字幕规范都是 12），> 20 报错"
+  },
+  "clipo": {
+    "base_url": "https://clipo-remix.tezign.com",
+    "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效、改写规则都由平台产品提示词（video_script_create / video_script_rewrite / video_cut_review）管，skill 不再配置。submit 让平台按提示词建脚本，只把审过的文案逐字交给它，再核对一遍"
+  },
+  "naming": "{date}-{brief_no}-V{n:02d}-{product}-{selling_point}-{audience}-{direction}",
+  "open_questions": [
+    {
+      "about": "selenium",
+      "q": "能不能讲「二硫化硒PRO」「三重仿生氨基酸」「B5」（平台描述有，团队口播没用过）"
+    },
+    {
+      "about": "2x",
+      "q": "「双重酰胺修护组合」里的「修护」在卡审清单里：口播是否允许原名？默认写「双重酰胺组合」"
+    },
+    {
+      "about": "all",
+      "q": "三个产品都有大量风险切片（2X 133、呼吸瓶 128、二硫化硒 116），平台生成会随机用到，需在平台删除或去标签"
+    }
+  ],
+  "review": {
+    "doc_parent_token": null,
+    "notify_chat_id": null
+  },
+  "campaign": {
+    "name": "双十一",
+    "until": "2026-11-11",
+    "_note": "节点期内每条 CTA 或机制句带上节点词（团队 10.19 后脚本约一半带双十一）"
+  },
+  "direction_notes": {
+    "_note": "排期「内容方向」括号里的说明是长期沿用的标签，不是要写进口播的素材。先看团队同方向已交付的脚本怎么写",
+    "法国人头发发质蓬松溯源": "团队 0914~1009 的品牌背书 2X 脚本 14 条，只有 10.20 一条在钩子里提了一句法国，其余都不提。写法：清扬这个牌子都不陌生 / 清扬专研头皮护理多年 / 大品牌值得信赖 → 专属SCA控油蓬松技术 → 2倍立体蓬松高颅顶，发根支棱不塌陷。不要整条围绕法国"
+  },
+  "_products_note": "每个产品一个文件：config/qingyang/<product_key>.json（2x 控油蓬松洗发水 / huxi 控油呼吸瓶 / selenium 二硫化硒蓝C瓶）。这里只放品牌共用的：资料来源、店铺映射、禁用词、文案长度、生成数量、待确认项"
+}

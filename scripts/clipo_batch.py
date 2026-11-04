@@ -1,0 +1,585 @@
+#!/usr/bin/env python3
+"""Run approved briefs through Clipo Remix: preflight → submit → poll (generate, render, AI review) → topup → report.
+
+    python3 scripts/clipo_batch.py preflight --config qingyang --run runs/20261104
+    python3 scripts/clipo_batch.py submit    --config qingyang --run runs/20261104 [--brief 1104-B01] [--dry-run] [--retry-failed]
+    python3 scripts/clipo_batch.py poll      --config qingyang --run runs/20261104 [--wait 3600]
+    python3 scripts/clipo_batch.py topup     --config qingyang --run runs/20261104 [--dry-run]
+    python3 scripts/clipo_batch.py report    --config qingyang --run runs/20261104   # report.md + delivery.md
+    python3 scripts/clipo_batch.py status    --config qingyang --run runs/20261104   # where is today's run? (offline)
+
+This script only moves the flow along. Everything about how a video looks (voices, BGM, subtitles, visuals,
+stickers, SFX, rewrite rules) lives in the product's prompts on the platform. submit asks the platform to
+build the video-script from the reviewed copy, checks every line came through verbatim and CTA stays locked,
+then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only briefs a human approved
+(review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll re-lints every
+rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
+"""
+import argparse
+import json
+import math
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import approval_problem, load_config, normalize_copy
+from lint_copy import lint_brief, lint_script, lint_text, seg_text
+
+BASE = None
+
+
+def api(method, path, body=None, timeout=180, tries=3):
+    data = None if body is None else json.dumps(body, ensure_ascii=False).encode()
+    for attempt in range(tries):
+        req = urllib.request.Request(BASE + path, data=data, method=method,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                res = json.load(r)
+            break
+        except urllib.error.HTTPError as e:
+            res = json.loads(e.read().decode() or "{}")
+            if e.code < 500:
+                break
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == tries - 1:
+                raise
+        time.sleep(2 * (attempt + 1))
+    if res.get("code") != "ok":
+        raise RuntimeError(f"{method} {path} → {res.get('code')}: {res.get('message')} {json.dumps(res.get('data'), ensure_ascii=False)[:400]}")
+    return res["data"]
+
+
+class State:
+    def __init__(self, run):
+        self.path = Path(run) / "clipo" / "state.json"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.data = json.loads(self.path.read_text()) if self.path.exists() else {"videos": {}}
+
+    def save(self):
+        self.path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2))
+
+    @property
+    def videos(self):
+        return self.data["videos"]
+
+
+def load_briefs(run, only=None):
+    paths = sorted((Path(run) / "briefs").glob("*.json"))
+    briefs = [json.loads(p.read_text()) for p in paths]
+    return [b for b in briefs if not only or b["brief_id"] == only]
+
+
+# ---------- preflight ----------
+
+def desc_ok(p):
+    return bool((p.get("description") or "").strip())
+
+
+def list_segments(pid):
+    out, skip = [], 0
+    while True:
+        page = api("GET", f"/products/{pid}/segments?skip={skip}&limit=100")
+        out += page["items"]
+        skip += 100
+        if skip >= page["total"]:
+            return out
+
+
+def tag_counts(pid, segments=None):
+    """Clips per tag, excluding clips that failed the platform's clip review (风险)."""
+    counts = {"全部": 0}
+    for s in segments if segments is not None else list_segments(pid):
+        if s.get("review_result") == "reject":
+            continue
+        counts["全部"] += 1
+        for t in s.get("tags") or []:
+            counts[t] = counts.get(t, 0) + 1
+    return counts
+
+
+def cmd_preflight(cfg, run, args):
+    out, bad = {}, False
+    used = {b["product_key"] for b in load_briefs(run) if b.get("product_key")} or set(cfg["products"])
+    for key in sorted(used):
+        prod = cfg["products"][key]
+        pid = prod["clipo_product_id"]
+        try:
+            p = api("GET", f"/products/{pid}")
+        except RuntimeError as e:
+            print(f"❌ {key} {prod['full_name']} ({pid}) 打不开：{e}")
+            out[key], bad = {"error": str(e)}, True
+            continue
+        segs = list_segments(pid)
+        counts = tag_counts(pid, segs)
+        total = counts["全部"]
+        risky = sum(s.get("review_result") == "reject" for s in segs)
+        empty = [t for t in p["tags"] if counts.get(t, 0) == 0]
+        thin = {t: counts[t] for t in p["tags"] if 0 < counts.get(t, 0) < 10}
+        print(f"{'✅' if total else '❌'} {key} {p['name']} ({pid}) 可用切片 {total}/{len(segs)}（风险 {risky}）")
+        print(f"   无可用切片的标签 {empty or '无'}；不足 10 条 {thin or '无'}")
+        if risky:
+            print(f"   ⚠️ 平台生成不会避开风险切片：带标签的风险切片仍可能被随机选中，建议在平台删除或去掉标签")
+        if not desc_ok(p):
+            print("   ⚠️ 平台产品描述为空（AI 审核拿不到产品事实）")
+        desc = p.get("description") or ""
+        if not any(n in desc for n in prod["mechanism"]["allowed_numbers"]):
+            print(f"   ⚠️ 平台产品描述里没有当前机制 {prod['mechanism']['spoken']}（描述会喂给 AI 审核，旧机制会导致误判）")
+        prompts = {x["prompt_type"]: x for x in api("GET", f"/products/{pid}/prompts")}
+        create = prompts.get("video_script_create") or {}
+        cats = re.findall(r"(?:贴图|音效)[:：][^“”\n]*“([^”]+)”", create.get("prompt") or "")
+        if cats:
+            have = {c["catalog"] for kind in ("sticker", "sound-effect") for c in api("GET", f"/resource/{kind}/catalog")}
+            gone = [c for c in dict.fromkeys(cats) if c not in have]
+            if gone:
+                print(f"   ⚠️ 建脚本提示词里写的分类平台上没有：{'、'.join(gone)}（平台不报错、直接不配，告诉用户改提示词里的分类名）")
+        review = (prompts.get("video_cut_review") or {}).get("prompt") or ""
+        m = re.search(r"产品专属标准[｜|]([^】\]\n]+)", review)
+        if m and m.group(1).strip() not in (p["name"], prod["full_name"]) and prod["full_name"] not in m.group(1):
+            print(f"   ⚠️ 审核提示词的产品专属标准写的是「{m.group(1).strip()}」，不是这个产品，告诉用户改")
+        if not (create.get("prompt") or "").strip():
+            print("   ❌ 平台产品没有建脚本提示词 video_script_create：片子的配音、画面、贴图音效都靠它，先让用户在平台写好")
+            bad = True
+        else:
+            print(f"   建脚本提示词：{'产品自定义' if create.get('is_custom') else '平台默认'}，"
+                  f"{'更新于 ' + create['updated_at'][:10] if create.get('updated_at') else '未改过'}")
+        out[key] = {"product_id": pid, "name": p["name"], "segments": total, "risky": risky, "tag_counts": counts,
+                    "empty_tags": empty, "description": desc}
+        bad |= total == 0
+    (Path(run) / "clipo").mkdir(parents=True, exist_ok=True)
+    (Path(run) / "clipo" / "preflight.json").write_text(json.dumps(out, ensure_ascii=False, indent=2))
+    sys.exit(1 if bad else 0)
+
+
+# ---------- submit ----------
+
+def build_script(pid, brief, title):
+    """Let the platform build the video-script from the reviewed copy, following the product's own
+    prompt (video_script_create: voices, BGM, subtitles, visuals, stickers, SFX). We only pin the words:
+    every segment verbatim, CTA / lock segments not rewritten. Returns script_id after checking it."""
+    segs = brief["segments"]
+    locked = [i + 1 for i, sg in enumerate(segs) if sg.get("lock") or sg.get("role") == "cta"]
+    lines = "\n".join(f"第{i + 1}段（{sg.get('title') or sg.get('role')}）：{seg_text(sg)}" for i, sg in enumerate(segs))
+    req = (f"按下面已经人审通过的口播文案建脚本：一共 {len(segs)} 段，每段的口播文案逐字照抄，不改字、不加字、不合并、不拆分；"
+           f"第 {'、'.join(map(str, locked))} 段不允许 AI 改写，其余段允许 AI 改写。"
+           f"其它配置（画面、字幕、配音、BGM、贴图、音效）按产品的默认规则。脚本标题：{title}\n{lines}")
+    g = api("POST", "/video-script-generations", {"product_id": pid, "requirement": req})
+    for _ in range(60):
+        time.sleep(5)
+        g = api("GET", f"/video-script-generations/{g['id']}")
+        if g["status"] in ("success", "failed", "error"):
+            break
+    if g["status"] != "success":
+        raise RuntimeError(f"平台建脚本失败 {g.get('error_code')}: {g.get('error_message')}")
+    script = api("GET", f"/video-scripts/{g['script_id']}")
+    got = [x.get("content") or "" for x in script["segments"]]
+    want = [seg_text(sg) for sg in segs]
+    wrong = [i + 1 for i, (x, y) in enumerate(zip(got, want)) if x != y]
+    bad_lock = [i for i in locked if i <= len(script["segments"]) and script["segments"][i - 1].get("ai_rewrite")]
+    if len(got) != len(want) or wrong or bad_lock:
+        api("DELETE", f"/video-scripts/{script['id']}")
+        raise RuntimeError(f"平台建的脚本和审过的文案对不上（段数 {len(got)}/{len(want)}，不一致的段 {wrong}，"
+                           f"该锁没锁的段 {bad_lock}），已删掉，没有生成")
+    return script["id"]
+
+
+def video_title(cfg, brief, n=None):
+    prod = cfg["products"][brief["product_key"]]
+    fmt = cfg["naming"] if n else cfg["naming"].replace("-V{n:02d}", "")
+    return fmt.format(
+        date=brief["date"].replace("-", "")[4:], brief_no=brief["brief_id"].split("-")[-1], n=n,
+        product=prod["full_name"], selling_point=brief.get("selling_point") or "机制",
+        audience=brief.get("audience") or "通用", direction=brief["direction"].replace("/", "-")[:30])
+
+
+def split_quantity(n, chunk):
+    """30 with chunk 15 -> [15, 15]; 31 -> [11, 10, 10]: even rounds, none above chunk."""
+    k = math.ceil(n / chunk)
+    return [n // k + (i < n % k) for i in range(k)]
+
+
+def gen_quantity(cfg, b, args):
+    """How many to generate up front so one round usually yields `quantity` deliverables."""
+    factor = args.factor if args.factor else cfg.get("generate_factor", 1)
+    return min(300, math.ceil(b["quantity"] * factor))
+
+
+def cmd_submit(cfg, run, args):
+    st = State(run)
+    submitted = skipped = total = 0
+    for b in load_briefs(run, args.brief):
+        why = approval_problem(b)
+        if why:
+            print(f"⏸  {b['brief_id']} {why}，跳过")
+            skipped += 1
+            continue
+        errs = [m for l, m in lint_brief(b, cfg) if l == "error"]
+        if errs:
+            print(f"❌ {b['brief_id']} 有 {len(errs)} 个 lint 错误，不提交：{errs[:3]}")
+            skipped += 1
+            continue
+        pid = cfg["products"][b["product_key"]]["clipo_product_id"]
+        texts = [seg_text(sg) for sg in b["segments"]]
+        title = video_title(cfg, b)
+        job = st.data.setdefault("briefs", {}).setdefault(b["brief_id"], {})
+        if job.get("stage") == "failed":
+            if not args.retry_failed:
+                print(f"💥 {b['brief_id']} 上次生成失败（{job.get('error')}），加 --retry-failed 重新生成")
+                skipped += 1
+                continue
+            for k in ("generation_id", "error", "stage"):
+                job.pop(k, None)
+        if job.get("texts") and job["texts"] != texts and job.get("script_id"):
+            if job.get("generation_id"):
+                print(f"⚠️  {b['brief_id']} 提交后文案又改过，平台上是旧版；要按新版重做，先从 state.json 删掉这个 brief 和它的视频")
+                skipped += 1
+                continue
+            job.pop("script_id")  # script created but never generated: rebuild it from the new copy
+        job["texts"] = texts
+        if job.get("generation_id"):
+            continue  # already on the platform; poll / topup handle it
+        n = gen_quantity(cfg, b, args)
+        total += n
+        if args.dry_run:
+            print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）")
+            continue
+        if not job.get("script_id"):
+            try:
+                job["script_id"] = build_script(pid, b, title)
+            except RuntimeError as e:
+                print(f"❌ {b['brief_id']} {e}")
+                skipped += 1
+                continue
+            st.save()
+        if not job.get("generation_id"):
+            chunks = split_quantity(n, cfg.get("generate_chunk") or n)
+            job["generation_id"] = api("POST", "/video-cut-generations",
+                                       {"script_id": job["script_id"], "quantity": chunks[0]})["id"]
+            job["stage"] = "generating"
+            job.pop("topups", None)
+            offset = chunks[0]
+            for c in chunks[1:]:
+                gid = api("POST", "/video-cut-generations", {"script_id": job["script_id"], "quantity": c})["id"]
+                job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,
+                                                     "quantity": c, "at": time.strftime("%Y-%m-%d %H:%M")})
+                offset += c
+            st.save()
+            submitted += 1
+            print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
+    if args.dry_run:
+        print(f"\n(dry run) 将生成 {total} 条视频，跳过 {skipped} 个 brief。确认后去掉 --dry-run 提交")
+        return
+    print(f"\n新提交 {submitted} 个 brief，跳过 {skipped} 个。下一步：clipo_batch.py poll")
+
+
+# ---------- top-up ----------
+
+def deliverable(v):
+    return v.get("ai_review") == "pass" and not v.get("copy_issues")
+
+
+def cmd_topup(cfg, run, args):
+    """Make sure every brief ends with `quantity` deliverable videos: regenerate more from the SAME
+    approved video-script (no new copy, no new review) for whatever the AI review rejected.
+    Asks Clipo for (shortfall / pass rate so far) × margin, so one round usually covers it."""
+    st = State(run)
+    jobs = st.data.get("briefs", {})
+    total = 0
+    for b in load_briefs(run, args.brief):
+        bid = b["brief_id"]
+        job = jobs.get(bid)
+        if not job or not job.get("script_id"):
+            continue
+        why = approval_problem(b)
+        if why or job.get("texts") != [seg_text(s) for s in b["segments"]]:
+            print(f"⏸  {bid} {why or '平台上的脚本和现在的文案不一致'}，不补")
+            continue
+        vids = [v for v in st.videos.values() if v["brief_id"] == bid]
+        if generating(job) or any(v.get("stage") not in ("done", "failed") for v in vids):
+            print(f"⏳ {bid} 还有视频没跑完，先 poll")
+            continue
+        ok = sum(deliverable(v) for v in vids)
+        short = b["quantity"] - ok
+        if short <= 0:
+            print(f"✅ {bid} 可交付 {ok}/{b['quantity']}，够了")
+            continue
+        rate = max(ok / len(vids), 0.2) if vids else 0.5
+        want = min(args.max_per_brief, max(short, math.ceil(short / rate * args.margin)))
+        offset = max((int(k.rsplit("V", 1)[1]) for k in st.videos if k.startswith(bid + "-V")), default=0)
+        total += want
+        print(f"{'🧪' if args.dry_run else '🔁'} {bid} 可交付 {ok}/{b['quantity']}，差 {short}；"
+              f"通过率 {ok}/{len(vids)}，补生成 {want} 条（V{offset+1:02d} 起）")
+        if args.dry_run:
+            continue
+        for c in split_quantity(want, cfg.get("generate_chunk") or want):
+            gid = api("POST", "/video-cut-generations", {"script_id": job["script_id"], "quantity": c})["id"]
+            job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,
+                                                 "quantity": c, "at": time.strftime("%Y-%m-%d %H:%M")})
+            offset += c
+        st.save()
+    if args.dry_run:
+        print(f"\n(dry run) 将补生成 {total} 条（消耗额度）。确认后去掉 --dry-run")
+    elif total:
+        print(f"\n已补生成 {total} 条。下一步：poll，跑完再 topup，直到每个 brief 都够数")
+
+
+# ---------- poll ----------
+
+def pull_generation(st, cfg, b, job, gen):
+    """Collect one cut-generation (the first one or a top-up): lint each rewrite, queue its render.
+    `gen` holds generation_id / stage / offset (videos are numbered offset+1 …). Updates gen in place."""
+    bid = b["brief_id"]
+    try:
+        g = api("GET", f"/video-cut-generations/{gen['generation_id']}")
+    except RuntimeError as e:
+        gen["last_error"] = str(e)[:300]
+        return
+    if g["status"] == "success" and g["cut_ids"]:
+        prod = cfg["products"][b["product_key"]]
+        vids = []
+        for k, cut_id in enumerate(g["cut_ids"], 1):
+            n = gen.get("offset", 0) + k
+            vids.append(f"{bid}-V{n:02d}")
+            v = st.videos.setdefault(vids[-1], {"brief_id": bid, "cut_id": cut_id, "title": video_title(cfg, b, n)})
+            if v.get("render_job"):
+                continue
+            try:
+                cut = api("GET", f"/video-cuts/{cut_id}")
+                rr = cut.get("random_result") or {}
+                got = [re.sub(r"\[#[^\]]*\]", "", x["content"]) for x in rr.get("vo_rewrite", [])] or job["texts"]
+                v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
+                v["duration_s"] = round(cut["draft"]["composition"]["durationInFrames"] / 30, 1)
+                issues = [m for t in got for l, m in lint_text(t, cfg, prod) if l == "error"]
+                issues += [m for l, m in lint_script(got, b["segments"], b, cfg, prod) if l == "error"]
+                v["copy_issues"] = issues
+                r = api("POST", "/render-jobs", {"spec": cut["draft"], "options": {"codec": "h264", "quality": "high", "scale": 1},
+                                                "cut_id": cut_id, "idempotency_key": f"udb-{cut_id}"})
+                v["render_job"], v["stage"] = r["job_id"], "rendering"
+            except RuntimeError as e:
+                v["last_error"] = str(e)[:300]
+        if all(st.videos[x].get("render_job") for x in vids):
+            gen["stage"] = "generated"
+    elif g["status"] in ("failed", "error"):
+        gen["stage"], gen["error"] = "failed", f"生成失败 {g.get('error_code')}: {g.get('error_message')}"
+
+
+def generating(job):
+    return job.get("stage") == "generating" or any(t.get("stage") == "generating" for t in job.get("topups", []))
+
+
+def cmd_poll(cfg, run, args):
+    st = State(run)
+    deadline = time.time() + args.wait
+    briefs = {b["brief_id"]: b for b in load_briefs(run)}
+    while True:
+        pending = 0
+        for bid, job in sorted(st.data.get("briefs", {}).items()):
+            for gen in [job] + job.get("topups", []):
+                if gen.get("stage") == "generating":
+                    pending += 1
+                    pull_generation(st, cfg, briefs[bid], job, gen)
+        for vid, v in sorted(st.videos.items()):
+            stage = v.get("stage")
+            try:
+                if stage == "rendering":
+                    j = api("GET", f"/render-jobs/{v['render_job']}")
+                    if j["status"] == "success":
+                        v["object_key"] = j.get("object_key")
+                        api("POST", "/video-cuts/review", {"cut_ids": [v["cut_id"]]})
+                        v["stage"] = "reviewing"
+                    elif j["status"] in ("failed", "canceled", "cancelled"):
+                        v["stage"], v["error"] = "failed", f"渲染失败 {j.get('error_code')}: {j.get('error_message')}"
+                elif stage == "reviewing":
+                    cut = api("GET", f"/video-cuts/{v['cut_id']}")
+                    if cut.get("ai_review_status") in ("success", "failed"):
+                        v["ai_review"] = cut.get("ai_review_result")
+                        v["ai_reason"] = cut.get("ai_review_reason")
+                        v["stage"] = "done"
+            except RuntimeError as e:
+                v["last_error"] = str(e)[:300]
+            pending += v.get("stage") not in ("done", "failed", None)
+        st.save()
+        by = {"brief生成中": sum(generating(j) for j in st.data.get("briefs", {}).values())}
+        for v in st.videos.values():
+            by[v.get("stage")] = by.get(v.get("stage"), 0) + 1
+        print(time.strftime("%H:%M:%S"), by, flush=True)
+        if not pending or time.time() > deadline:
+            break
+        time.sleep(args.interval)
+    sys.exit(0 if not pending else 3)
+
+
+# ---------- report ----------
+
+REJECT_ACTION = {
+    "改写违规": "把新出现的词补进 config.banned_words（自动进改写提示词），再单独重跑这几条",
+    "文案": "回 ④ 改这个 brief 的那句，lint 后重发审",
+    "画面/素材": "去平台给那条切片打「风险」或改标签，再单独重跑",
+    "产品信息过时": "平台产品描述里的机制/卖点过时，提醒用户更新描述；判为误判由用户决定放行",
+    "其他": "逐条看原因",
+}
+
+
+def reject_kind(r):
+    if r.get("copy_issues"):
+        return "改写违规"
+    why = r.get("ai_reason") or ""
+    if re.search(r"机制|价格|描述|信息不准确", why):
+        return "产品信息过时"
+    if re.search(r"画面|外观|系列|素材|包装|瓶|字幕遮挡|模糊", why):
+        return "画面/素材"
+    if re.search(r"广告法|口播|文案|用语|禁用|夸大|承诺", why):
+        return "文案"
+    return "其他"
+
+
+def cmd_status(cfg, run, args):
+    """One screen: where every brief and video of the day stands, and what to do next. No network."""
+    briefs = load_briefs(run)
+    if not briefs:
+        print(f"{run} 还没有 brief：从 ① fetch_sources / ② parse_schedule 开始")
+        return
+    st = State(run)
+    jobs = st.data.get("briefs", {})
+    stages = {}
+    for v in st.videos.values():
+        stages.setdefault(v["brief_id"], {}).setdefault(v.get("stage"), 0)
+        stages[v["brief_id"]][v.get("stage")] += 1
+    nxt = set()
+    print(f"{'brief':10} {'条':>3} {'状态':18} {'lint':6} 平台")
+    for b in briefs:
+        errs = sum(l == "error" for l, _ in lint_brief(b, cfg)) if b.get("segments") else None
+        job = jobs.get(b["brief_id"], {})
+        plat = job.get("stage") or "-"
+        if stages.get(b["brief_id"]):
+            plat = " ".join(f"{k}:{n}" for k, n in sorted(stages[b["brief_id"]].items(), key=str))
+        lint = "未写" if errs is None else ("✅" if not errs else f"❌{errs}")
+        print(f"{b['brief_id']:10} {b['quantity']:>3} {b.get('status',''):18} {lint:6} {plat}")
+        if errs is None:
+            nxt.add("④ 写脚本")
+        elif errs:
+            nxt.add("⑤ 改 lint 错误")
+        elif b.get("status") in ("draft", "changes_requested"):
+            nxt.add("⑥ 发审 / 等审核" if b.get("status") == "draft" else "⑦ 按意见改完再发审")
+        elif approval_problem(b) and not job:
+            nxt.add(f"⑥ 重新给人审（{approval_problem(b)}）")
+        elif b.get("status") == "approved" and not job:
+            nxt.add("⑧ submit")
+        elif job.get("stage") == "failed":
+            nxt.add("⑧ submit --retry-failed")
+        elif job and not generating(job):
+            vids = [v for v in st.videos.values() if v["brief_id"] == b["brief_id"]]
+            if vids and all(v.get("stage") in ("done", "failed") for v in vids) and \
+                    sum(deliverable(v) for v in vids) < b["quantity"]:
+                nxt.add("⑧ topup（可交付不够数）")
+    if any(v.get("stage") not in ("done", "failed") for v in st.videos.values()) or \
+            any(generating(j) for j in jobs.values()):
+        nxt.add("⑧ poll（后台）")
+    elif st.videos:
+        nxt.add("⑨ report")
+    print("\n下一步：" + ("、".join(sorted(nxt)) or "今天的活已完成"))
+
+
+def cmd_report(cfg, run, args):
+    st = State(run)
+    rows, briefs = [], {b["brief_id"]: b for b in load_briefs(run)}
+    lines = [f"# {Path(run).name} 生产结果", ""]
+    for bid in sorted({v["brief_id"] for v in st.videos.values()}):
+        b = briefs.get(bid, {})
+        lines += [f"## {bid} · {b.get('direction','')} · {b.get('selling_point','')} · {b.get('audience','')} · 范本：{b.get('gold_id') or '未填'}", "",
+                  "| 视频 | 时长 | 渲染 | AI 审核 | 原因 / 问题 | 预览 |", "|-|-|-|-|-|-|"]
+        for vid, v in sorted((k, x) for k, x in st.videos.items() if x["brief_id"] == bid):
+            flag = ("⚠️ 改写违规：" + "；".join(v["copy_issues"][:2]) + " ") if v.get("copy_issues") else ""
+            reason = flag + (v.get("ai_reason") or v.get("error") or "").replace("|", "/").replace("\n", " ")[:120]
+            url = f"{BASE.replace('/api/v1','')}/cut/{v['cut_id']}" if v.get("cut_id") else ""
+            lines.append(f"| {vid} | {v.get('duration_s','')} | {v.get('stage')} | {v.get('ai_review') or ''} | {reason} | {url} |")
+            rows.append({"video": vid, "gold_id": b.get("gold_id"),
+                         **{k: v.get(k) for k in ("title", "cut_id", "stage", "ai_review", "ai_reason", "duration_s", "voice",
+                                                  "texts", "copy_issues", "error")}})
+        lines.append("")
+    total = len(rows)
+    bad_copy = sum(bool(r.get("copy_issues")) for r in rows)
+    passed = sum(r["ai_review"] == "pass" and not r.get("copy_issues") for r in rows)
+    rejected = [r for r in rows if r["ai_review"] == "reject" or r.get("copy_issues")]
+    buckets = {}
+    for r in rejected:
+        buckets.setdefault(reject_kind(r), []).append(r["video"])
+    summary = [f"共 {total} 条：可交付 {passed}，需处理 {len(rejected)}，未完成 {total - passed - len(rejected)}（改写违规 {bad_copy} 条也算需处理）。", ""]
+    need = {bid: (sum(deliverable(v) for v in st.videos.values() if v["brief_id"] == bid), briefs[bid]["quantity"])
+            for bid in sorted(briefs)}  # every brief on today's schedule, including ones with no videos yet
+    ok_n = sum(min(a, q) for a, q in need.values())
+    q_n = sum(q for _, q in need.values())
+    summary += [f"**排期要 {q_n} 条，已够数 {ok_n} 条**（每个 brief 最多算到它的排期条数）：" +
+                "，".join(f"{bid} {a}/{q}{' ✅' if a >= q else ''}" for bid, (a, q) in need.items()), ""]
+    if ok_n < q_n:
+        summary += [f"还差 {q_n - ok_n} 条 → `clipo_batch.py topup` 用同一份审过的脚本补生成", ""]
+    for kind, vids in buckets.items():
+        summary.append(f"- **{kind}** {len(vids)} 条：{'、'.join(vids[:12])}{' …' if len(vids) > 12 else ''} → {REJECT_ACTION[kind]}")
+    lines[2:2] = summary + [""]
+    (Path(run) / "report.md").write_text("\n".join(lines))
+    (Path(run) / "report.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2))
+    print("\n".join(summary))
+    print(f"→ {Path(run) / 'report.md'}")
+    write_delivery(st, briefs, run)
+
+
+def write_delivery(st, briefs, run):
+    """Deliverable list: per brief, the first `quantity` videos that passed (by number), the rest as spares."""
+    key = lambda k: int(k.rsplit("V", 1)[1])
+    out, total, need = [], 0, 0
+    jobs = st.data.get("briefs", {})
+    for bid in sorted(briefs):
+        b = briefs[bid]
+        q = b["quantity"]
+        good = sorted((k for k, v in st.videos.items() if v["brief_id"] == bid and deliverable(v)), key=key)
+        pick = good[:q]
+        total, need = total + len(pick), need + q
+        out += [f"## {bid} · {b.get('direction_core') or b['direction']} · {b.get('selling_point', '')} · {b.get('audience', '')} · "
+                f"交付 {len(pick)}/{q}" + (" ✅" if len(pick) >= q else f" ⚠️ 差 {q - len(pick)}"), "",
+                "| # | 视频 | 时长 | 预览 |", "|-|-|-|-|"]
+        for i, k in enumerate(pick, 1):
+            v = st.videos[k]
+            out.append(f"| {i} | {v['title']} | {v.get('duration_s', '')}s | {BASE.replace('/api/v1', '')}/cut/{v['cut_id']} |")
+        if not pick:
+            job = jobs.get(bid, {})
+            errs = [g.get("error") for g in [job] + job.get("topups", []) if g.get("error")]
+            out.append(f"| | 还没有可交付的视频{('：' + errs[-1][:80]) if errs else '（没提交或还在跑）'} | | |")
+        if good[q:]:
+            out.append(f"\n备用（也已通过）：{'、'.join(good[q:])}")
+        out.append("")
+    gen = len(st.videos)
+    passed = sum(deliverable(v) for v in st.videos.values())
+    head = [f"# {Path(run).name} 交付清单", "",
+            f"**交付 {total} / {need} 条**{'，全部够数' if total >= need else f'，还差 {need - total} 条（topup）'}。"
+            f"共生成 {gen} 条，AI 审核通过 {passed} 条（{passed / max(gen, 1):.0%}）。", ""]
+    (Path(run) / "delivery.md").write_text("\n".join(head + out))
+    print(f"→ {Path(run) / 'delivery.md'}（交付 {total}/{need}）")
+
+
+def main():
+    global BASE
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "report", "status"])
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--run", required=True)
+    ap.add_argument("--brief")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
+    ap.add_argument("--factor", type=float, help="submit: 一次生成排期条数的几倍，默认取 config.generate_factor")
+    ap.add_argument("--margin", type=float, default=1.3, help="topup: 按通过率估算后再多要的倍数")
+    ap.add_argument("--max-per-brief", type=int, default=30, help="topup: 每个 brief 单次最多补几条")
+    ap.add_argument("--wait", type=int, default=0, help="poll: keep polling up to N seconds")
+    ap.add_argument("--interval", type=int, default=30)
+    args = ap.parse_args()
+    cfg = load_config(args.config)
+    BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
+    {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "report": cmd_report,
+     "status": cmd_status}[args.cmd](cfg, args.run, args)
+
+
+if __name__ == "__main__":
+    main()
