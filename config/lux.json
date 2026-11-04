@@ -104,12 +104,7 @@
     "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效、改写规则都由平台产品提示词（video_script_create / video_script_rewrite / video_cut_review）管，skill 不再配置。submit 让平台按提示词建脚本，只把审过的文案逐字交给它，再核对一遍"
   },
   "naming": "{date}-{brief_no}-V{n:02d}-{product}-{selling_point}",
-  "open_questions": [
-    {
-      "about": "all",
-      "q": "平台描述里的「72 小时法式奢香」「72 小时持久留香」「大牌同款 / 香奈儿」，按 QC（不写时间、不写国际）和团队交付稿都不念，确认"
-    }
-  ],
+  "open_questions": [],
   "review": {
     "doc_parent_token": null,
     "notify_chat_id": null
