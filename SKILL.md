@@ -1,6 +1,6 @@
 ---
 name: unilever-daily-batch
-description: 联合利华（清扬、力士）千川混剪视频每日批量生产的流程串联。按飞书排期表（力士没有排期表，按每天固定条数）取当天任务 → 每 10 条一个 brief 写底稿 → 机器 QC → 人审 → 审过的文案交给 Clipo Remix（画面、配音、BGM、字幕、贴图、音效由平台产品提示词决定）一次多生成、渲染、AI 审核 → 出交付清单，不够数就补。用户说「跑今天的排期」「清扬今天的脚本」「力士今天的」「做 11.4 的」「1030 的 brief」「审完了，开始生产」「看下今天生产结果」「今天到哪了」「联合利华批量视频」时使用。
+description: 联合利华（清扬、力士）千川混剪视频每日批量生产的流程串联。按飞书排期表（力士没有排期表，按每天固定条数）取当天任务 → 每 10 条一个 brief，skill 结合热点、产品规则、范本拼创作要求，让 Clipo Remix 写底稿 → 机器 QC → 人审 → 审过的文案一次多生成、渲染、AI 审核（画面、配音、BGM、字幕、贴图、音效由平台产品提示词决定）→ 每个 brief 一个分享链接，不够数就补。用户说「跑今天的排期」「清扬今天的脚本」「力士今天的」「做 11.4 的」「1030 的 brief」「审完了，开始生产」「看下今天生产结果」「今天到哪了」「联合利华批量视频」时使用。
 ---
 
 # 联合利华每日批量混剪
@@ -11,7 +11,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 
 四条设计：
 
-- **范本定标准，不当模板。** `gold/` 里用户确认过的脚本定口吻、长短、能写什么；每条底稿自己定角度和句子，每句都要有素材画面接得住。lint 会拦照抄
+- **skill 出创作要求，平台写文案。** 平台提示词管怎么写；skill 把平台不知道的写进创作要求：当天排期、产品规则、素材画面、用户确认过的稿、最近用过的开头、当天热点。lint 会拦照抄
 - **人只审底稿，必须人审。** lint 查底稿，`poll` 查每条改写，平台 AI 审核查成片
 - **文案的事实只有一个来源**：`config/<brand>.json`（品牌共用）+ `config/<brand>/<产品>.json`（每个产品）。产品规则变了只改那个产品的文件
 - **按可交付数交付。** 通过率约 40%，一次生成排期的 2 倍，不够再补，直到每个 brief 够数；每个 brief 交付一个分享链接
@@ -19,7 +19,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 不知道做到哪了，先跑 `status`，它会给出下一步（离线）。
 
 ```
-① 拉资料 → ② 拆 brief → ③ 平台体检 → ④ 写底稿 → ⑤ lint
+① 拉资料 → ② 拆 brief → ③ 平台体检 → ④ 查热点 + 平台写底稿 → ⑤ lint
    → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单 + 分享链接
 ```
 
@@ -34,8 +34,8 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 
 | 文件 | 用途 |
 |---|---|
-| [references/writing.md](references/writing.md) | ④ 怎么写：范本标准、角度轮换、产品名位置、硬性要求、brief 格式 |
-| `gold/<品牌>.json` | 范本库，每条标了 `product`，只和同产品比。用户说好的脚本加进来，标 `"status": "confirmed"` |
+| [references/writing.md](references/writing.md) | ④ 怎么查热点、创作要求里写什么、人审看什么、硬性要求、brief 格式 |
+| `gold/<品牌>.json` | 范本库，每条标了 `product`。确认过的（`"status": "confirmed"`）塞进创作要求当参考，lint 拿全部范本查照抄。用户说好的脚本加进来标 `confirmed` |
 | `config/<品牌>.json` | 品牌共用：资料来源、店铺→产品（或 `daily_quota` 固定条数）、禁用词、文案长度、生成数量、`open_questions` 待确认项 |
 | `config/<品牌>/<产品>.json` | 每个产品一份：产品名、平台 id、卖点说法、机制、CTA、卡审词、串系列词、受众、素材画面、固定要求 `rules` |
 | [references/clipo-api.md](references/clipo-api.md) | 平台接口：建脚本、批量生成、批量渲染、批量审核、体检，每个接口的参数和状态；踩过的坑 |
@@ -53,14 +53,14 @@ QC 文档和昨天比有变化，读清扬段：新卡审词、新机制先改 c
 **③ 平台体检** `clipo_batch.py preflight --config $C --run $R`
 查平台上每个产品：能不能打开、有没有可用素材、产品描述里机制对不对、有没有建脚本提示词、提示词里写的音效贴图分类平台上有没有、审核提示词的产品名对不对。有问题告诉用户去平台改，不自己改平台。
 
-**④ 写底稿** `imitate.py --config $C --run $R --brief <id>`
-它列出确认稿（看标准）、本品事实、每段素材里有什么画面、近几天用过的段落顺序和句首。**先定角度再写句子**，不在范本句子上换词。brief 里填 `gold_id`（最接近的标准稿）、`angle`、`persona`、`segments`。用户给了结构就照结构写，填 `template`，每段写主版 `text` + 备选 `alt` 两版给人挑。详见 [writing.md](references/writing.md)。
+**④ 查热点 + 平台写底稿** `draft.py --config $C --run $R`
+先搜当天热点（抖音热榜、微博、小红书），挑能一句话转到头发的 2~4 个写进 `$R/hotspots.json`；没有合适的就不写。`draft.py` 给每个 brief 拼创作要求（排期、卖点、机制、产品规则、素材画面、禁用词、热点、最近用太多的开头、审核人改过的句子、确认稿），调 `POST /video-script-generations` 让平台写，读回来 lint，有错让平台改一轮。`--dry-run` 只看创作要求；`--redo` 重写。用户给了结构就在 brief 里写 `template`。详见 [writing.md](references/writing.md)。
 
 **⑤ lint** `lint_copy.py --config $C --run $R`
 错误清零才能给人审。查事实、合规、产品名位置，以及**是不是照抄**（跟范本 / 近 7 天 / 当天其它稿相似度 > 35%，或段落顺序 + 2 句开头一样）。不查文风。
 
 **⑥ 待审 ⏸** `review_doc.py render --config $C --run $R` → `review.md` / `review.xml`
-把每条脚本完整发给用户看（每条标出最像哪条旧稿和相似度）。要发飞书：`lark-cli docs +create --content @$R/review.xml`，**第一次往飞书写、往群里发之前先问用户**放哪。**然后停下等审核**。
+把每条脚本完整发给用户看（每条标出用了哪个热点、最像哪条旧稿和相似度）。要发飞书：`lark-cli docs +create --content @$R/review.xml`，**第一次往飞书写、往群里发之前先问用户**放哪。**然后停下等审核**。
 
 **⑦ 记录审核**
 - 用户在对话里说通过：`review_doc.py approve --brief <id> --by 用户 --note "<原话>"`
@@ -74,7 +74,7 @@ python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run   # 报�
 python3 -I scripts/clipo_batch.py submit --config $C --run $R
 python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后台跑
 ```
-- **AI 建脚本**：`POST /video-script-generations` 把审过的文案逐字交给平台，平台按产品提示词建脚本；建完 `GET /video-scripts/{id}` 核对每段一字不差、CTA 没开改写，对不上就删掉不生成
+- **同步审过的文案**：脚本是 ④ 平台写的那份（`script_id`）。`submit` 把人审后的每段文案 `PUT /video-scripts/{id}` 写回去（画面、贴图、音效不动），CTA / `lock` 段关掉改写，再读回核对一字不差，对不上不生成
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
 - 每个 brief 生成 排期 × `generate_factor`（2）条，拆成每轮 ≤ `generate_chunk`（15）条提交
 - 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
@@ -96,6 +96,6 @@ python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每
 
 1. **脚本必须人审**：「直接生成」不等于审过，先给人看脚本；不填审核结论
 2. **提交前报条数**：每次 submit / topup 都先 dry-run，告诉用户要生成多少条，确认后再提交
-3. **事实只来自 config 和当天资料**；改写违规一律当驳回；CTA 和 `lock` 段不改写
+3. **事实只来自 config 和当天资料**；热点只借话题，不编数据；改写违规一律当驳回；CTA 和 `lock` 段不改写
 4. **不替人改共享的东西**：不改客户共享文档（含「Y26-联合利华脚本合集」），不改 / 删平台上的产品、素材、分类和提示词。片子的样子要变，告诉用户去改平台提示词
-5. **学到的写回去**：卡审词、机制、素材画面进 config；用户说好的脚本进 `gold/`；平台那边的问题（素材、提示词）告诉用户；不只留在聊天里
+5. **学到的写回去**：卡审词、机制、素材画面、产品的写法要求进 config（下次自动进创作要求）；用户说好的脚本进 `gold/`；平台那边的问题（素材、提示词）告诉用户；不只留在聊天里

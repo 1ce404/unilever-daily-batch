@@ -5,7 +5,7 @@
 
 Reads  runs/<day>/sources/schedule.txt, or config.daily_quota for brands without a schedule doc (LUX)
 Writes runs/<day>/schedule-<brand>.json every row for that date (incl. 新增 tables) + section notes
-       runs/<day>/briefs/<id>.json      one stub per brief; the agent fills persona + segments
+       runs/<day>/briefs/<id>.json      one stub per brief; draft.py fills script_id + segments
 """
 import argparse
 import json
@@ -121,8 +121,6 @@ def main():
                 "quantity": min(size, row["quantity"] - j * size),
                 "schedule_section": row["section"],
                 "schedule_notes": row["section_notes"],
-                "persona": "",
-                "references": [],
                 "segments": [],
                 "status": "draft",
                 "review_notes": "",

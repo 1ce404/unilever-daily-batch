@@ -84,7 +84,7 @@ def render(cfg, run):
         cells[1:5] = [esc(c).replace("&lt;br/&gt;", "<br/>") for c in cells[1:5]]
         rows_xml.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
         md += [f"## {b['brief_id']} · {b['store']} · {b['direction']} · {b.get('selling_point','')} · {b.get('audience','')}",
-               f"人设：{b.get('persona','')}　数量：{b['quantity']}", ""]
+               f"热点：{b.get('hotspot') or '无'}　数量：{b['quantity']}", ""]
         md += copy_cell(b)
         md += ["", "和旧稿比：" + "；".join(closest_cell(b))]
         md += ["", "QC：" + "；".join(qc), ""]
@@ -175,7 +175,7 @@ def sync(cfg, run, doc):
 
 def log_edits(cfg, run, edits):
     """Reviewer rewrites are the best signal of how the team wants copy to sound: keep them per run and
-    in a per-brand log that `imitate.py` shows before the next day's writing."""
+    in a per-brand log that `draft.py` puts into the next day's creative requirement."""
     (run / "review_edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2))
     log = SKILL_DIR / "learned" / f"{cfg['brand_key']}-edits.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)

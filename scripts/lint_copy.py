@@ -90,8 +90,6 @@ def lint_brief(brief, cfg):
     segs = brief.get("segments") or []
     if not segs:
         return [("error", "还没有写分段")]
-    if not brief.get("persona"):
-        issues.append(("warn", "没写说话人（persona）"))
     texts = [seg_text(s) for s in segs]
     for s, t in zip(segs, texts):
         if not t.strip():
@@ -103,8 +101,6 @@ def lint_brief(brief, cfg):
     if any(i[0] == "error" and "没有文案" in i[1] for i in issues):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
-    if not brief.get("gold_id"):
-        issues.append(("warn", "没填 gold_id：先用 imitate.py 挑范本再仿写（references/writing.md）"))
     camp = cfg.get("campaign")
     if camp and brief.get("date", "") <= camp["until"] and not any(camp["name"] in t for t in texts):
         issues.append(("warn", f"{camp['name']}期间没提「{camp['name']}」（放进机制或 CTA 句）"))

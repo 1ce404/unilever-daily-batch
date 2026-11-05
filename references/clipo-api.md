@@ -1,4 +1,4 @@
-# Clipo Remix 接口（第 ③⑧ 步）
+# Clipo Remix 接口（第 ③④⑧⑨ 步）
 
 Base `https://clipo-remix.tezign.com/api/v1`。所有响应都是信封 `{code, message, data}`，`code == "ok"` 才算成功。当前不需要鉴权。线上接口文档：`GET /api/v1/openapi.json`。
 
@@ -8,26 +8,27 @@ Base `https://clipo-remix.tezign.com/api/v1`。所有响应都是信封 `{code, 
 AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 → 每个 brief 一个分享链接
 ```
 
-片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。全部调用在 `scripts/clipo_batch.py`。
+片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。写底稿在 `scripts/draft.py`，其余调用在 `scripts/clipo_batch.py`。
 
-## 一、AI 建脚本（`submit`）
+## 一、AI 建脚本（`draft.py` 写，`submit` 同步）
 
-把审过的文案交给平台，平台按产品提示词 `video_script_create` 把脚本建出来，配音、画面、贴图音效都由它配。
+**平台写文案**：`draft.py` 把创作要求交给平台，平台按产品提示词 `video_script_create` 写文案、配画面贴图音效。创作要求里写什么见 [writing.md](writing.md)。
 
 | 接口 | 用途 |
 |---|---|
-| `POST /video-script-generations` | 提交建脚本任务。body：`product_id`、`requirement`（创作要求，自由文本）。响应里的 `script_id` 提交时就给了（预建的空脚本） |
-| `GET /video-script-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；失败看 `error_code`（`ai_timeout`、`ai_call_failed`…），失败即终态，重试就是再提交一条 |
-| `GET /video-scripts/{script_id}` | 读回脚本：`segments[].content`（口播）、`segments[].ai_rewrite`（是否允许改写）、`config`（平台配好的全局配置） |
-| `DELETE /video-scripts/{script_id}` | 删脚本 |
+| `POST /video-script-generations` | 写脚本。body：`product_id`、`requirement`（创作要求，自由文本，≤ 2000 字）。带 `script_id` + `requirement`（不带 `product_id`）是让平台按要求改一条已有脚本，`draft.py` lint 出错时用它改一轮。响应里的 `script_id` 提交时就给了 |
+| `GET /video-script-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；失败看 `error_code`（`ai_timeout`、`ai_call_failed`…），失败即终态，重试就是再提交一条。一条约 1~2 分钟 |
+| `GET /video-scripts/{script_id}` | 读回脚本：`title`、`segments[]`（`title` 段名、`content` 口播、`ai_rewrite` 是否允许改写、`visual` 画面标签、`stickers`、`sound_effects`）、`config`（全局配置：配音、BGM、字幕） |
+| `PUT /video-scripts/{script_id}` | 整份写回（`title`、`segments`、`config`）。`submit` 用它同步人审后的文案 |
+| `DELETE /video-scripts/{script_id}` | 删脚本（`draft.py --redo` 重写时删旧的） |
 
-`requirement` 里写清：一共几段、每段文案逐字照抄、哪几段不准改写（CTA 段和 `lock` 段）、其它按产品默认规则、脚本标题。
-
-建完必须核对，对不上就 `DELETE` 掉这条脚本、不生成、报给用户：
+**同步审过的文案**：人审时改过的句子，`submit` 先 `GET` 平台脚本，把每段 `content` 换成审过的文案（画面、贴图、音效、全局配置原样保留），CTA 段和 `lock` 段 `ai_rewrite = false`，标题按 config 的 `naming` 改，`PUT` 回去，再 `GET` 核对：
 
 - 段数和审过的一样
 - 每段 `content` 和审过的一字不差
 - CTA / `lock` 段 `ai_rewrite = false`
+
+对不上不生成，报给用户。审核人增删了段落时段数会对不上，要 `draft.py --redo` 重写或在平台上改。
 
 ## 二、脚本批量生成混剪（`submit` / `topup` / `poll`）
 

@@ -9,12 +9,11 @@
     python3 scripts/clipo_batch.py share     --config qingyang --run runs/20261104 [--dry-run] [--partial]   # 每个 brief 一个分享链接
     python3 scripts/clipo_batch.py status    --config qingyang --run runs/20261104   # where is today's run? (offline)
 
-This script only moves the flow along. Everything about how a video looks (voices, BGM, subtitles, visuals,
-stickers, SFX, rewrite rules) lives in the product's prompts on the platform. submit asks the platform to
-build the video-script from the reviewed copy, checks every line came through verbatim and CTA stays locked,
-then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only briefs a human approved
-(review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll re-lints every
-rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
+This script only moves the flow along. The platform wrote each brief's script at step ④ (draft.py) from
+its product prompts; after a human approves the copy, submit writes the approved lines back into that script,
+locks CTA, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
+briefs a human approved (review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll
+re-lints every rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
 """
 import argparse
 import json
@@ -159,34 +158,27 @@ def cmd_preflight(cfg, run, args):
 
 # ---------- submit ----------
 
-def build_script(pid, brief, title):
-    """Let the platform build the video-script from the reviewed copy, following the product's own
-    prompt (video_script_create: voices, BGM, subtitles, visuals, stickers, SFX). We only pin the words:
-    every segment verbatim, CTA / lock segments not rewritten. Returns script_id after checking it."""
+def sync_script(script_id, brief, title):
+    """The platform wrote this script at ④ (draft.py). A human may have edited lines since: write the approved
+    copy back into it (PUT, keeping the platform's visuals / stickers / SFX per segment), lock CTA and `lock`
+    segments, title it, then read it back and check every line. Raises if it does not match."""
+    script = api("GET", f"/video-scripts/{script_id}")
     segs = brief["segments"]
-    locked = [i + 1 for i, sg in enumerate(segs) if sg.get("lock") or sg.get("role") == "cta"]
-    lines = "\n".join(f"第{i + 1}段（{sg.get('title') or sg.get('role')}）：{seg_text(sg)}" for i, sg in enumerate(segs))
-    req = (f"按下面已经人审通过的口播文案建脚本：一共 {len(segs)} 段，每段的口播文案逐字照抄，不改字、不加字、不合并、不拆分；"
-           f"第 {'、'.join(map(str, locked))} 段不允许 AI 改写，其余段允许 AI 改写。"
-           f"其它配置（画面、字幕、配音、BGM、贴图、音效）按产品的默认规则。脚本标题：{title}\n{lines}")
-    g = api("POST", "/video-script-generations", {"product_id": pid, "requirement": req})
-    for _ in range(60):
-        time.sleep(5)
-        g = api("GET", f"/video-script-generations/{g['id']}")
-        if g["status"] in ("success", "failed", "error"):
-            break
-    if g["status"] != "success":
-        raise RuntimeError(f"平台建脚本失败 {g.get('error_code')}: {g.get('error_message')}")
-    script = api("GET", f"/video-scripts/{g['script_id']}")
-    got = [x.get("content") or "" for x in script["segments"]]
-    want = [seg_text(sg) for sg in segs]
-    wrong = [i + 1 for i, (x, y) in enumerate(zip(got, want)) if x != y]
-    bad_lock = [i for i in locked if i <= len(script["segments"]) and script["segments"][i - 1].get("ai_rewrite")]
-    if len(got) != len(want) or wrong or bad_lock:
-        api("DELETE", f"/video-scripts/{script['id']}")
-        raise RuntimeError(f"平台建的脚本和审过的文案对不上（段数 {len(got)}/{len(want)}，不一致的段 {wrong}，"
-                           f"该锁没锁的段 {bad_lock}），已删掉，没有生成")
-    return script["id"]
+    if len(script["segments"]) != len(segs):
+        raise RuntimeError(f"平台脚本 {len(script['segments'])} 段，审过的文案 {len(segs)} 段，对不上：重跑 draft.py 或手动对齐")
+    locked = {i for i, sg in enumerate(segs) if sg.get("lock") or sg.get("role") == "cta"}
+    for i, (ps, sg) in enumerate(zip(script["segments"], segs)):
+        ps["content"] = seg_text(sg)
+        ps["ai_rewrite"] = i not in locked
+    body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments") if k in script}
+    body["title"] = title[:120]
+    api("PUT", f"/video-scripts/{script_id}", body)
+    got = api("GET", f"/video-scripts/{script_id}")["segments"]
+    wrong = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if (x.get("content") or "") != seg_text(sg)]
+    bad_lock = [i + 1 for i in locked if got[i].get("ai_rewrite")]
+    if wrong or bad_lock:
+        raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，该锁没锁的段 {bad_lock}）")
+    return script_id
 
 
 def video_title(cfg, brief, n=None):
@@ -240,18 +232,22 @@ def cmd_submit(cfg, run, args):
                 print(f"⚠️  {b['brief_id']} 提交后文案又改过，平台上是旧版；要按新版重做，先从 state.json 删掉这个 brief 和它的视频")
                 skipped += 1
                 continue
-            job.pop("script_id")  # script created but never generated: rebuild it from the new copy
+            job.pop("script_id")  # synced but never generated: sync the new copy again
         job["texts"] = texts
         if job.get("generation_id"):
             continue  # already on the platform; poll / topup handle it
         n = gen_quantity(cfg, b, args)
         total += n
         if args.dry_run:
-            print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）")
+            print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）" + ("" if b.get("script_id") else "  ⚠️ 还没有平台脚本，先跑 draft.py"))
             continue
         if not job.get("script_id"):
+            if not b.get("script_id"):
+                print(f"❌ {b['brief_id']} 没有平台脚本：先跑 draft.py 让平台写")
+                skipped += 1
+                continue
             try:
-                job["script_id"] = build_script(pid, b, title)
+                job["script_id"] = sync_script(b["script_id"], b, title)
             except RuntimeError as e:
                 print(f"❌ {b['brief_id']} {e}")
                 skipped += 1
@@ -430,7 +426,7 @@ def cmd_poll(cfg, run, args):
 
 REJECT_ACTION = {
     "改写违规": "把新出现的词补进 config.banned_words（自动进改写提示词），再单独重跑这几条",
-    "文案": "回 ④ 改这个 brief 的那句，lint 后重发审",
+    "文案": "回 ④ 改这个 brief 的那句（或把问题写进产品 rules 后 draft.py --redo），lint 后重发审",
     "画面/素材": "去平台给那条切片打「风险」或改标签，再单独重跑",
     "产品信息过时": "平台产品描述里的机制/卖点过时，提醒用户更新描述；判为误判由用户决定放行",
     "其他": "逐条看原因",
@@ -473,7 +469,7 @@ def cmd_status(cfg, run, args):
         lint = "未写" if errs is None else ("✅" if not errs else f"❌{errs}")
         print(f"{b['brief_id']:10} {b['quantity']:>3} {b.get('status',''):18} {lint:6} {plat}")
         if errs is None:
-            nxt.add("④ 写脚本")
+            nxt.add("④ 查热点 + draft.py 让平台写")
         elif errs:
             nxt.add("⑤ 改 lint 错误")
         elif b.get("status") in ("draft", "changes_requested"):
