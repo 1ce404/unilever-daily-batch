@@ -5,7 +5,7 @@
 
 Reads  runs/<day>/sources/schedule.txt, or config.daily_quota for brands without a schedule doc (LUX)
 Writes runs/<day>/schedule-<brand>.json every row for that date (incl. 新增 tables) + section notes
-       runs/<day>/briefs/<id>.json      one stub per brief; draft.py fills script_id + segments
+       runs/<day>/briefs/<id>.json      one stub per brief; the agent fills segments (brief_card.py shows what to write)
 """
 import argparse
 import json

@@ -3,8 +3,9 @@
 
     python3 scripts/lint_copy.py --config qingyang --run runs/20261030 [--brief 1030-B01]
 
-Checks facts and compliance, plus variety: a script may not read like a gold script or a recent day's
-script with a few words swapped (lint_variety). Style itself is not checked; see references/writing.md.
+Checks facts and compliance, plus variety. The team's way of writing (references/writing.md) reuses the
+fixed selling-point line and the mechanism + CTA line across briefs on purpose; what must differ is the
+opening, so variety only compares openings (lint_variety). Style itself is not checked.
 Exit 1 when any brief has errors. Writes runs/<day>/lint.json. Warnings are for the reviewer.
 Also importable: lint_text() / lint_brief() / lint_script() are reused by clipo_batch.py on Clipo's rewritten copy.
 """
@@ -18,8 +19,7 @@ from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
-from copy_logic import editorial_issues, plan_batch_issues
+from common import seg_alts, day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
 
 PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元|拍[一二三四五六七八九十\d]+发[一二三四五六七八九十\d]+|\d+\s*[gG克]")
 
@@ -82,7 +82,7 @@ def seg_text(seg):
     return seg.get("text", "")
 
 
-def lint_brief(brief, cfg, require_editorial=True):
+def lint_brief(brief, cfg):
     issues = []
     pk = brief.get("product_key")
     if pk not in cfg["products"]:
@@ -97,8 +97,8 @@ def lint_brief(brief, cfg, require_editorial=True):
             issues.append(("error", f"S{s.get('id')} 没有文案"))
             continue
         issues += [(lvl, f"S{s['id']} {msg}") for lvl, msg in lint_text(t, cfg, product)]
-        if s.get("alt"):
-            issues += [(lvl, f"S{s['id']} 备选句 {msg}") for lvl, msg in lint_text(s["alt"], cfg, product)]
+        for k, a in enumerate(seg_alts(s), 2):
+            issues += [(lvl, f"S{s['id']} 说法{k} {msg}") for lvl, msg in lint_text(a, cfg, product)]
     if any(i[0] == "error" and "没有文案" in i[1] for i in issues):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
@@ -108,8 +108,6 @@ def lint_brief(brief, cfg, require_editorial=True):
     stale = mechanism_age(product, brief.get("date"))
     if stale is not None and stale > STALE_DAYS:
         issues.append(("warn", f"机制 {product['mechanism']['spoken']} 已 {stale} 天没核对（{product['mechanism']['verified_on']}），请审核人确认"))
-    if require_editorial:
-        issues += editorial_issues(brief)
     return issues
 
 
@@ -128,7 +126,7 @@ def lint_day(briefs, cfg):
     """Cross-brief checks: Clipo's rewrite does not create distance between briefs, so the base copy must.
     Product names and keep_terms are meant to repeat, so they are stripped before comparing.
     Returns {brief_id: [(level, msg)]}."""
-    out = plan_batch_issues(briefs)
+    out = {}
     fixed = sorted({t for p in cfg["products"].values()
                     for t in p.get("keep_terms", []) + p["name_aliases"] + p["mechanism"]["allowed_numbers"]}
                    | {(cfg.get("campaign") or {}).get("name", "")} - {""}, key=len, reverse=True)
@@ -154,21 +152,24 @@ def lint_day(briefs, cfg):
     return out
 
 
-def body(segs, cfg):
-    """Non-CTA copy with product names, selling-point terms and mechanism stripped: what a writer actually wrote."""
+def opening(segs, n=2):
+    """The first `n` lines with product names, selling-point terms, mechanism and the campaign stripped:
+    the part of a script that is supposed to be new every time (team scripts reuse the rest)."""
+    return "".join(seg_text(s) for s in segs[:n] if s.get("role") != "cta")
+
+
+def strip_fixed(text, cfg):
     fixed = sorted({t for p in cfg["products"].values()
                     for t in p.get("keep_terms", []) + p["name_aliases"] + p["mechanism"]["allowed_numbers"]}
                    | {cfg["brand"], (cfg.get("campaign") or {}).get("name", "")} - {""}, key=len, reverse=True)
-    t = "".join(seg_text(s) for s in segs if s.get("role") != "cta")
     for f in fixed:
-        t = t.replace(f, "")
-    return re.sub(r"[^一-鿿A-Za-z0-9]", "", t)
+        text = text.replace(f, "")
+    return re.sub(r"[^一-鿿A-Za-z0-9]", "", text)
 
 
-def skeleton(segs):
-    """Segment order plus the first two characters of each non-CTA line (很多/其实/试试/后来/别慌…)."""
-    return ([s.get("role") for s in segs],
-            [re.sub(r"[^一-鿿A-Za-z]", "", seg_text(s))[:2] for s in segs if s.get("role") != "cta"])
+def head(segs):
+    """First four characters of the opening line (谁懂啊 / 双十一 / 头盔一…)."""
+    return strip_fixed(seg_text(segs[0]), {"products": {}, "brand": "", "campaign": None})[:4] if segs else ""
 
 
 def earlier_copy(run, brief, cfg):
@@ -192,32 +193,33 @@ def earlier_copy(run, brief, cfg):
 
 
 def lint_variety(briefs, cfg, run):
-    """A batch traced from the same gold scripts reads as one video with a few words swapped (11.03/11.04).
-    Calibrated on the 7 scripts the user approved on 11.02: they are at most 32% alike in wording and
-    share at most one opening word in the same slot. Above that is tracing. Returns {brief_id: [(level, msg)]}."""
-    lim = cfg["copy_limits"].get("similar_max", 0.35)
+    """Team scripts share the selling-point line and the mechanism + CTA line across briefs (see
+    references/writing.md), so only the opening is compared: the first two lines, with product names,
+    selling-point terms and mechanism stripped, against gold scripts, the same product's last
+    `history_days` days and today's other briefs. Returns {brief_id: [(level, msg)]}."""
+    lim = cfg["copy_limits"].get("opening_similar_max", 0.5)
     out = {}
     todays = [b for b in briefs if b.get("segments")]
     for b in todays:
-        mine, (roles, heads) = body(b["segments"], cfg), skeleton(b["segments"])
+        mine = strip_fixed(opening(b["segments"]), cfg)
         others = earlier_copy(run, b, cfg) + [(o["brief_id"], o["segments"]) for o in todays if o is not b]
         worst = None
         for label, segs in others:
-            r = difflib.SequenceMatcher(None, mine, body(segs, cfg), autojunk=False).ratio()
+            r = difflib.SequenceMatcher(None, mine, strip_fixed(opening(segs), cfg), autojunk=False).ratio()
             if worst is None or r > worst[0]:
                 worst = (r, label)
-            if b.get("template"):
-                continue  # user-given structure: same order is intended, wording similarity still applies
-            o_roles, o_heads = skeleton(segs)
-            same = [h for h, o in zip(heads, o_heads) if h == o]
-            if roles == o_roles and len(same) >= 2:
+            if len(head(b["segments"])) >= 3 and head(b["segments"]) == head(segs) and o_same_day(label, todays):
                 out.setdefault(b["brief_id"], []).append(
-                    ("error", f"和 {label} 段落顺序一样，{len(same)} 句开头也一样（{'、'.join(same)}）：换切入角度和句子顺序，不要逐句改"))
+                    ("error", f"和 {label} 第一句开头一样「{head(segs)}」：同一天的开头要换"))
         if worst and worst[0] > lim:
             out.setdefault(b["brief_id"], []).append(
-                ("error", f"和 {worst[1]} 文字相似度 {worst[0]:.0%}（上限 {lim:.0%}）：换说法重写，不要在原句上换词"))
+                ("error", f"开头两句和 {worst[1]} 相似度 {worst[0]:.0%}（上限 {lim:.0%}）：按这条的方向和人群换一个开头"))
         b["_closest"] = worst  # review doc shows it next to the copy
     return out
+
+
+def o_same_day(label, todays):
+    return any(o["brief_id"] == label for o in todays)
 
 
 def lint_script(texts, segs, brief, cfg, product):

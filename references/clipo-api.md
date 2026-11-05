@@ -8,28 +8,27 @@ Base `https://clipo-remix.tezign.com/api/v1`。所有响应都是信封 `{code, 
 AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 → 每个 brief 一个分享链接
 ```
 
-片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。skill 另为本条脚本补充整篇思路与承接要求。写底稿在 `scripts/draft.py`，其余调用在 `scripts/clipo_batch.py`。
+片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。文案由 Agent 写、人审，不让平台写。全部调用在 `scripts/clipo_batch.py`（`brief_card.py` 只读产品提示词）。
 
-## 一、AI 建脚本（`draft.py` 写，`submit` 同步）
+## 一、AI 建脚本（`submit`）
 
-**平台写文案**：`draft.py` 把创作要求交给平台，平台按产品提示词 `video_script_create` 写文案、配画面贴图音效。创作要求里写什么见 [writing.md](writing.md)。
+文案是 Agent 照团队写法写、人审过的。`submit` 把它逐字交给平台建脚本，平台按产品提示词 `video_script_create` 配画面、配音、BGM、字幕、贴图、音效。
 
 | 接口 | 用途 |
 |---|---|
-| `POST /video-script-generations` | 写脚本。body：`product_id`、`requirement`（创作要求，自由文本，≤ 2000 字）。带 `script_id` + `requirement`（不带 `product_id`）是让平台按要求改一条已有脚本，`draft.py` lint 出错时用它改一轮。响应里的 `script_id` 提交时就给了 |
+| `POST /video-script-generations` | 建脚本。body：`product_id`、`requirement`（自由文本，≤ 2000 字）。skill 写的是：一共几段、每段逐字照抄不改不并不拆、每段都允许 AI 改写、其余按产品提示词配，后面逐段列出审过的文案 |
 | `GET /video-script-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；失败看 `error_code`（`ai_timeout`、`ai_call_failed`…），失败即终态，重试就是再提交一条。一条约 1~2 分钟 |
-| `GET /video-scripts/{script_id}` | 读回脚本：`title`、`segments[]`（`title` 段名、`content` 口播、`ai_rewrite` 是否允许改写、`visual` 画面标签、`stickers`、`sound_effects`）、`config`（全局配置：配音、BGM、字幕） |
-| `PUT /video-scripts/{script_id}` | 整份写回（`title`、`segments`、`config`、`vo_rewrite_prompt`）。`submit` 用它同步人审后的文案 |
-| `DELETE /video-scripts/{script_id}` | 删脚本（`draft.py --redo` 重写时删旧的） |
+| `GET /video-scripts/{script_id}` | 读回脚本：`title`、`segments[]`（`title` 段名、`content` 口播、`ai_rewrite` 是否允许改写、`visual` 画面标签、`sticker`、`sound_effects`）、`config`（全局配置：配音、BGM、字幕）、`vo_rewrite_prompt`（这条脚本自己的改写要求） |
+| `PUT /video-scripts/{script_id}` | 整份写回（`title`、`segments`、`config`、`vo_rewrite_prompt`） |
+| `DELETE /video-scripts/{script_id}` | 删脚本 |
 
-**同步审过的文案**：人审时改过的句子，`submit` 先 `GET` 平台脚本，把每段 `content` 换成审过的文案（画面、贴图、音效、全局配置原样保留），每段 `ai_rewrite = true`（用户 11-05 定：每段都要改写，CTA 也改），标题按 config 的 `naming`（和排期一致，`draft.py` 建好时就已经这样命名），`PUT` 回去，再 `GET` 核对：
+建完 `submit` 再做三件事，`PUT` 回去后 `GET` 核对：
 
-- 段数和审过的一样
-- 每段 `content` 和审过的一字不差
-- 每段 `ai_rewrite = true`
-- 新稿的 `vo_rewrite_prompt` 带上本条说话立场、核心疑问、推进路径和 CTA 承接，保留脚本其它作者要求；回读与写入一致。仅改这条脚本，不改产品共享提示词
+- 标题按 config 的 `naming`（和排期一致，视频和分享页也用这个名字）
+- 每段 `content` 换成审过的文案、`ai_rewrite = true`（用户 11-05 定：每段都改写，CTA 也改）；画面、贴图、音效、全局配置原样保留
+- 审过的备选说法（brief 每段的 `alt`）写进这条脚本的 `vo_rewrite_prompt`（「# 用户要求」一节，平台改写提示词 `video_script_rewrite` 会优先照做），改写时在这些说法范围内换措辞。不改产品共享提示词
 
-对不上不生成，报给用户。审核人增删了段落时段数会对不上，要 `draft.py --redo` 重写或在平台上改。
+核对：段数一样、每段一字不差、每段都开了改写。对不上就 `DELETE` 掉这条脚本、不生成、报给用户。
 
 ## 二、脚本批量生成混剪（`submit` / `topup` / `poll`）
 

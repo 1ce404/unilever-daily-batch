@@ -9,9 +9,9 @@
     python3 scripts/clipo_batch.py share     --config qingyang --run runs/20261104 [--dry-run] [--partial]   # 每个 brief 一个分享链接
     python3 scripts/clipo_batch.py status    --config qingyang --run runs/20261104   # where is today's run? (offline)
 
-This script only moves the flow along. The platform wrote each brief's script at step ④ (draft.py) from
-its product prompts; after a human approves the copy, submit writes the approved lines back into that script,
-turns on AI rewrite for every segment, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
+This script only moves the flow along. The agent writes each brief's copy at step ④ and a human approves it;
+submit has the platform build the script from that copy verbatim (packaging from the product prompt
+video_script_create), turns on AI rewrite for every segment, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
 briefs a human approved (review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll
 re-lints every rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
 """
@@ -26,9 +26,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import approval_problem, day_briefs, load_config, normalize_copy, out_name
+from common import seg_alts, approval_problem, day_briefs, load_config, normalize_copy, out_name
 from lint_copy import lint_brief, lint_day, lint_variety, lint_script, lint_text, seg_text
-from copy_logic import rewrite_context
 
 BASE = None
 CFG = None
@@ -159,48 +158,49 @@ def cmd_preflight(cfg, run, args):
 
 # ---------- submit ----------
 
-def sync_script(script_id, brief, title):
-    """The platform wrote this script at ④ (draft.py). A human may have edited lines since: write the approved
-    copy back into it (PUT, keeping the platform's visuals / stickers / SFX per segment), turn on AI rewrite for
-    every segment (user 11-05: every segment is rewritten, CTA included), title it, then read it back and check
-    every line. Raises if it does not match."""
-    try:
-        script = api("GET", f"/video-scripts/{script_id}")
-    except RuntimeError as e:
-        if "video_script_not_found" in str(e):
-            raise RuntimeError(f"平台脚本 {script_id} 已经被删了：draft.py --brief {brief['brief_id']} --redo 重写（文案会换，要重新人审）")
-        raise
+def build_script(pid, brief, title):
+    """Create the platform script from the approved copy. The platform builds it with the product's own
+    prompt video_script_create (voices, BGM, subtitles, visuals per segment, stickers, SFX); we pin only the
+    words. Then: title it after the schedule, turn on AI rewrite for every segment (user 11-05: CTA too), hand
+    the reviewer-approved alternative phrasings to the rewrite as reference, and read it back. Any mismatch:
+    delete the script and raise, nothing is generated."""
     segs = brief["segments"]
+    lines = "\n".join(f"第{i + 1}段（{sg.get('title') or sg.get('role')}）：{seg_text(sg)}" for i, sg in enumerate(segs))
+    req = (f"按下面已经人审通过的口播文案建脚本：一共 {len(segs)} 段，每段的口播文案逐字照抄，不改字、不加字、不合并、不拆分；"
+           f"每段都允许 AI 改写。画面、字幕、配音、BGM、贴图、音效按产品提示词配。\n{lines}")
+    g = api("POST", "/video-script-generations", {"product_id": pid, "requirement": req})
+    for _ in range(72):
+        time.sleep(5)
+        g = api("GET", f"/video-script-generations/{g['id']}")
+        if g["status"] in ("success", "failed", "error"):
+            break
+    if g["status"] != "success":
+        raise RuntimeError(f"平台建脚本失败 {g.get('error_code')}: {g.get('error_message')}")
+    sid = g["script_id"]
+    script = api("GET", f"/video-scripts/{sid}")
     if len(script["segments"]) != len(segs):
-        raise RuntimeError(f"平台脚本 {len(script['segments'])} 段，审过的文案 {len(segs)} 段，对不上：重跑 draft.py 或手动对齐")
+        api("DELETE", f"/video-scripts/{sid}")
+        raise RuntimeError(f"平台建的脚本 {len(script['segments'])} 段，审过的文案 {len(segs)} 段，已删掉，没有生成")
     for ps, sg in zip(script["segments"], segs):
         ps["content"] = seg_text(sg)
         ps["ai_rewrite"] = True
-    body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments") if k in script}
-    context = rewrite_context(brief)
-    if context:
-        # Replace only our own previous suffix; keep the author's other rewrite instructions.
-        original = (script.get("vo_rewrite_prompt") or "").split("【本条整篇改写要求】", 1)[0].rstrip()
-        body["vo_rewrite_prompt"] = (original + "\n\n" + context).strip()
+    body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
-    api("PUT", f"/video-scripts/{script_id}", body)
-    saved = api("GET", f"/video-scripts/{script_id}")
-    got = saved["segments"]
+    body["vo_rewrite_prompt"] = alt_prompt(segs)
+    api("PUT", f"/video-scripts/{sid}", body)
+    got = api("GET", f"/video-scripts/{sid}")["segments"]
     wrong = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if (x.get("content") or "") != seg_text(sg)]
     off = [i + 1 for i, x in enumerate(got) if not x.get("ai_rewrite")]
     if wrong or off:
-        raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}）")
-    if context and (saved.get("vo_rewrite_prompt") or "") != body["vo_rewrite_prompt"]:
-        raise RuntimeError("平台没有保存本条整篇改写要求，停止生成")
-    return script_id
+        api("DELETE", f"/video-scripts/{sid}")
+        raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}），已删掉，没有生成")
+    return sid
 
 
-def set_title(script_id, title):
-    """Name a platform script after its schedule row (same name the videos and the share page get)."""
-    script = api("GET", f"/video-scripts/{script_id}")
-    body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments") if k in script}
-    body["title"] = title[:120]
-    api("PUT", f"/video-scripts/{script_id}", body)
+def alt_prompt(segs):
+    """Team scripts give 2~3 phrasings per line; the reviewed ones go to the rewrite as the range to stay in."""
+    rows = [f"第{i + 1}段可以参考的说法：" + " / ".join([seg_text(sg)] + seg_alts(sg)) for i, sg in enumerate(segs) if seg_alts(sg)]
+    return ("# 用户要求\n每段改写时，在下面这些人审过的说法范围内换措辞，事实和机制不变：\n" + "\n".join(rows)) if rows else ""
 
 
 def video_title(cfg, brief, n=None):
@@ -265,15 +265,11 @@ def cmd_submit(cfg, run, args):
         n = gen_quantity(cfg, b, args)
         total += n
         if args.dry_run:
-            print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）" + ("" if b.get("script_id") else "  ⚠️ 还没有平台脚本，先跑 draft.py"))
+            print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）")
             continue
         if not job.get("script_id"):
-            if not b.get("script_id"):
-                print(f"❌ {b['brief_id']} 没有平台脚本：先跑 draft.py 让平台写")
-                skipped += 1
-                continue
             try:
-                job["script_id"] = sync_script(b["script_id"], b, title)
+                job["script_id"] = build_script(pid, b, title)
             except RuntimeError as e:
                 print(f"❌ {b['brief_id']} {e}")
                 skipped += 1
@@ -343,8 +339,6 @@ def cmd_topup(cfg, run, args):
               f"通过率 {ok}/{len(vids)}，补生成 {want} 条（V{offset+1:02d} 起）")
         if args.dry_run:
             continue
-        if b.get('copy_logic_version', 0) >= 2:
-            sync_script(job['script_id'], b, video_title(cfg, b))
         for c in split_quantity(want, cfg.get("generate_chunk") or want):
             gid = api("POST", "/video-cut-generations", {"script_id": job["script_id"], "quantity": c})["id"]
             job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,
@@ -458,7 +452,7 @@ def cmd_poll(cfg, run, args):
 
 REJECT_ACTION = {
     "改写违规": "把新出现的词补进 config.banned_words（自动进改写提示词），再单独重跑这几条",
-    "文案": "回 ④ 改这个 brief 的那句（或把问题写进产品 rules 后 draft.py --redo），lint 后重发审",
+    "文案": "回 ④ 改这个 brief 的那句（同类问题写进产品 rules），lint 后重发审",
     "画面/素材": "去平台给那条切片打「风险」或改标签，再单独重跑",
     "产品信息过时": "平台产品描述里的机制/卖点过时，提醒用户更新描述；判为误判由用户决定放行",
     "其他": "逐条看原因",
@@ -501,7 +495,7 @@ def cmd_status(cfg, run, args):
         lint = "未写" if errs is None else ("✅" if not errs else f"❌{errs}")
         print(f"{b['brief_id']:10} {b['quantity']:>3} {b.get('status',''):18} {lint:6} {plat}")
         if errs is None:
-            nxt.add("④ 创作规划 + draft.py 让平台写")
+            nxt.add("④ brief_card.py 看任务，Agent 写脚本")
         elif errs:
             nxt.add("⑤ 改 lint 错误")
         elif b.get("status") in ("draft", "changes_requested"):

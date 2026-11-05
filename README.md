@@ -3,7 +3,7 @@
 Agent skill：联合利华（清扬、力士）千川混剪视频每日批量生产的流程串联。
 
 ```
-飞书排期 → 每 10 条一个 brief → 逐条规划说服思路，Clipo Remix 写全文再分段 → 整篇审读 + 机器检查 → 人审
+飞书排期 → 每 10 条一个 brief → Agent 照团队写法写底稿 → 机器检查 → 人审 → 审过的文案交给 Clipo Remix 建脚本
 → 一次多生成、渲染、平台 AI 审核 → 凑够可交付条数 → 每个 brief 一个分享链接
 ```
 
@@ -43,7 +43,7 @@ git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/
 | `config/<品牌>.json` | 品牌共用：资料来源、店铺→产品或每日固定条数、禁用词、文案长度、生成数量 |
 | `config/<品牌>/<产品>.json` | 每个产品的卖点、机制、CTA、卡审词、受众、素材画面、固定要求 |
 | `gold/<品牌>.json` | 范本库 |
-| `scripts/` | 拉资料、拆排期、让平台写底稿（`draft.py`）、lint、待审文档、Clipo 批量生产和分享 |
-| `references/` | 创作要求、平台接口、QC 规则、接入新品牌 |
+| `scripts/` | 拉资料、拆排期、写稿任务卡（`brief_card.py`）、lint、待审文档、Clipo 批量生产和分享 |
+| `references/` | 团队写法、平台接口、QC 规则、接入新品牌 |
 
 每天的运行数据写在 skill 目录外的 `runs/YYYYMMDD/`，不进仓库。

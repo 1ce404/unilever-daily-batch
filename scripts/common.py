@@ -97,10 +97,16 @@ def normalize_copy(text):
     return t.lower()
 
 
+def seg_alts(seg):
+    """Other ways to say this line (team scripts give 2~3 per line). Stored as a list; a string is one alternative."""
+    a = seg.get("alt") or []
+    return [a] if isinstance(a, str) else [x for x in a if x]
+
+
 def copy_hash(brief):
     """Fingerprint of the copy a reviewer saw. Approval is only valid while this still matches."""
     import hashlib
-    body = "\n".join(f"{x.get('id')}|{x.get('role')}|{x.get('text', '')}" + (f"|{x['alt']}" if x.get("alt") else "")
+    body = "\n".join(f"{x.get('id')}|{x.get('role')}|{x.get('text', '')}" + "".join(f"|{a}" for a in seg_alts(x))
                      for x in brief.get("segments") or [])
     return hashlib.sha1(body.encode()).hexdigest()[:12]
 
