@@ -5,7 +5,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 
 # 联合利华每日批量混剪
 
-排期上每一行 = 店铺 × 内容方向 × 测试卖点 × 测试人群 × 数量。**每 10 条一个 brief，一个 brief = 一条底稿**。Clipo 按底稿改写出多种说法（CTA 不改）；平台 AI 审核通过的才算可交付。
+排期上每一行 = 店铺 × 内容方向 × 测试卖点 × 测试人群 × 数量。**每 10 条一个 brief，一个 brief = 一条底稿**。Clipo 按底稿每段都改写出多种说法（CTA 也改写）；平台 AI 审核通过的才算可交付。
 
 **这个 skill 只串流程，不管片子怎么剪。** 平台上只走一条路：**AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核**。画面、配音、BGM、字幕、贴图、音效、改写、审核标准都在平台的产品提示词里（`video_script_create` / `video_script_rewrite` / `video_cut_review`），要改去平台改。每一步用哪个接口见 [references/clipo-api.md](references/clipo-api.md)。
 
@@ -74,7 +74,7 @@ python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run   # 报�
 python3 -I scripts/clipo_batch.py submit --config $C --run $R
 python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后台跑
 ```
-- **同步审过的文案**：脚本是 ④ 平台写的那份（`script_id`）。`submit` 把人审后的每段文案 `PUT /video-scripts/{id}` 写回去（画面、贴图、音效不动），CTA / `lock` 段关掉改写，再读回核对一字不差，对不上不生成
+- **同步审过的文案**：脚本是 ④ 平台写的那份（`script_id`）。`submit` 把人审后的每段文案 `PUT /video-scripts/{id}` 写回去（画面、贴图、音效不动），每段都开 AI 改写，再读回核对一字不差，对不上不生成
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
 - 每个 brief 生成 排期 × `generate_factor`（2）条，拆成每轮 ≤ `generate_chunk`（15）条提交
 - 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
@@ -96,6 +96,6 @@ python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每
 
 1. **脚本必须人审**：「直接生成」不等于审过，先给人看脚本；不填审核结论
 2. **提交前报条数**：每次 submit / topup 都先 dry-run，告诉用户要生成多少条，确认后再提交
-3. **事实只来自 config 和当天资料**；热梗只借表达，不编数据；改写违规一律当驳回；CTA 和 `lock` 段不改写
+3. **事实只来自 config 和当天资料**；热梗只借表达，不编数据；每段都开 AI 改写，改写违规（丢机制、丢 CTA 词、出禁用词）一律当驳回
 4. **不替人改共享的东西**：不改客户共享文档（含「Y26-联合利华脚本合集」），不改 / 删平台上的产品、素材、分类和提示词。片子的样子要变，告诉用户去改平台提示词
 5. **学到的写回去**：卡审词、机制、素材画面、产品的写法要求进 config（下次自动进创作要求）；用户说好的脚本进 `gold/`；平台那边的问题（素材、提示词）告诉用户；不只留在聊天里

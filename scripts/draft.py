@@ -89,7 +89,7 @@ def requirement(cfg, run, brief, hot, today):
         lines.append(f"卖点怎么说：{sp['say']}")
     end = "、".join(prod["cta_required"])
     lines.append(f"机制：{mech if prod['mechanism']['allowed_numbers'] else '不念机制'}"
-                 f"{'，带上「' + camp['name'] + '」' if in_campaign else ''}；最后一段要有「{end}」，最后一段不允许 AI 改写。")
+                 f"{'，带上「' + camp['name'] + '」' if in_campaign else ''}；最后一段要有「{end}」。")
     where = "" if brief.get("template") else "尽量第 3 段才出现，"
     lines.append(f"产品名说全「{prod['full_name']}」，不要用「这瓶」「它」代替；{where}第一次讲卖点的那句要带产品全名。")
     if prod.get("audience_note"):

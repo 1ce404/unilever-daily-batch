@@ -52,7 +52,7 @@ python3 -I scripts/draft.py --config $C --run $R --brief <id> --redo  # 重写�
 
 1. 任务：产品全名、段数、字数；用户给了结构（brief 的 `template`）就照结构分段
 2. 排期：内容方向、测试卖点、人群、方向说明；卖点怎么说（config 的 `say`）
-3. 机制和 CTA：只用 config 的机制，双十一期间带上；最后一段要有 CTA 词、不允许 AI 改写
+3. 机制和 CTA：只用 config 的机制，双十一期间带上；最后一段要有 CTA 词
 4. 产品名规则：说全名、不用「这瓶」代替、尽量第 3 段才出现、第一次讲卖点那句带全名
 5. 受众（`audience_note`）和这个产品的 `rules`
 6. 素材里有什么画面（`footage`），不写素材接不住的场景
@@ -109,7 +109,7 @@ lint 不查文风。
 }
 ```
 
-`role`（`hook` / `pain` / `product` / `selling` / `effect` / `cta`）按平台给的段标题猜，第一段 `hook`、最后一段 `cta`（不改写）。分段可选字段：`lock: true` 这段不改写、原样念；`alt` 备选句给审核人挑。画面、贴图、音效由平台配，brief 里不写。
+`role`（`hook` / `pain` / `product` / `selling` / `effect` / `cta`）按平台给的段标题猜，第一段 `hook`、最后一段 `cta`。每段都开 AI 改写（CTA 也改），改写后丢了机制或 CTA 词的视频按驳回处理。分段可选字段：`alt` 备选句给审核人挑。画面、贴图、音效由平台配，brief 里不写。
 
 ## 附：清扬三个产品的要点
 

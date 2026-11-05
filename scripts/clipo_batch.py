@@ -11,7 +11,7 @@
 
 This script only moves the flow along. The platform wrote each brief's script at step ④ (draft.py) from
 its product prompts; after a human approves the copy, submit writes the approved lines back into that script,
-locks CTA, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
+turns on AI rewrite for every segment, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
 briefs a human approved (review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll
 re-lints every rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
 """
@@ -160,8 +160,9 @@ def cmd_preflight(cfg, run, args):
 
 def sync_script(script_id, brief, title):
     """The platform wrote this script at ④ (draft.py). A human may have edited lines since: write the approved
-    copy back into it (PUT, keeping the platform's visuals / stickers / SFX per segment), lock CTA and `lock`
-    segments, title it, then read it back and check every line. Raises if it does not match."""
+    copy back into it (PUT, keeping the platform's visuals / stickers / SFX per segment), turn on AI rewrite for
+    every segment (user 11-05: every segment is rewritten, CTA included), title it, then read it back and check
+    every line. Raises if it does not match."""
     try:
         script = api("GET", f"/video-scripts/{script_id}")
     except RuntimeError as e:
@@ -171,18 +172,17 @@ def sync_script(script_id, brief, title):
     segs = brief["segments"]
     if len(script["segments"]) != len(segs):
         raise RuntimeError(f"平台脚本 {len(script['segments'])} 段，审过的文案 {len(segs)} 段，对不上：重跑 draft.py 或手动对齐")
-    locked = {i for i, sg in enumerate(segs) if sg.get("lock") or sg.get("role") == "cta"}
-    for i, (ps, sg) in enumerate(zip(script["segments"], segs)):
+    for ps, sg in zip(script["segments"], segs):
         ps["content"] = seg_text(sg)
-        ps["ai_rewrite"] = i not in locked
+        ps["ai_rewrite"] = True
     body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments") if k in script}
     body["title"] = title[:120]
     api("PUT", f"/video-scripts/{script_id}", body)
     got = api("GET", f"/video-scripts/{script_id}")["segments"]
     wrong = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if (x.get("content") or "") != seg_text(sg)]
-    bad_lock = [i + 1 for i in locked if got[i].get("ai_rewrite")]
-    if wrong or bad_lock:
-        raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，该锁没锁的段 {bad_lock}）")
+    off = [i + 1 for i, x in enumerate(got) if not x.get("ai_rewrite")]
+    if wrong or off:
+        raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}）")
     return script_id
 
 
