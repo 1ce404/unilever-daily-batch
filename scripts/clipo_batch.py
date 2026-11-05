@@ -27,7 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import approval_problem, day_briefs, load_config, normalize_copy, out_name
-from lint_copy import lint_brief, lint_script, lint_text, seg_text
+from lint_copy import lint_brief, lint_day, lint_variety, lint_script, lint_text, seg_text
+from copy_logic import rewrite_context
 
 BASE = None
 CFG = None
@@ -176,13 +177,21 @@ def sync_script(script_id, brief, title):
         ps["content"] = seg_text(sg)
         ps["ai_rewrite"] = True
     body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments") if k in script}
+    context = rewrite_context(brief)
+    if context:
+        # Replace only our own previous suffix; keep the author's other rewrite instructions.
+        original = (script.get("vo_rewrite_prompt") or "").split("【本条整篇改写要求】", 1)[0].rstrip()
+        body["vo_rewrite_prompt"] = (original + "\n\n" + context).strip()
     body["title"] = title[:120]
     api("PUT", f"/video-scripts/{script_id}", body)
-    got = api("GET", f"/video-scripts/{script_id}")["segments"]
+    saved = api("GET", f"/video-scripts/{script_id}")
+    got = saved["segments"]
     wrong = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if (x.get("content") or "") != seg_text(sg)]
     off = [i + 1 for i, x in enumerate(got) if not x.get("ai_rewrite")]
     if wrong or off:
         raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}）")
+    if context and (saved.get("vo_rewrite_prompt") or "") != body["vo_rewrite_prompt"]:
+        raise RuntimeError("平台没有保存本条整篇改写要求，停止生成")
     return script_id
 
 
@@ -218,13 +227,17 @@ def gen_quantity(cfg, b, args):
 def cmd_submit(cfg, run, args):
     st = State(run)
     submitted = skipped = total = 0
+    all_briefs = load_briefs(run)
+    cross = lint_day(all_briefs, cfg)
+    for bid, problems in lint_variety(all_briefs, cfg, run).items():
+        cross.setdefault(bid, []).extend(problems)
     for b in load_briefs(run, args.brief):
         why = approval_problem(b)
         if why:
             print(f"⏸  {b['brief_id']} {why}，跳过")
             skipped += 1
             continue
-        errs = [m for l, m in lint_brief(b, cfg) if l == "error"]
+        errs = [m for l, m in lint_brief(b, cfg) + cross.get(b['brief_id'], []) if l == "error"]
         if errs:
             print(f"❌ {b['brief_id']} 有 {len(errs)} 个 lint 错误，不提交：{errs[:3]}")
             skipped += 1
@@ -309,6 +322,10 @@ def cmd_topup(cfg, run, args):
         if why or job.get("texts") != [seg_text(s) for s in b["segments"]]:
             print(f"⏸  {bid} {why or '平台上的脚本和现在的文案不一致'}，不补")
             continue
+        errs = [m for level, m in lint_brief(b, cfg) if level == 'error']
+        if errs:
+            print(f"⏸  {bid} 有未解决的文案/整篇审读问题，不补：{errs[:3]}")
+            continue
         vids = [v for v in st.videos.values() if v["brief_id"] == bid]
         if generating(job) or any(v.get("stage") not in ("done", "failed") for v in vids):
             print(f"⏳ {bid} 还有视频没跑完，先 poll")
@@ -326,6 +343,8 @@ def cmd_topup(cfg, run, args):
               f"通过率 {ok}/{len(vids)}，补生成 {want} 条（V{offset+1:02d} 起）")
         if args.dry_run:
             continue
+        if b.get('copy_logic_version', 0) >= 2:
+            sync_script(job['script_id'], b, video_title(cfg, b))
         for c in split_quantity(want, cfg.get("generate_chunk") or want):
             gid = api("POST", "/video-cut-generations", {"script_id": job["script_id"], "quantity": c})["id"]
             job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,

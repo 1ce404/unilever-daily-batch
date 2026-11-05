@@ -95,13 +95,13 @@
     "similar_max": 0.35,
     "history_days": 7,
     "_similar_note": "去掉产品名、卖点术语、机制后，非 CTA 文字和任一范本 / 近 7 天同产品的稿 / 当天其它稿比，相似度不得超过 35%。标定：用户 11.02 认可的 7 条彼此最高 32%；11.03/11.04 逐句仿写出来的 24%~61%、且段落顺序相同 + 2~4 句开头相同，用户说像抄",
-    "name_not_before": 2,
-    "_name_note": "用户 11.04：产品名尽量不在前两段出现（前面先讲头发状态）；说到产品的那一句要说完整产品名，不能用「这瓶」「它」代替",
+    "name_not_before": 0,
+    "_name_note": "2026-11-05 根据用户同结构/串联弱反馈调整：产品出现位置服从本条说服思路，不固定在第三段；首次引入说全名，后文指代清楚即可。保留完整产品名与卖点归属检查。",
     "_clause_note": "短句按显示宽度算（汉字 1、半角字母数字 0.5）：> 12 提醒（单屏一行，团队字幕规范是 12），> 20 报错"
   },
   "clipo": {
     "base_url": "https://clipo-remix.tezign.com",
-    "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效、改写规则都由平台产品提示词（video_script_create / video_script_rewrite / video_cut_review）管，skill 不再配置。submit 让平台按提示词建脚本，只把审过的文案逐字交给它，再核对一遍"
+    "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效及通用改写/审核规则由平台产品提示词管；skill 给每条补充整篇创作思路。submit 同步审过的文案及本条 vo_rewrite_prompt 并回读核对，不改产品共享提示词。"
   },
   "naming": "{date}-{brief_no}-V{n:02d}-{product}-{selling_point}",
   "open_questions": [],

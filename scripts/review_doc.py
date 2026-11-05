@@ -26,9 +26,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import SKILL_DIR, copy_hash, day_briefs, lark_fetch, load_config, out_name, parse_table
 from lint_copy import lint_brief, lint_day, lint_variety, seg_text
+from copy_logic import plan_lines, plan_hash, editorial_issues
 
 ROLE_CN = {"hook": "钩子", "pain": "痛点", "product": "产品", "selling": "卖点", "effect": "体感", "cta": "CTA"}
-HEAD = ["结构", "店铺 / 产品", "内容方向", "测试卖点", "测试人群", "文案", "和旧稿比", "QC 提醒", "审核"]
+HEAD = ["结构", "店铺 / 产品", "内容方向", "测试卖点", "测试人群", "创作思路", "文案", "和旧稿比", "QC 提醒", "审核"]
 
 
 def esc(s):
@@ -77,6 +78,7 @@ def render(cfg, run):
         qc = [("✗ " if l == "error" else "! ") + m for l, m in issues] or ["机器检查通过"]
         cells = [b["brief_id"], f"{b['store']}<br/>{prod.get('full_name', '')}", b["direction"],
                  b.get("selling_point", ""), b.get("audience", ""),
+                 "<br/>".join(esc(x) for x in plan_lines(b)) or "历史稿：未记录思路",
                  "<br/>".join(esc(x) for x in copy_cell(b)) or "（未写）",
                  "<br/>".join(esc(x) for x in closest_cell(b)),
                  "<br/>".join(esc(x) for x in qc),
@@ -85,6 +87,8 @@ def render(cfg, run):
         rows_xml.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
         md += [f"## {b['brief_id']} · {b['store']} · {b['direction']} · {b.get('selling_point','')} · {b.get('audience','')}",
                f"热点：{b.get('hotspot') or '无'}　数量：{b['quantity']}", ""]
+        md += plan_lines(b)
+        md += ["", "完整口播：", "".join(seg_text(s) for s in b['segments']), "", "分段（修改这里）："]
         md += copy_cell(b)
         md += ["", "和旧稿比：" + "；".join(closest_cell(b))]
         md += ["", "QC：" + "；".join(qc), ""]
@@ -92,13 +96,13 @@ def render(cfg, run):
     used = sorted({b["product_key"] for b in briefs if b.get("product_key") in cfg["products"]})
     xml = (f"<title>{esc(cfg['brand'])} {day} 脚本待审</title>"
            f"<callout emoji=\"📝\"><p>每个 brief 一行，对应 {cfg['brief_size']} 条视频。直接在「文案」里改句子"
-           "（保留【S1 …】分段标记）。「和旧稿比」写出这条最像哪条旧稿（范本或前几天的稿）和相似度，超过 30% 要看看是不是换汤不换药。每段一句，Clipo 会按这一版为 10 条视频各改写一种说法（CTA 段不改）；在「审核」填 通过 / 驳回 / 修改意见。审核完回复 Agent「审完了」。</p>"
+           "（保留【S1 …】分段标记）。先通读整篇，看是否围绕一个疑问推进、相邻句有无承接、同组是否只是换词。创作思路是作者判断，不是已经通过质量审核。「和旧稿比」是文字相似度，不能证明结构不同。Clipo 会保留本条思路改写全部段落，包含 CTA；在「审核」填 通过 / 驳回 / 修改意见。审核完回复 Agent「审完了」。</p>"
            + "".join(f"<p>排期备注：{esc(n)}</p>" for n in notes)
            + "".join(f"<p>今天的机制（{esc(cfg['products'][k]['full_name'])}）：{esc(' / '.join(cfg['products'][k]['mechanism']['spoken']))}"
                      f"，{esc(cfg['products'][k]['mechanism'].get('verified_on', '未核对'))} 核对</p>" for k in used)
            + "".join(f"<p>待确认：{esc(q)}</p>" for q in open_questions(cfg, used)) + "</callout>"
            "<table><colgroup><col width=\"90\"/><col width=\"120\"/><col width=\"140\"/><col width=\"110\"/>"
-           "<col width=\"80\"/><col width=\"420\"/><col width=\"180\"/><col width=\"180\"/><col width=\"120\"/></colgroup>"
+           "<col width=\"80\"/><col width=\"260\"/><col width=\"420\"/><col width=\"180\"/><col width=\"180\"/><col width=\"120\"/></colgroup>"
            "<thead><tr>" + "".join(f"<th>{h}</th>" for h in HEAD) + "</tr></thead><tbody>"
            + "".join(rows_xml) + "</tbody></table>")
     (run / out_name(cfg, "review.xml")).write_text(xml)
@@ -147,6 +151,7 @@ def sync(cfg, run, doc):
             if seg_text(base) != s["text"]:
                 changed += 1
                 edits.append({"date": b.get("date"), "brief_id": bid, "direction": b.get("direction"),
+                              "product_key": b.get("product_key"),
                               "selling_point": b.get("selling_point"), "role": base.get("role"),
                               "before": seg_text(base), "after": s["text"]})
             base.update(text=s["text"], title=s["title"] or base.get("title"))
@@ -204,21 +209,42 @@ def approve(cfg, run, ids, by, note):
         print(f"✅ {bid} 已记为 {by} 审核通过")
 
 
+def editorial(run, bid, assessment):
+    """Record the agent's actual reading, pinned to this copy and plan. This is NOT human approval."""
+    path = run / "briefs" / f"{bid}.json"
+    b = json.loads(path.read_text())
+    review = json.loads(Path(assessment).read_text())
+    if not isinstance(review, dict):
+        raise SystemExit("整篇审读文件必须是 JSON 对象")
+    review.update(copy_hash=copy_hash(b), plan_hash=plan_hash(b))
+    b['editorial_review'] = review
+    issues = editorial_issues(b)
+    if issues:
+        raise SystemExit("整篇审读记录不完整：" + "；".join(m for _, m in issues))
+    path.write_text(json.dumps(b, ensure_ascii=False, indent=2))
+    print(f"{bid} 已记录整篇审读；仍需用户审核，不改变 status/approval")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["render", "sync", "approve"])
+    ap.add_argument("cmd", choices=["render", "sync", "approve", "editorial"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--doc")
     ap.add_argument("--brief", action="append", help="approve: brief id，可重复")
     ap.add_argument("--by", help="approve: 谁审的（人，不能是 agent）")
     ap.add_argument("--note", help="approve: 审核人原话")
+    ap.add_argument("--assessment", help="editorial: 整篇审读 JSON 文件，格式见 references/writing.md")
     args = ap.parse_args()
     cfg, run = load_config(args.config), Path(args.run)
     if args.cmd == "render":
         render(cfg, run)
     elif args.cmd == "sync":
         sync(cfg, run, args.doc)
+    elif args.cmd == 'editorial':
+        if not args.brief or len(args.brief) != 1 or not args.assessment:
+            raise SystemExit("editorial 要写一个 --brief 和 --assessment")
+        editorial(run, args.brief[0], args.assessment)
     else:
         if not (args.brief and args.by and args.note):
             raise SystemExit("approve 要写 --brief、--by（审核人）和 --note（审核人原话）")
