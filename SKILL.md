@@ -14,13 +14,13 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 - **范本定标准，不当模板。** `gold/` 里用户确认过的脚本定口吻、长短、能写什么；每条底稿自己定角度和句子，每句都要有素材画面接得住。lint 会拦照抄
 - **人只审底稿，必须人审。** lint 查底稿，`poll` 查每条改写，平台 AI 审核查成片
 - **文案的事实只有一个来源**：`config/<brand>.json`（品牌共用）+ `config/<brand>/<产品>.json`（每个产品）。产品规则变了只改那个产品的文件
-- **按可交付数交付。** 通过率约 40%，一次生成排期的 3 倍，不够再补，直到每个 brief 够数
+- **按可交付数交付。** 通过率约 40%，一次生成排期的 2 倍，不够再补，直到每个 brief 够数；每个 brief 交付一个分享链接
 
 不知道做到哪了，先跑 `status`，它会给出下一步（离线）。
 
 ```
 ① 拉资料 → ② 拆 brief → ③ 平台体检 → ④ 写底稿 → ⑤ lint
-   → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单
+   → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单 + 分享链接
 ```
 
 在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = `/Users/bingmeishi/Projects/myskill/runs/YYYYMMDD`，`$C` = 品牌：`qingyang` 或 `lux`。
@@ -76,12 +76,21 @@ python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后
 ```
 - **AI 建脚本**：`POST /video-script-generations` 把审过的文案逐字交给平台，平台按产品提示词建脚本；建完 `GET /video-scripts/{id}` 核对每段一字不差、CTA 没开改写，对不上就删掉不生成
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
-- 每个 brief 生成 排期 × `generate_factor`（3）条，拆成每轮 ≤ `generate_chunk`（15）条提交
+- 每个 brief 生成 排期 × `generate_factor`（2）条，拆成每轮 ≤ `generate_chunk`（15）条提交
 - 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
 - 跑完有 brief 不够数：`topup --dry-run` 报补多少，用户确认后 `topup`，再 `poll`。用同一份审过的脚本，不用重审
 
-**⑨ 交付** `clipo_batch.py report --config $C --run $R` → `report.md`（每条结果和驳回原因）+ `delivery.md`（每个 brief 挑够排期条数，其余备用）
-回复用户：每个 brief 可交付 / 排期条数、驳回原因分类、没生产的、要人决定的事。有 brief 不够数就不说「全部够数」。
+**⑨ 交付**
+```bash
+python3 -I scripts/clipo_batch.py report --config $C --run $R              # report.md（每条结果和驳回原因）+ delivery.md（交付清单）
+python3 -I scripts/clipo_batch.py share  --config $C --run $R --dry-run    # 看哪些 brief 要发分享
+python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每个够数的 brief 一个分享链接，当天的收进一个分组
+```
+- 每个 brief 挑够排期条数的可交付视频，建一个平台分享链接（`/share/{id}`）；当天这个品牌的所有分享收进一个分组（`/share/group/{id}`），一个链接看全部
+- 不够数的 brief 默认不发，要先发加 `--partial`；补生成后挑的视频变了，再跑 `share` 会换成新链接（分组里自动换掉，旧链接删除）
+- 链接写进 `delivery.md`，每个 brief 一行
+
+回复用户：每个 brief 可交付 / 排期条数和分享链接、当天的分组链接、驳回原因分类、没生产的、要人决定的事。有 brief 不够数就不说「全部够数」。
 
 ## 铁律
 

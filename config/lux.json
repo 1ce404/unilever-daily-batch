@@ -30,8 +30,8 @@
   ],
   "brief_prefix": "L",
   "brief_size": 10,
-  "generate_factor": 3.0,
-  "_generate_factor_note": "沿用清扬的 3 倍；力士还没有实际通过率，跑一批后按实际调",
+  "generate_factor": 2,
+  "_generate_factor_note": "每个 brief 一次生成 排期条数 × 2（用户 11-05 定：3 倍太多）。平台 AI 审核通过率约 40%，2 倍时一次就够数的概率约四成，不够的用 topup 按实际通过率补",
   "generate_chunk": 15,
   "store_to_product": {
     "精油香氛": "jingyou",

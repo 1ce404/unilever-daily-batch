@@ -5,7 +5,7 @@ Base `https://clipo-remix.tezign.com/api/v1`。所有响应都是信封 `{code, 
 这个 skill 只走一条路：
 
 ```
-AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核
+AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 → 每个 brief 一个分享链接
 ```
 
 片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。全部调用在 `scripts/clipo_batch.py`。
@@ -43,7 +43,7 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核
 要点：
 
 - **每一轮全有全无**：一条没组装成，这一轮一条剪辑都不落，也不扣额度。所以一个 brief 要的条数拆成每轮 ≤ `generate_chunk`（15）条分别提交，一轮失败不连累别的轮
-- **一次多生成**：每个 brief 生成 排期 × `generate_factor`（3）条，因为平台 AI 审核通过率约 40%
+- **一次多生成**：每个 brief 生成 排期 × `generate_factor`（2）条，平台 AI 审核通过率约 40%，不够的用 `topup` 补
 - `poll` 读回每条的 `random_result.vo_rewrite`，用 lint 再查一遍，违规的记进 `copy_issues`，按驳回处理
 - 失败原因：`voiceover_rewrite_failed`（平台改写模型 502/503，过一会儿 `submit --retry-failed`）、`timeout`（一轮组装超过 600 秒，减小每轮条数）
 
@@ -68,7 +68,21 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核
 
 **可交付 = `ai_review_result == "pass"` 且 lint 没查出改写违规。** `report` 按每个 brief 的排期条数挑可交付的进交付清单。
 
-## 五、平台体检用到的（`preflight`）
+## 五、交付分享链接（`share`）
+
+每个 brief 一个分享页，当天一个品牌的分享收进一个分组。
+
+| 接口 | 用途 |
+|---|---|
+| `POST /video-share-groups` | 建当天的分组。body：`name`（如 `1105-清扬`）。分组页 `https://clipo-remix.tezign.com/share/group/{id}` |
+| `POST /video-shares` | 建一个 brief 的分享。body：`title`、`video_name_prefix`（视频名 = 前缀 + 序号）、`group_id`（同时收进分组）、`script_id`、`product_id`、`videos[]`（每条 `video_object_key` 用剪辑的 `output_object_key`、`cover_object_key` 从 `draft.cover_url` 取、`duration_seconds`、`width`、`height`）。分享页 `https://clipo-remix.tezign.com/share/{id}` |
+| `GET /video-shares/{id}` | 读分享：`videos[].video_url` / `cover_url` 是现签地址 |
+| `GET /video-share-groups/{id}`、`PATCH /video-share-groups/{id}` | 读分组；改分组的分享清单（`video_share_ids` 整组替换） |
+| `DELETE /video-shares/{id}` | 撤回分享，旧链接从此 404，成片和剪辑不受影响 |
+
+补生成后某个 brief 挑的视频变了，`share` 会建新分享、在分组里替换掉旧的、再删掉旧分享。
+
+## 六、平台体检用到的（`preflight`）
 
 只读，不改平台。
 

@@ -13,8 +13,8 @@
     ]
   },
   "brief_size": 10,
-  "generate_factor": 3.0,
-  "_generate_factor_note": "每个 brief 一次生成 排期条数 × 这个倍数。平台 AI 审核通过率 11.03 实测 34~53%（平均 44%），按二项分布，排期 10 条生成 30 条约 90% 一次够数；不够再 topup。只有可交付的才进交付清单",
+  "generate_factor": 2,
+  "_generate_factor_note": "每个 brief 一次生成 排期条数 × 2（用户 11-05 定：3 倍太多）。平台 AI 审核通过率约 40%，2 倍时一次就够数的概率约四成，不够的用 topup 按实际通过率补",
   "generate_chunk": 15,
   "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒：11.03 B04 一次要 30 条超时，整轮 0 条落地。所以一个 brief 要生成的条数拆成每轮 ≤ 这个数分别提交，一轮失败不连累其它轮",
   "store_to_product": {

@@ -6,6 +6,7 @@
     python3 scripts/clipo_batch.py poll      --config qingyang --run runs/20261104 [--wait 3600]
     python3 scripts/clipo_batch.py topup     --config qingyang --run runs/20261104 [--dry-run]
     python3 scripts/clipo_batch.py report    --config qingyang --run runs/20261104   # report.md + delivery.md
+    python3 scripts/clipo_batch.py share     --config qingyang --run runs/20261104 [--dry-run] [--partial]   # 每个 brief 一个分享链接
     python3 scripts/clipo_batch.py status    --config qingyang --run runs/20261104   # where is today's run? (offline)
 
 This script only moves the flow along. Everything about how a video looks (voices, BGM, subtitles, visuals,
@@ -539,20 +540,34 @@ def cmd_report(cfg, run, args):
     write_delivery(st, briefs, run)
 
 
+def picks(st, bid, quantity):
+    """(delivered, spares): the first `quantity` deliverable videos of a brief by number, and the rest."""
+    good = sorted((k for k, v in st.videos.items() if v["brief_id"] == bid and deliverable(v)),
+                  key=lambda k: int(k.rsplit("V", 1)[1]))
+    return good[:quantity], good[quantity:]
+
+
+def share_url(share_id):
+    return f"{BASE.replace('/api/v1', '')}/share/{share_id}"
+
+
 def write_delivery(st, briefs, run):
-    """Deliverable list: per brief, the first `quantity` videos that passed (by number), the rest as spares."""
-    key = lambda k: int(k.rsplit("V", 1)[1])
+    """Deliverable list: per brief, the share link and the first `quantity` videos that passed; the rest as spares."""
     out, total, need = [], 0, 0
     jobs = st.data.get("briefs", {})
+    shares = st.data.get("shares", {})
     for bid in sorted(briefs):
         b = briefs[bid]
         q = b["quantity"]
-        good = sorted((k for k, v in st.videos.items() if v["brief_id"] == bid and deliverable(v)), key=key)
-        pick = good[:q]
+        pick, spare = picks(st, bid, q)
         total, need = total + len(pick), need + q
         out += [f"## {bid} · {b.get('direction_core') or b['direction']} · {b.get('selling_point', '')} · {b.get('audience', '')} · "
-                f"交付 {len(pick)}/{q}" + (" ✅" if len(pick) >= q else f" ⚠️ 差 {q - len(pick)}"), "",
-                "| # | 视频 | 时长 | 预览 |", "|-|-|-|-|"]
+                f"交付 {len(pick)}/{q}" + (" ✅" if len(pick) >= q else f" ⚠️ 差 {q - len(pick)}"), ""]
+        sh = shares.get(bid)
+        if sh:
+            stale = sh["videos"] != pick
+            out += [f"**分享链接**：{share_url(sh['id'])}" + ("（⚠️ 挑的视频变了，重跑 share 更新）" if stale else ""), ""]
+        out += ["| # | 视频 | 时长 | 预览 |", "|-|-|-|-|"]
         for i, k in enumerate(pick, 1):
             v = st.videos[k]
             out.append(f"| {i} | {v['title']} | {v.get('duration_s', '')}s | {BASE.replace('/api/v1', '')}/cut/{v['cut_id']} |")
@@ -560,26 +575,92 @@ def write_delivery(st, briefs, run):
             job = jobs.get(bid, {})
             errs = [g.get("error") for g in [job] + job.get("topups", []) if g.get("error")]
             out.append(f"| | 还没有可交付的视频{('：' + errs[-1][:80]) if errs else '（没提交或还在跑）'} | | |")
-        if good[q:]:
-            out.append(f"\n备用（也已通过）：{'、'.join(good[q:])}")
+        if spare:
+            out.append(f"\n备用（也已通过）：{'、'.join(spare)}")
         out.append("")
     gen = len(st.videos)
     passed = sum(deliverable(v) for v in st.videos.values())
-    head = [f"# {Path(run).name} 交付清单", "",
+    group = st.data.get("share_group")
+    head = [f"# {Path(run).name} 交付清单", ""] + ([f"**今天全部分享链接**：{BASE.replace('/api/v1', '')}/share/group/{group['id']}", ""] if group else []) + [
             f"**交付 {total} / {need} 条**{'，全部够数' if total >= need else f'，还差 {need - total} 条（topup）'}。"
             f"共生成 {gen} 条，AI 审核通过 {passed} 条（{passed / max(gen, 1):.0%}）。", ""]
     (Path(run) / out_name(CFG, "delivery.md")).write_text("\n".join(head + out))
     print(f"→ {Path(run) / out_name(CFG, 'delivery.md')}（交付 {total}/{need}）")
 
 
+def cmd_share(cfg, run, args):
+    """One share link per brief with its delivered videos (POST /video-shares), all collected into one share
+    group for the day (POST /video-share-groups). Only briefs that reached their quantity unless --partial.
+    Re-running updates a brief whose picked videos changed: a new share replaces the old one in the group."""
+    st = State(run)
+    briefs = {b["brief_id"]: b for b in load_briefs(run, args.brief)}
+    shares = st.data.setdefault("shares", {})
+    todo = []
+    for bid in sorted(briefs):
+        b = briefs[bid]
+        pick, _ = picks(st, bid, b["quantity"])
+        if not pick:
+            print(f"⏸  {bid} 还没有可交付的视频")
+            continue
+        if len(pick) < b["quantity"] and not args.partial:
+            print(f"⏸  {bid} 可交付 {len(pick)}/{b['quantity']}，不够数先不发（要先发加 --partial）")
+            continue
+        old = shares.get(bid)
+        if old and old["videos"] == pick and not args.refresh:
+            print(f"✅ {bid} 已有分享 {share_url(old['id'])}")
+            continue
+        todo.append((b, pick, old))
+    if args.dry_run:
+        for b, pick, old in todo:
+            print(f"🧪 {b['brief_id']} 将{'更新' if old else '新建'}分享，{len(pick)} 条")
+        print(f"\n(dry run) 将建 {len(todo)} 个分享链接。确认后去掉 --dry-run")
+        return
+    day = Path(run).name
+    group = st.data.get("share_group")
+    if todo and not group:
+        name = f"{day[4:]}-{cfg['brand']}"
+        g = api("POST", "/video-share-groups", {"name": name})
+        group = st.data["share_group"] = {"id": g["id"], "name": name}
+        st.save()
+    for b, pick, old in todo:
+        bid = b["brief_id"]
+        vids = [st.videos[k] for k in pick]
+        payload = {"script_id": st.data["briefs"][bid]["script_id"],
+                   "product_id": cfg["products"][b["product_key"]]["clipo_product_id"],
+                   "group_id": group["id"], "title": video_title(cfg, b), "video_name_prefix": video_title(cfg, b) + "-V",
+                   "videos": []}
+        for v in vids:
+            cut = api("GET", f"/video-cuts/{v['cut_id']}")
+            comp = cut["draft"]["composition"]
+            cover = re.search(r"\.aliyuncs\.com/([^?]+)", cut["draft"].get("cover_url") or "")
+            payload["videos"].append({"video_object_key": cut.get("output_object_key") or v["object_key"],
+                                      "cover_object_key": cover.group(1) if cover else None,
+                                      "duration_seconds": round(comp["durationInFrames"] / comp.get("fps", 30), 2),
+                                      "width": comp["width"], "height": comp["height"]})
+        sh = api("POST", "/video-shares", payload)
+        if old:  # keep the group pointing at the newest share for this brief
+            g = api("GET", f"/video-share-groups/{group['id']}")
+            ids = [x["id"] for x in g["shares"] if x["id"] != old["id"]]
+            api("PATCH", f"/video-share-groups/{group['id']}", {"video_share_ids": ids})
+            api("DELETE", f"/video-shares/{old['id']}")
+        shares[bid] = {"id": sh["id"], "videos": pick, "at": time.strftime("%Y-%m-%d %H:%M")}
+        st.save()
+        print(f"🔗 {bid} {len(pick)} 条 → {share_url(sh['id'])}")
+    if group:
+        print(f"\n今天全部分享（分组）：{BASE.replace('/api/v1', '')}/share/group/{group['id']}")
+    write_delivery(st, {b["brief_id"]: b for b in load_briefs(run)}, run)
+
+
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "report", "status"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "report", "share", "status"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--partial", action="store_true", help="share: 不够数的 brief 也先发")
+    ap.add_argument("--refresh", action="store_true", help="share: 已有分享也重建（换掉旧链接）")
     ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
     ap.add_argument("--factor", type=float, help="submit: 一次生成排期条数的几倍，默认取 config.generate_factor")
     ap.add_argument("--margin", type=float, default=1.3, help="topup: 按通过率估算后再多要的倍数")
@@ -590,7 +671,7 @@ def main():
     cfg = load_config(args.config)
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
-    {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "report": cmd_report,
+    {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "report": cmd_report, "share": cmd_share,
      "status": cmd_status}[args.cmd](cfg, args.run, args)
 
 
