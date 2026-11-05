@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
+from copy_logic import editorial_issues, plan_batch_issues
 
 PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元|拍[一二三四五六七八九十\d]+发[一二三四五六七八九十\d]+|\d+\s*[gG克]")
 
@@ -81,7 +82,7 @@ def seg_text(seg):
     return seg.get("text", "")
 
 
-def lint_brief(brief, cfg):
+def lint_brief(brief, cfg, require_editorial=True):
     issues = []
     pk = brief.get("product_key")
     if pk not in cfg["products"]:
@@ -107,6 +108,8 @@ def lint_brief(brief, cfg):
     stale = mechanism_age(product, brief.get("date"))
     if stale is not None and stale > STALE_DAYS:
         issues.append(("warn", f"机制 {product['mechanism']['spoken']} 已 {stale} 天没核对（{product['mechanism']['verified_on']}），请审核人确认"))
+    if require_editorial:
+        issues += editorial_issues(brief)
     return issues
 
 
@@ -125,7 +128,7 @@ def lint_day(briefs, cfg):
     """Cross-brief checks: Clipo's rewrite does not create distance between briefs, so the base copy must.
     Product names and keep_terms are meant to repeat, so they are stripped before comparing.
     Returns {brief_id: [(level, msg)]}."""
-    out = {}
+    out = plan_batch_issues(briefs)
     fixed = sorted({t for p in cfg["products"].values()
                     for t in p.get("keep_terms", []) + p["name_aliases"] + p["mechanism"]["allowed_numbers"]}
                    | {(cfg.get("campaign") or {}).get("name", "")} - {""}, key=len, reverse=True)
@@ -231,7 +234,7 @@ def lint_script(texts, segs, brief, cfg, product):
         if named[0] < early and not brief.get("template"):
             issues.append(("warn", f"S{named[0] + 1} 就说了产品名：尽量放到第 {early + 1} 段以后，前面先讲头发的状态"))
         prod_seg = next((k for k, s in enumerate(segs) if s.get("role") == "product"), None)
-        if prod_seg is not None and prod_seg not in named:
+        if prod_seg is not None and not any(k <= prod_seg for k in named):
             issues.append(("error", f"S{prod_seg + 1} 是产品段但没说完整产品名「{product['full_name']}」（不能用「这瓶」「它」代替）"))
         sp = product["selling_points"].get(brief.get("selling_point", ""))
         first_sp = next((k for k, t in enumerate(texts) if sp and any(m in t for m in sp["must_mention"])), None)

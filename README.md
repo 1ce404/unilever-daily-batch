@@ -3,11 +3,11 @@
 Agent skill：联合利华（清扬、力士）千川混剪视频每日批量生产的流程串联。
 
 ```
-飞书排期 → 每 10 条一个 brief → 查热点，拼创作要求让 Clipo Remix 写底稿 → 机器检查 → 人审
+飞书排期 → 每 10 条一个 brief → 逐条规划说服思路，Clipo Remix 写全文再分段 → 整篇审读 + 机器检查 → 人审
 → 一次多生成、渲染、平台 AI 审核 → 凑够可交付条数 → 每个 brief 一个分享链接
 ```
 
-这个 skill 只串流程，平台上只走一条路：AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核。片子怎么剪（画面、配音、BGM、字幕、贴图、音效、改写、审核标准）由 Clipo Remix 上每个产品的提示词决定。接口见 [references/clipo-api.md](references/clipo-api.md)。
+这个 skill 组织文案创作与批量流程，平台上只走一条路：AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核。片子怎么剪（画面、配音、BGM、字幕、贴图、音效、改写、审核标准）由 Clipo Remix 上每个产品的提示词决定；skill 补充每条文案的思路与承接要求。接口见 [references/clipo-api.md](references/clipo-api.md)。
 
 ## 覆盖的产品
 

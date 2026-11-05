@@ -8,7 +8,8 @@ What it does not know is today's schedule, this product's hard-won rules, the sc
 what ran in the last few days, and today's current memes. This script puts exactly that into the
 `requirement` (≤ 2000 chars), calls POST /video-script-generations, reads the script back, lints the copy,
 and if lint finds errors asks the platform once to revise (same endpoint with script_id). The result is
-written into the brief (segments + script_id) for human review; nothing is generated until a human approves.
+written into the brief (segments + script_id) for whole-copy editorial reading, then human review.
+Every new brief requires a creative_plan before network calls; editorial evidence is pinned to its text.
 The platform script is named after the schedule row (config `naming`, the same name its videos and share page get).
 
 Current memes: runs/<day>/hotspots.json, written by the agent after searching (see references/writing.md):
@@ -29,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clipo_batch as cb
 from common import SKILL_DIR, day_briefs, load_config, load_gold, out_name
 from lint_copy import earlier_copy, lint_brief, lint_day, lint_variety, skeleton
+from copy_logic import plan_issues, plan_batch_issues, plan_lines
 
 MAX_REQ = 2000
 ROLE_BY_TITLE = [("cta", ("CTA", "直播间", "下单", "机制")), ("product", ("产品", "全名")),
@@ -69,14 +71,21 @@ def hotspot_for(run, cfg, brief, used):
 
 
 def requirement(cfg, run, brief, hot, today):
-    """The creative requirement: today's task + this product's rules + approved scripts + what to avoid."""
+    """Prioritize whole-copy reasoning; never truncate mandatory facts or the creative plan."""
+    problems = plan_issues(brief)
+    if problems:
+        raise ValueError(problems[0][1])
     prod = cfg["products"][brief["product_key"]]
     sp = prod["selling_points"].get(brief.get("selling_point") or "", {})
     mech = "、".join(prod["mechanism"]["spoken"])
     camp = cfg.get("campaign")
     in_campaign = camp and brief.get("date", "") <= camp["until"]
-    shape = f"照这个结构分段写：{brief['template']}" if brief.get("template") else "4~6 段"
-    lines = [f"为「{prod['full_name']}」写一条千川带货短视频脚本，{shape}，整条 75~150 字。"]
+    shape = f"用户指定结构：{brief['template']}。" if brief.get("template") else "段数按意思和素材安排，不给各段固定分工。"
+    lines = [f"为「{prod['full_name']}」写一条75~150字口播。{shape}",
+             "先把下面的思路写成同一人能一口气讲通的全文，再按意思分段回填脚本。不要先列痛点/产品/成分/效果/优惠槽位再各填一句。",
+             "\n".join(plan_lines(brief)),
+             "每句承接前句并推进判断，卖点用来回答本条疑问；不用全部卖点，不凑效果句。收尾顺着购买理由进入CTA。",
+             "语气来自具体观察和立场，不靠兄弟/姐妹/真的/直接冲制造口语。不编亲测、朋友反馈或未经证实的因果；少用口号、排比和空泛形容词。"]
     task = [f"内容方向：{brief.get('direction_core') or brief['direction']}"]
     if brief.get("selling_point"):
         task.append(f"测试卖点：{brief['selling_point']}")
@@ -90,39 +99,53 @@ def requirement(cfg, run, brief, hot, today):
     end = "、".join(prod["cta_required"])
     lines.append(f"机制：{mech if prod['mechanism']['allowed_numbers'] else '不念机制'}"
                  f"{'，带上「' + camp['name'] + '」' if in_campaign else ''}；最后一段要有「{end}」。")
-    where = "" if brief.get("template") else "尽量第 3 段才出现，"
-    lines.append(f"产品名说全「{prod['full_name']}」，不要用「这瓶」「它」代替；{where}第一次讲卖点的那句要带产品全名。")
+    lines.append(f"首次引入产品说全「{prod['full_name']}」，随后指代清楚即可，不重复报全名；出现位置服从思路，第一次讲卖点时已交代属于哪个产品。")
     if prod.get("audience_note"):
         lines.append(f"受众：{prod['audience_note']}。")
     lines += [f"- {r}" for r in prod.get("rules", [])]
-    lines.append("开头借近期真正流行的梗语时，先核对语境，用一句话落到现有头发画面；不要照念普通热榜话题标题（如秋冬简约穿搭），不要强行堆梗。")
     if prod.get("footage"):
         shots = "；".join(f"{k}：{v}" for k, v in prod["footage"].items() if not k.startswith("_") and v != "同 hook")
         lines.append(f"素材里只有这些画面，每句口播要有画面接得住，不写素材里没有的场景：{shots}")
-    banned = list(dict.fromkeys(cfg["banned_words"]["error"][:14] + prod.get("warn_words", [])))
+    banned = list(dict.fromkeys(cfg["banned_words"]["error"] + prod.get("warn_words", [])))
     banned = [w for w in banned if w not in prod.get("allow_words", [])]
     lines.append(f"不能写：{'、'.join(banned)}、最、第一、具体时长（几小时 / 几天）。")
+    # Optional context is admitted as whole blocks; mandatory requirements are never silently sliced.
+    out = "\n".join(lines)
+    if len(out) > MAX_REQ:
+        raise ValueError(f"{brief['brief_id']} 必要要求 {len(out)} 字超过 {MAX_REQ}；先精简创作思路/产品规则，不能截断事实")
+    optional = []
     if hot:
-        lines.append(f"今天可借的热梗：「{hot['topic']}」（{hot.get('source', '')}{'，' + hot['heat'] if hot.get('heat') else ''}）。"
-                     f"借它的表达方式做开头，一句话转到头发：{hot.get('angle', '')}。不照念普通话题标题，不编数据，不提平台名。")
+        optional.append(f"可选热梗「{hot['topic']}」（{hot.get('source', '')}）：{hot.get('angle', '')}。只在支持本条论点时用一句，不强贴、不编热度。")
+    peers = [o for o in today if o['brief_id'] != brief['brief_id'] and o.get('creative_plan')]
+    if peers:
+        optional.append("同组其它稿已选的切入，请在观点推进上区别：" + "；".join(
+            f"{o['brief_id']}：{o['creative_plan'].get('angle', '')} / {'→'.join(o['creative_plan'].get('route', []))}"
+            for o in peers if o.get('product_key') == brief['product_key']))
     seen = earlier_copy(run, brief, cfg) + [(o["brief_id"], o["segments"]) for o in today
                                             if o["brief_id"] != brief["brief_id"] and o.get("segments")]
     heads = [h for h, _ in Counter(h for _, segs in seen for h in skeleton(segs)[1] if h).most_common(10)]
     if heads:
-        lines.append(f"这几个开头最近用太多，换别的切入方式：{'、'.join(heads)}。")
+        optional.append(f"近期用多的句头：{'、'.join(heads)}；换观察和论点，不只换词。")
     edits = reviewer_edits(cfg, brief)
     if edits:
-        lines.append("审核人以前这样改过（照这个方向）：" + "；".join(f"「{e['before']}」改成「{e['after']}」" for e in edits))
+        optional.append("审核人改法：" + "；".join(f"「{e['before']}」→「{e['after']}」" for e in edits))
     std = [g for g in load_gold(cfg, brief["product_key"]) if g.get("status") == "confirmed"] or load_gold(cfg, brief["product_key"])
-    examples = ["· " + " / ".join(b["text"] for b in g["beats"]) for g in std]
-    head = "参考这些写法（只学口吻、长短、宽泛程度，不要照抄句子，不要套同一个结构）："
-    out = "\n".join(lines)
-    for ex in examples:  # add as many reference scripts as fit in the 2000-char limit
-        cand = out + ("\n" + head if head not in out else "") + "\n" + ex
-        if len(cand) > MAX_REQ:
-            break
-        out = cand
-    return out[:MAX_REQ]
+    if std:
+        # Rotate among equally relevant references instead of feeding every brief the same prefix.
+        score = lambda g: (g.get('selling_point') == brief.get('selling_point'), g.get('direction') == brief.get('direction_core'))
+        best = max(map(score, std))
+        candidates = sorted((g for g in std if score(g) == best), key=lambda g: g['id'])
+        ordinal = int(re.search(r"(\d+)$", brief['brief_id']).group(1))
+        g = candidates[(ordinal - 1) % len(candidates)]
+        label = "确认稿" if g.get('status') == 'confirmed' else "未确认参考"
+        rationale = f"{label}{g['id']}：谁在说={g.get('speaker', '')}；为何这样讲={g.get('why', '')}。借鉴判断方式，不照搬句序。"
+        # Preserve the voice/reason even when there is no room for the example's full wording.
+        optional.insert(0, rationale)
+        optional.append("参考全文（不复制句式）：" + " / ".join(b['text'] for b in g['beats']))
+    for block in optional:
+        if len(out) + len(block) + 1 <= MAX_REQ:
+            out += "\n" + block
+    return out
 
 
 def wait_generation(gid):
@@ -141,7 +164,7 @@ def to_segments(script):
 
 
 def errors_of(brief, cfg, today):
-    issues = lint_brief(brief, cfg) + lint_day(today, cfg).get(brief["brief_id"], [])
+    issues = lint_brief(brief, cfg, require_editorial=False) + lint_day(today, cfg).get(brief["brief_id"], [])
     issues += lint_variety([brief] + [o for o in today if o["brief_id"] != brief["brief_id"]], cfg, Path(brief["_run"])).get(brief["brief_id"], [])
     return [m for l, m in issues if l == "error"]
 
@@ -158,6 +181,16 @@ def main():
     cb.BASE, cb.CFG = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1", cfg
     run = Path(args.run)
     today = day_briefs(run, cfg)
+    selected = [b for b in today if (not args.brief or b['brief_id'] == args.brief)
+                and (args.redo or (not b.get('segments') and b.get('status') != 'approved'))]
+    problems = [(b['brief_id'], m) for b in selected for _, m in plan_issues(b)]
+    duplicates = plan_batch_issues(today)
+    problems += [(b['brief_id'], m) for b in selected for _, m in duplicates.get(b['brief_id'], [])]
+    if problems:
+        raise SystemExit("生成前先完成组内创作规划：\n" + "\n".join(f"{bid}: {msg}" for bid, msg in problems))
+    # Validate all requirements before starting remote generations or deleting an old draft.
+    for b in selected:
+        requirement(cfg, run, b, None, today)
     used = Counter()
     for b in today:
         if args.brief and b["brief_id"] != args.brief:
@@ -186,9 +219,10 @@ def main():
             print(f"❌ {b['brief_id']} 平台写脚本失败 {g.get('error_code')}: {g.get('error_message')}")
             continue
         sid = g["script_id"]
-        b.update({"script_id": sid, "segments": to_segments(cb.api("GET", f"/video-scripts/{sid}")),
+        b.update({"script_id": sid, "segments": to_segments(cb.api("GET", f"/video-scripts/{sid}")), "copy_logic_version": 2,
                   "requirement": req, "hotspot": hot["topic"] if hot else None, "status": "draft", "_run": str(run)})
         b.pop("approval", None)
+        b.pop("editorial_review", None)
         errs = errors_of(b, cfg, today)
         if errs:  # one revision round on the platform, then leave it for the human
             fix = "按下面的问题修改这条脚本，其它保持不变：\n" + "\n".join(f"- {e}" for e in errs[:8])
@@ -207,7 +241,7 @@ def main():
         for e in errs:
             print(f"     ✗ {e}")
     if not args.dry_run:
-        print("\n下一步：lint_copy.py 复查 → review_doc.py render 给人审")
+        print("\n下一步：整篇审读与组间比较 → review_doc.py editorial 记录 → lint_copy.py → render 给人审")
 
 
 if __name__ == "__main__":
