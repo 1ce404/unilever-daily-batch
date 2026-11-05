@@ -7,6 +7,7 @@ It does not write copy or call the platform. Per brief it shows:
   the task (direction / selling point / audience) and which part of the script should change because of it,
   the fixed lines (selling-point say, mechanism + CTA) that team scripts reuse,
   the product rules, footage, banned words, and the platform's own copy rules (video_script_create),
+  the meme assigned to it in runs/<day>/hotspots.json, if any,
   team scripts of the same product and direction (gold, plus rows of the team script collection fetched at ①),
   reviewer edits (learned/),
   and the openings already used today and in the last days (so this one's opening is new).
@@ -55,6 +56,14 @@ def team_rows(run, cfg, brief, n=3):
         if t not in seen:
             seen.add(t); out.append(f"{d}：{t}")
     return out[:n]
+
+
+def hotspot_for(run, brief):
+    """The meme assigned to this brief in runs/<day>/hotspots.json (see references/writing.md §8), or None."""
+    p = Path(run) / "hotspots.json"
+    if not p.exists():
+        return None
+    return next((h for h in json.loads(p.read_text()) if brief["brief_id"] in h.get("briefs", [])), None)
 
 
 def edits(cfg, brief, n=5):
@@ -109,6 +118,10 @@ def card(cfg, run, brief, today):
     for g in near[:4]:
         out.append(f"  {g['id']}（{g.get('direction', '')}，{g.get('status')}）")
         out += [f"     [{b['role']}] {b['text']}" for b in g["beats"]]
+    hot = hotspot_for(run, brief)
+    if hot:
+        out.append(f"\n今天的热梗：「{hot['topic']}」（{hot.get('meaning', '')}；来源 {hot.get('source', '')}）"
+                   "\n  只用在开头一句，马上转到头发状态；不编数据，不提平台名")
     rows = team_rows(run, cfg, brief)
     if rows:
         out.append("团队交付过的同方向稿（脚本合集，「/」隔开的是同一句的几个说法）：")
