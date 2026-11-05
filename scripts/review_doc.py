@@ -86,7 +86,9 @@ def render(cfg, run):
         cells[1:5] = [esc(c).replace("&lt;br/&gt;", "<br/>") for c in cells[1:5]]
         rows_xml.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
         md += [f"## {b['brief_id']} · {b['store']} · {b['direction']} · {b.get('selling_point','')} · {b.get('audience','')}",
-               f"热点：{b.get('hotspot') or '无'}　数量：{b['quantity']}", ""]
+               f"数量：{b['quantity']}", ""]
+        if b.get("hotspot"):
+            md += [f"历史热点：{b['hotspot']}", ""]
         md += plan_lines(b)
         md += ["", "完整口播：", "".join(seg_text(s) for s in b['segments']), "", "分段（修改这里）："]
         md += copy_cell(b)

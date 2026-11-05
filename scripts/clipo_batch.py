@@ -501,7 +501,7 @@ def cmd_status(cfg, run, args):
         lint = "未写" if errs is None else ("✅" if not errs else f"❌{errs}")
         print(f"{b['brief_id']:10} {b['quantity']:>3} {b.get('status',''):18} {lint:6} {plat}")
         if errs is None:
-            nxt.add("④ 查热点 + draft.py 让平台写")
+            nxt.add("④ 创作规划 + draft.py 让平台写")
         elif errs:
             nxt.add("⑤ 改 lint 错误")
         elif b.get("status") in ("draft", "changes_requested"):

@@ -5,17 +5,15 @@
 
 The platform already knows how to write copy and package a video (product prompt video_script_create).
 What it does not know is today's schedule, this product's hard-won rules, the scripts the user approved,
-what ran in the last few days, and today's current memes. This script puts exactly that into the
+and what ran in the last few days. This script puts that into the
 `requirement` (≤ 2000 chars), calls POST /video-script-generations, reads the script back, lints the copy,
 and if lint finds errors asks the platform once to revise (same endpoint with script_id). The result is
 written into the brief (segments + script_id) for whole-copy editorial reading, then human review.
 Every new brief requires a creative_plan before network calls; editorial evidence is pinned to its text.
 The platform script is named after the schedule row (config `naming`, the same name its videos and share page get).
 
-Current memes: runs/<day>/hotspots.json, written by the agent after searching (see references/writing.md):
-    [{"topic": "嘻嘻不嘻嘻", "source": "11.4 梗语访问榜",
-      "angle": "镜前看到油塌的情绪反转", "products": ["2x", "huxi"]}]
-Each brief gets at most one topic; topics rotate across a product's briefs. No file, no topic.
+No daily trend search. User or schedule directions belong in the brief's direction_hint/creative_plan.
+Historical runs with hotspots.json remain readable when an old task is rewritten.
 A brief with `template` (a structure the user gave) is written in exactly that structure.
 """
 import argparse
@@ -59,6 +57,7 @@ def reviewer_edits(cfg, brief, n=3):
 
 
 def hotspot_for(run, cfg, brief, used):
+    """Read an existing hotspot file for historical runs; new daily runs do not create one."""
     p = Path(run) / "hotspots.json"
     if not p.exists():
         return None
@@ -191,7 +190,7 @@ def main():
     # Validate all requirements before starting remote generations or deleting an old draft.
     for b in selected:
         requirement(cfg, run, b, None, today)
-    used = Counter()
+    used = Counter()  # historical hotspot files only
     for b in today:
         if args.brief and b["brief_id"] != args.brief:
             if b.get("hotspot"):
@@ -220,7 +219,11 @@ def main():
             continue
         sid = g["script_id"]
         b.update({"script_id": sid, "segments": to_segments(cb.api("GET", f"/video-scripts/{sid}")), "copy_logic_version": 2,
-                  "requirement": req, "hotspot": hot["topic"] if hot else None, "status": "draft", "_run": str(run)})
+                  "requirement": req, "status": "draft", "_run": str(run)})
+        if hot:
+            b["hotspot"] = hot["topic"]
+        else:
+            b.pop("hotspot", None)
         b.pop("approval", None)
         b.pop("editorial_review", None)
         errs = errors_of(b, cfg, today)
