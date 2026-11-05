@@ -1,74 +1,99 @@
 # Clipo Remix 接口（第 ③⑧ 步）
 
-Base `https://clipo-remix.tezign.com/api/v1`，信封 `{code, message, data}`，`code == "ok"` 才算成功。当前无鉴权（工作空间「特赞」）。完整 OpenAPI 曾抓到 `outputs/jianying-sfx-clipo-upload-20261030/inspection/openapi.json`。
+Base `https://clipo-remix.tezign.com/api/v1`。所有响应都是信封 `{code, message, data}`，`code == "ok"` 才算成功。当前不需要鉴权。线上接口文档：`GET /api/v1/openapi.json`。
 
-单条精剪用 `clipo-remix-ai` 技能（`npx skills add https://ai.tezign.com/static/clipo/clipo-remix-ai_v20261030_1.zip -y`）；**批量走下面这条「脚本 → 生成」链路**，它就是平台网页上「视频脚本 → 生成 N 条」背后的接口，力士团队每天的 `1029-brief1…5` 也是这么跑的。
-
-## 链路
+这个 skill 只走一条路：
 
 ```
-POST /video-script-generations      {product_id, requirement} → 平台按产品提示词建脚本（一个 brief 一条）；轮询到 success 拿 script_id
-GET  /video-scripts/{id}            读回脚本，核对每段文案和 ai_rewrite
-POST /video-cut-generations         {script_id, quantity:10} → 异步组装：合成口播、按标签随机挑画面/BGM/音色/字幕样式
-GET  /video-cut-generations/{id}    status=success 时 cut_ids 就是新剪辑
-GET  /video-cuts/{id}               draft + random_result（vo_rewrite / tts_speaker_id / subtitle_style_id）
-POST /render-jobs                   {spec: draft, options:{codec:h264,quality:high,scale:1}, cut_id, idempotency_key}
-GET  /render-jobs/{job_id}          status=success → object_key / download_url；同时回写剪辑的 output_*
-POST /video-cuts/review             {cut_ids:[…]} → 202，异步；结论写回剪辑 ai_review_status/result/reason
-POST /video-share-groups            {name}                         交付分组（可选）
-POST /video-shares                  {script_id, product_id, group_id, title, video_name_prefix, videos:[{video_object_key, cover_object_key, duration_seconds, width, height}]}
+AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核
 ```
 
-分享页：`https://clipo-remix.tezign.com/share/{share_id}`；剪辑预览：`https://clipo-remix.tezign.com/cut/{cut_id}`。
+片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。全部调用在 `scripts/clipo_batch.py`。
 
-## 脚本谁来建：平台按提示词建，skill 只交文案
+## 一、AI 建脚本（`submit`）
 
-片子怎么剪（视频规格、配音池、语速、BGM、字幕样式、每段画面标签、贴图、音效）全写在产品提示词里：`GET /products/{id}/prompts`，`prompt_type`：
+把审过的文案交给平台，平台按产品提示词 `video_script_create` 把脚本建出来，配音、画面、贴图音效都由它配。
 
-| 提示词 | 管什么 |
+| 接口 | 用途 |
 |---|---|
-| `video_script_create` | 建脚本：全局配置 + 每段的画面、贴图、音效 |
-| `video_script_rewrite` | 生成时每条视频怎么改写口播 |
-| `video_cut_review` | 成片 AI 审核标准 |
-| `material_segment_review` | 素材切片审核 |
+| `POST /video-script-generations` | 提交建脚本任务。body：`product_id`、`requirement`（创作要求，自由文本）。响应里的 `script_id` 提交时就给了（预建的空脚本） |
+| `GET /video-script-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；失败看 `error_code`（`ai_timeout`、`ai_call_failed`…），失败即终态，重试就是再提交一条 |
+| `GET /video-scripts/{script_id}` | 读回脚本：`segments[].content`（口播）、`segments[].ai_rewrite`（是否允许改写）、`config`（平台配好的全局配置） |
+| `DELETE /video-scripts/{script_id}` | 删脚本 |
 
-`clipo_batch.py submit` 调 `POST /video-script-generations`，`requirement` 里写：一共几段、每段文案逐字照抄、哪几段不准改写（CTA 和 `lock` 段）、其它按产品默认规则。建完 `GET /video-scripts/{id}` 核对：段数一样、每段 `content` 和审过的一字不差、锁定段 `ai_rewrite=false`；对不上就删掉这条脚本、不生成，报给用户。
+`requirement` 里写清：一共几段、每段文案逐字照抄、哪几段不准改写（CTA 段和 `lock` 段）、其它按产品默认规则、脚本标题。
 
-11.04 实测：5 段文案逐字照抄，CTA 段 `ai_rewrite=false`；平台自己配了 6 个男声、BGM 0.08、字幕 78%、产品段彩带+礼炮、效果段起泡音效、CTA 段戳直播间头像箭头+指向音效。
+建完必须核对，对不上就 `DELETE` 掉这条脚本、不生成、报给用户：
 
-**要改片子的样子，改平台提示词，不改 skill。**
+- 段数和审过的一样
+- 每段 `content` 和审过的一字不差
+- CTA / `lock` 段 `ai_rewrite = false`
 
-## 和 clipo-remix-ai 的区别
+## 二、脚本批量生成混剪（`submit` / `topup` / `poll`）
 
-`clipo-remix-ai` 是单条精剪：agent 自己合成口播、切字幕、按句挑镜头、按帧放贴图音效（音效 0.2~0.9 秒、音量 0.2~0.3）。本 skill 是批量：平台按分类随机抽画面和贴图音效，音效时长 = 文件原长、音量 1.0，平台没有参数能改。要逐帧控制的片子用 `clipo-remix-ai`。
+同一份脚本，平台每条视频按 `video_script_rewrite` 提示词改写一种说法（`ai_rewrite=false` 的段原样），画面、BGM、配音各自随机抽。
+
+| 接口 | 用途 |
+|---|---|
+| `POST /video-cut-generations` | 提交生成。body：`script_id`、`quantity`（1~300）；可选 `add_compliance_watermark`、`compliance_watermark_position`（「AI生成」合规水印） |
+| `GET /video-cut-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；`generated_count / quantity` 是进度；`success` 时 `cut_ids` 是这批剪辑 |
+| `POST /video-cut-generations/{id}/continue` | 往同一个任务追加 `quantity` 条（要等上一轮跑完）。skill 补生成时另提交一条新任务，效果一样 |
+| `GET /video-cuts/{cut_id}` | 读一条剪辑：`draft`（整份时间轴，渲染要用）、`random_result.vo_rewrite`（这条改写后的口播）、`random_result.tts_speaker_id`（音色） |
+
+要点：
+
+- **每一轮全有全无**：一条没组装成，这一轮一条剪辑都不落，也不扣额度。所以一个 brief 要的条数拆成每轮 ≤ `generate_chunk`（15）条分别提交，一轮失败不连累别的轮
+- **一次多生成**：每个 brief 生成 排期 × `generate_factor`（3）条，因为平台 AI 审核通过率约 40%
+- `poll` 读回每条的 `random_result.vo_rewrite`，用 lint 再查一遍，违规的记进 `copy_issues`，按驳回处理
+- 失败原因：`voiceover_rewrite_failed`（平台改写模型 502/503，过一会儿 `submit --retry-failed`）、`timeout`（一轮组装超过 600 秒，减小每轮条数）
+
+## 三、批量渲染（`poll`）
+
+生成出来的剪辑**不会自动渲染**，要自己提交。
+
+| 接口 | 用途 |
+|---|---|
+| `POST /render-jobs` | 提交渲染。body：`spec`（剪辑的 `draft` 原样）、`options`（`{codec: "h264", quality: "high", scale: 1}`）、`cut_id`（成片字段回写到这条剪辑）、`idempotency_key`（skill 用 `udb-<cut_id>`，重复提交拿到同一条任务，不重复渲染也不重复计费） |
+| `GET /render-jobs/{job_id}` | 轮询。`status`：`queued` / `running` / `success` / `failed` / `canceled`；`success` 时 `object_key`、`download_url`（现签） |
+| `GET /render-jobs/capability` | 服务端渲染是否可用；同时最多约 100 条在渲，超出的排队，提交不受限 |
+
+## 四、批量 AI 审核（`poll`）
+
+| 接口 | 用途 |
+|---|---|
+| `POST /video-cuts/review` | 提交审核。body：`cut_ids`（一批）。返回 202，`queued` 实际排进去的条数、`skipped` 跳过的（没渲染成功、已在排队）。按产品提示词 `video_cut_review` 审 |
+| `GET /video-cuts/{cut_id}` | 读结论：`ai_review_status`（`success` / `failed` 是审完了）、`ai_review_result`（`pass` / `reject`）、`ai_review_reason`（驳回原因） |
+
+`poll` 每轮把这一轮刚渲染成功的剪辑攒成一批提交，已经出过结论的再提交会覆盖旧结论。
+
+**可交付 = `ai_review_result == "pass"` 且 lint 没查出改写违规。** `report` 按每个 brief 的排期条数挑可交付的进交付清单。
+
+## 五、平台体检用到的（`preflight`）
+
+只读，不改平台。
+
+| 接口 | 用途 |
+|---|---|
+| `GET /products/{id}` | 产品能不能打开、名称、`description`（AI 审核会读它，机制过时会误判）、`tags` |
+| `GET /products/{id}/segments?skip=&limit=100` | 素材切片：可用多少、风险多少（`review_result == "reject"`）、各标签多少条 |
+| `GET /products/{id}/prompts` | 产品提示词：`video_script_create`（建脚本）、`video_script_rewrite`（改写）、`video_cut_review`（审核）是否自定义、更新时间 |
+| `GET /resource/sticker/catalog`、`GET /resource/sound-effect/catalog` | 贴图 / 音效分类，核对提示词里写的分类名平台上还在（不在时平台不报错、直接不配） |
 
 ## 已踩的坑
 
 | 现象 | 处理 |
 |---|---|
-| 生成成功后剪辑 `output_status` 一直是 `pending` | 生成不会自动渲染，要自己 `POST /render-jobs`（`poll` 已做，`idempotency_key=udb-<cut_id>` 防重复） |
-| `GET /products` 列表里有，但 `GET /products/{id}` 回 `product_not_found` | 产品已被删或迁移，列表缓存未清。体检会拦下，让用户重建或给新 id |
-| 「二硫化硒」(6ae402ea) 已被删；现用「清扬-二硫化硒蓝C瓶」(6acb4db5) | 描述为空、标签抄自力士，体检会报 ⚠️；补描述和清扬标签前，生成画面可能不准 |
-| 产品 `tags` 里的标签切片数为 0 | 平台提示词让某段用这个标签时画面会落空。`preflight` 会列出来，告诉用户补素材或改提示词 |
-| 改写后出现禁用词 / 丢产品名 | `poll` 对每条 `random_result.vo_rewrite` 重跑 lint，报告标「改写违规」；同类问题多了，告诉用户把词加进平台的改写提示词 `video_script_rewrite`，同时补进 config 的 `banned_words`（lint 用） |
-| 成片音效乱、混进「队友脸面已永久掉线」「支付宝到账」、幽灵声 | 平台按分类随机抽音效，大分类里常混着怪声（11.02 有 3 条因此被驳回）。只用产品提示词推荐的小分类；要加音效先 `GET /resource/sound-effect?catalog=<分类>` 看完全部再用 |
-| 成片里没有音效 / 贴图 | 平台提示词里写的分类在资源库里不存在时，平台不报错、直接不配（11.03 出过）。抽查成片发现没有，告诉用户核对平台提示词里的分类名 |
-| 一轮生成整轮失败：`voiceover_rewrite_failed` 502/503，或 `timeout: assembly timed out after 600.0s` | 前者是平台改写模型的上游故障，等一会儿 `submit --retry-failed`；后者是一轮要太多条，组装超过 600 秒。一轮全有全无，失败的那轮不落任何剪辑。所以每轮 ≤ `generate_chunk`（15）条 |
-| 渲染并发 | `GET /render-jobs/capability`：同时最多 100 条，超出排队，提交不受限 |
+| `GET /products` 列表里有，但 `GET /products/{id}` 回 `product_not_found` | 产品已被删或迁移，体检会拦下，让用户给新 id |
+| 产品某个标签切片数为 0 | 平台提示词让某段用这个标签时画面会落空。体检会列出来，告诉用户补素材或改提示词 |
+| 改写后出现禁用词 / 丢产品名 | `poll` 记成「改写违规」。同类多了，告诉用户把词加进平台改写提示词 `video_script_rewrite`，同时补进 config 的 `banned_words` |
+| 成片音效乱（幽灵声、「队友脸面已永久掉线」） | 大分类里混着怪声，平台随机抽到（11.02 驳回过 3 条）。提示词里只用小分类 |
+| 成片没有音效 / 贴图 | 提示词里的分类名平台上没有（11.03，半角 / 和全角 ／ 也算不一样）。体检会查 |
+| 风险切片仍被抽到 | 平台生成不避开风险切片，要在平台删除或去标签 |
 
-## 改写模式（默认）
+## 平台上改素材、提示词（不在每日流程里）
 
-一个 brief = 一个 video-script + 几轮 `video-cut-generations`（共 排期 × `generate_factor` 条，每轮 ≤ `generate_chunk` 条）。
-- 非 CTA 段 `ai_rewrite=true`；CTA 段 `false`，机制和「戳直播间」原样念
-- 改写规则在平台产品提示词 `video_script_rewrite` 里（要求措辞和原文不同、各版本之间不重复），所以改写一定会动，`poll` 读回 `random_result.vo_rewrite` 逐条 lint，结果写进 `copy_issues`
-- 每轮生成是全有全无：一条组装失败这轮不落地；`submit --retry-failed` 重新生成（沿用同一个 video-script）
-- 需要逐字锁定时（客户指定话术），在该段写 `"lock": true`（`cta` 段默认锁定）
+以下都会改动团队共用的数据，**先说清楚要改什么，用户同意再做**：
 
-## 素材侧（不在每日流程里，用户要求时做）
-
-- 产品切片列表 `GET /products/{id}/segments`，标签统计 `GET /products/{id}/segment-tags`
 - 切片改标签 `PATCH /materials/segments/{segment_id}`，人工复核 `POST /materials/segments/{segment_id}/review`
 - 别的产品的切片复制过来 `POST /products/{id}/segments/copy`
-- 产品描述 / 标签 `PATCH /products/{id}`；审核提示词 `PUT /products/{id}/prompts/video_cut_review`
-
-这些都会改动平台上团队共用的数据：先说清楚要改什么，用户同意再做。
+- 产品描述 / 标签 `PATCH /products/{id}`；提示词 `PUT /products/{id}/prompts/{prompt_type}`

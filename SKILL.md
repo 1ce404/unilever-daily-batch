@@ -7,7 +7,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 
 排期上每一行 = 店铺 × 内容方向 × 测试卖点 × 测试人群 × 数量。**每 10 条一个 brief，一个 brief = 一条底稿**。Clipo 按底稿改写出多种说法（CTA 不改）；平台 AI 审核通过的才算可交付。
 
-**这个 skill 只串流程，不管片子怎么剪。** 画面、配音、BGM、字幕、贴图、音效、改写规则都在平台的产品提示词里（`video_script_create` 等），要改去平台改。skill 负责：排期 → 文案 → 人审 → 把审过的文案原样交给平台 → 盯生成 → 凑够可交付数 → 交付清单。
+**这个 skill 只串流程，不管片子怎么剪。** 平台上只走一条路：**AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核**。画面、配音、BGM、字幕、贴图、音效、改写、审核标准都在平台的产品提示词里（`video_script_create` / `video_script_rewrite` / `video_cut_review`），要改去平台改。每一步用哪个接口见 [references/clipo-api.md](references/clipo-api.md)。
 
 四条设计：
 
@@ -38,7 +38,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 | `gold/<品牌>.json` | 范本库，每条标了 `product`，只和同产品比。用户说好的脚本加进来，标 `"status": "confirmed"` |
 | `config/<品牌>.json` | 品牌共用：资料来源、店铺→产品（或 `daily_quota` 固定条数）、禁用词、文案长度、生成数量、`open_questions` 待确认项 |
 | `config/<品牌>/<产品>.json` | 每个产品一份：产品名、平台 id、卖点说法、机制、CTA、卡审词、串系列词、受众、素材画面、固定要求 `rules` |
-| [references/clipo-api.md](references/clipo-api.md) | Clipo 接口、平台怎么建脚本、生成失败怎么办 |
+| [references/clipo-api.md](references/clipo-api.md) | 平台接口：建脚本、批量生成、批量渲染、批量审核、体检，每个接口的参数和状态；踩过的坑 |
 | [references/qc-rules.md](references/qc-rules.md) | QC 文档 → config 的对应；驳回怎么处理 |
 | [references/new-brand.md](references/new-brand.md) | 接入力士 / 多芬 / HC 等新品牌 |
 
@@ -74,7 +74,8 @@ python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run   # 报�
 python3 -I scripts/clipo_batch.py submit --config $C --run $R
 python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后台跑
 ```
-- 先让平台按产品提示词建脚本，把审过的文案逐字交给它；建完核对每段一字不差、CTA 没开改写，对不上就删掉不生成
+- **AI 建脚本**：`POST /video-script-generations` 把审过的文案逐字交给平台，平台按产品提示词建脚本；建完 `GET /video-scripts/{id}` 核对每段一字不差、CTA 没开改写，对不上就删掉不生成
+- **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
 - 每个 brief 生成 排期 × `generate_factor`（3）条，拆成每轮 ≤ `generate_chunk`（15）条提交
 - 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
 - 跑完有 brief 不够数：`topup --dry-run` 报补多少，用户确认后 `topup`，再 `poll`。用同一份审过的脚本，不用重审

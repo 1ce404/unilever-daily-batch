@@ -383,6 +383,7 @@ def cmd_poll(cfg, run, args):
                 if gen.get("stage") == "generating":
                     pending += 1
                     pull_generation(st, cfg, briefs[bid], job, gen)
+        rendered = []  # cuts that finished rendering this round: sent to AI review as one batch
         for vid, v in sorted(st.videos.items()):
             stage = v.get("stage")
             try:
@@ -390,8 +391,7 @@ def cmd_poll(cfg, run, args):
                     j = api("GET", f"/render-jobs/{v['render_job']}")
                     if j["status"] == "success":
                         v["object_key"] = j.get("object_key")
-                        api("POST", "/video-cuts/review", {"cut_ids": [v["cut_id"]]})
-                        v["stage"] = "reviewing"
+                        v["stage"] = "rendered"
                     elif j["status"] in ("failed", "canceled", "cancelled"):
                         v["stage"], v["error"] = "failed", f"渲染失败 {j.get('error_code')}: {j.get('error_message')}"
                 elif stage == "reviewing":
@@ -402,7 +402,18 @@ def cmd_poll(cfg, run, args):
                         v["stage"] = "done"
             except RuntimeError as e:
                 v["last_error"] = str(e)[:300]
+            if v.get("stage") == "rendered":
+                rendered.append(v)
             pending += v.get("stage") not in ("done", "failed", None)
+        for i in range(0, len(rendered), 100):
+            batch = rendered[i:i + 100]
+            try:
+                api("POST", "/video-cuts/review", {"cut_ids": [v["cut_id"] for v in batch]})
+                for v in batch:
+                    v["stage"] = "reviewing"
+            except RuntimeError as e:
+                for v in batch:
+                    v["last_error"] = str(e)[:300]  # stays "rendered", resubmitted next round
         st.save()
         by = {"brief生成中": sum(generating(j) for j in st.data.get("briefs", {}).values())}
         for v in st.videos.values():
