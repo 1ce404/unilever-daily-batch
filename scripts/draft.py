@@ -5,14 +5,15 @@
 
 The platform already knows how to write copy and package a video (product prompt video_script_create).
 What it does not know is today's schedule, this product's hard-won rules, the scripts the user approved,
-what ran in the last few days, and today's trending topics. This script puts exactly that into the
+what ran in the last few days, and today's current memes. This script puts exactly that into the
 `requirement` (≤ 2000 chars), calls POST /video-script-generations, reads the script back, lints the copy,
 and if lint finds errors asks the platform once to revise (same endpoint with script_id). The result is
 written into the brief (segments + script_id) for human review; nothing is generated until a human approves.
+The platform script is named after the schedule row (config `naming`, the same name its videos and share page get).
 
-Trending topics: runs/<day>/hotspots.json, written by the agent after searching (see references/writing.md):
-    [{"topic": "男生秋冬简约穿搭攻略", "source": "抖音热榜 11.5", "heat": "约1100万",
-      "angle": "穿搭到位了，发根一塌就白搭", "products": ["2x", "huxi"]}]
+Current memes: runs/<day>/hotspots.json, written by the agent after searching (see references/writing.md):
+    [{"topic": "嘻嘻不嘻嘻", "source": "11.4 梗语访问榜",
+      "angle": "镜前看到油塌的情绪反转", "products": ["2x", "huxi"]}]
 Each brief gets at most one topic; topics rotate across a product's briefs. No file, no topic.
 A brief with `template` (a structure the user gave) is written in exactly that structure.
 """
@@ -94,6 +95,7 @@ def requirement(cfg, run, brief, hot, today):
     if prod.get("audience_note"):
         lines.append(f"受众：{prod['audience_note']}。")
     lines += [f"- {r}" for r in prod.get("rules", [])]
+    lines.append("开头借近期真正流行的梗语时，先核对语境，用一句话落到现有头发画面；不要照念普通热榜话题标题（如秋冬简约穿搭），不要强行堆梗。")
     if prod.get("footage"):
         shots = "；".join(f"{k}：{v}" for k, v in prod["footage"].items() if not k.startswith("_") and v != "同 hook")
         lines.append(f"素材里只有这些画面，每句口播要有画面接得住，不写素材里没有的场景：{shots}")
@@ -101,8 +103,8 @@ def requirement(cfg, run, brief, hot, today):
     banned = [w for w in banned if w not in prod.get("allow_words", [])]
     lines.append(f"不能写：{'、'.join(banned)}、最、第一、具体时长（几小时 / 几天）。")
     if hot:
-        lines.append(f"今天的热点：「{hot['topic']}」（{hot.get('source', '')}{'，' + hot['heat'] if hot.get('heat') else ''}）。"
-                     f"用它做开头钩子，一句话转到产品：{hot.get('angle', '')}。只借话题，不编数据，不提平台名。")
+        lines.append(f"今天可借的热梗：「{hot['topic']}」（{hot.get('source', '')}{'，' + hot['heat'] if hot.get('heat') else ''}）。"
+                     f"借它的表达方式做开头，一句话转到头发：{hot.get('angle', '')}。不照念普通话题标题，不编数据，不提平台名。")
     seen = earlier_copy(run, brief, cfg) + [(o["brief_id"], o["segments"]) for o in today
                                             if o["brief_id"] != brief["brief_id"] and o.get("segments")]
     heads = [h for h, _ in Counter(h for _, segs in seen for h in skeleton(segs)[1] if h).most_common(10)]
@@ -195,8 +197,10 @@ def main():
                 b["segments"] = to_segments(cb.api("GET", f"/video-scripts/{sid}"))
                 errs = errors_of(b, cfg, today)
         b.pop("_run", None)
+        b["script_title"] = cb.video_title(cfg, b)
+        cb.set_title(sid, b["script_title"])
         (run / "briefs" / f"{b['brief_id']}.json").write_text(json.dumps(b, ensure_ascii=False, indent=2))
-        print(f"{'✅' if not errs else '⚠️ '} {b['brief_id']} {len(b['segments'])} 段"
+        print(f"{'✅' if not errs else '⚠️ '} {b['brief_id']} {b['script_title']} · {len(b['segments'])} 段"
               f"{'，热点「' + hot['topic'] + '」' if hot else ''}{'' if not errs else '，还有 ' + str(len(errs)) + ' 个错误要人改'}")
         for s in b["segments"]:
             print(f"     [{s['role']}] {s['text']}")

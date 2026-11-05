@@ -17,23 +17,26 @@
 
 ## 1. 查热点
 
-每天写稿前搜一次当天的热点（抖音热榜、微博热搜、小红书热门，`WebSearch` 搜「抖音热榜 今天」之类），挑 2~4 个写进 `$R/hotspots.json`：
+每天写稿前搜一次当天的热梗（抖音、微博、小红书等），核对传播时间和原本语境；通常挑 2~4 个，大批量脚本可以适当多挑，写进 `$R/hotspots.json`：
 
 ```json
 [
-  {"topic": "男生秋冬简约穿搭攻略", "source": "抖音热榜 11.5", "heat": "约1100万",
-   "angle": "穿搭到位了，发根一塌就白搭", "products": ["2x", "huxi"]},
-  {"topic": "大摆羽绒服不用当肥粽子", "source": "抖音热榜 11.5",
-   "angle": "衣服挑对了，头发毛躁一样白搭", "products": ["jingyou", "mist"]}
+  {"topic": "嘻嘻不嘻嘻", "source": "11.4 梗语访问榜",
+   "url": "https://www.geng8.com/rank/day/2026-11-04/",
+   "angle": "镜前看到油塌或梳子卡住的情绪反转", "products": ["2x", "jingyou"]},
+  {"topic": "我要验牌", "source": "抖音开放平台梗语案例",
+   "url": "https://developer.open-douyin.com/forum/bulletin/post/698d9852a9441abeb0d4c8e0",
+   "angle": "翻瓶背看成分", "products": ["2x"]}
 ]
 ```
 
-- 挑跟受众日常有关、能一句话转到头发的：穿搭、换季、通勤、约会、氛围感、拍照。`angle` 写清怎么转到头发
+- 挑有辨识度的口头禅或反差句式，能一句话落到素材里的发根、发缝、发尾、瓶身；`angle` 写清怎么转到头发
+- 普通热榜话题标题不等于热梗；不要把「秋冬简约穿搭攻略」这类标题直接念进口播，也不要硬贴不相干的梗（用户 2026-11-05 反馈）
 - 不挑：灾难事故、社会负面、政治、明星个人和绯闻、别的品牌、需要具体数据才成立的
 - `products` 写哪些产品能用；不写就是全部
 - 用户给了热点或方向，照用户的写
 - 没有合适的就不写这个文件，`draft.py` 不加热点
-- 热点只借话题做开头钩子，素材里没有热点画面，所以只能写一句，马上转到头发状态（见第 3 节）
+- 热梗只借表达方式做一句开头，素材里没有梗的专属画面，马上转到头发状态（见第 3 节）。站内访问榜只证明有人检索，不当作平台播放量
 
 一个 brief 最多用一个热点，同产品的 brief 轮着用。
 
@@ -59,7 +62,7 @@ python3 -I scripts/draft.py --config $C --run $R --brief <id> --redo  # 重写�
 10. 审核人以前怎么改过（`learned/`）
 11. 用户确认过的稿，塞到 2000 字为止，只学口吻和长短，不照抄
 
-平台写完 `draft.py` 立刻 lint；有错误（事实、合规、产品名、照抄），把错误列给平台改一轮（同一个接口带 `script_id`）。还有错就留给人改。写好的稿存进 brief：`script_id`（平台脚本）、`segments`（每段文案）、`requirement`（这次的创作要求）、`hotspot`。
+平台写完，`draft.py` 先把平台脚本按排期命名（config 的 `naming`，如 `1105-B01-清扬控油蓬松洗发水-双重酰胺修护组合-新锐白领-大促方向：货架、超市，丰富场景`；视频和分享页也用这个名字），再 lint；有错误（事实、合规、产品名、照抄），把错误列给平台改一轮（同一个接口带 `script_id`）。还有错就留给人改。写好的稿存进 brief：`script_id`（平台脚本）、`segments`（每段文案）、`requirement`（这次的创作要求）、`hotspot`。
 
 ## 3. 人审时看什么
 
@@ -98,7 +101,7 @@ lint 不查文风。
   "brief_id": "1105-B01", "product_key": "2x",
   "direction": "大促方向：货架、超市，丰富场景", "direction_core": "大促方向", "direction_note": "",
   "selling_point": "双重酰胺修护组合", "audience": "新锐白领", "quantity": 10,
-  "script_id": "6a…", "hotspot": "男生秋冬简约穿搭攻略", "requirement": "为「清扬控油蓬松洗发水」写…",
+  "script_id": "6a…", "hotspot": "嘻嘻不嘻嘻", "requirement": "为「清扬控油蓬松洗发水」写…",
   "segments": [
     {"id": "1", "role": "hook", "title": "热梗开头", "text": "…"},
     {"id": "5", "role": "cta", "title": "引导下单", "text": "…"}

@@ -22,7 +22,7 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 | `PUT /video-scripts/{script_id}` | 整份写回（`title`、`segments`、`config`）。`submit` 用它同步人审后的文案 |
 | `DELETE /video-scripts/{script_id}` | 删脚本（`draft.py --redo` 重写时删旧的） |
 
-**同步审过的文案**：人审时改过的句子，`submit` 先 `GET` 平台脚本，把每段 `content` 换成审过的文案（画面、贴图、音效、全局配置原样保留），CTA 段和 `lock` 段 `ai_rewrite = false`，标题按 config 的 `naming` 改，`PUT` 回去，再 `GET` 核对：
+**同步审过的文案**：人审时改过的句子，`submit` 先 `GET` 平台脚本，把每段 `content` 换成审过的文案（画面、贴图、音效、全局配置原样保留），CTA 段和 `lock` 段 `ai_rewrite = false`，标题按 config 的 `naming`（和排期一致，`draft.py` 建好时就已经这样命名），`PUT` 回去，再 `GET` 核对：
 
 - 段数和审过的一样
 - 每段 `content` 和审过的一字不差

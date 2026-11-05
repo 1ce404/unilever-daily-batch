@@ -162,7 +162,12 @@ def sync_script(script_id, brief, title):
     """The platform wrote this script at ④ (draft.py). A human may have edited lines since: write the approved
     copy back into it (PUT, keeping the platform's visuals / stickers / SFX per segment), lock CTA and `lock`
     segments, title it, then read it back and check every line. Raises if it does not match."""
-    script = api("GET", f"/video-scripts/{script_id}")
+    try:
+        script = api("GET", f"/video-scripts/{script_id}")
+    except RuntimeError as e:
+        if "video_script_not_found" in str(e):
+            raise RuntimeError(f"平台脚本 {script_id} 已经被删了：draft.py --brief {brief['brief_id']} --redo 重写（文案会换，要重新人审）")
+        raise
     segs = brief["segments"]
     if len(script["segments"]) != len(segs):
         raise RuntimeError(f"平台脚本 {len(script['segments'])} 段，审过的文案 {len(segs)} 段，对不上：重跑 draft.py 或手动对齐")
@@ -181,13 +186,21 @@ def sync_script(script_id, brief, title):
     return script_id
 
 
+def set_title(script_id, title):
+    """Name a platform script after its schedule row (same name the videos and the share page get)."""
+    script = api("GET", f"/video-scripts/{script_id}")
+    body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments") if k in script}
+    body["title"] = title[:120]
+    api("PUT", f"/video-scripts/{script_id}", body)
+
+
 def video_title(cfg, brief, n=None):
     prod = cfg["products"][brief["product_key"]]
     fmt = cfg["naming"] if n else cfg["naming"].replace("-V{n:02d}", "")
     return fmt.format(
         date=brief["date"].replace("-", "")[4:], brief_no=brief["brief_id"].split("-")[-1], n=n,
         product=prod["full_name"], selling_point=brief.get("selling_point") or "机制",
-        audience=brief.get("audience") or "通用", direction=brief["direction"].replace("/", "-")[:30])
+        audience=brief.get("audience") or "通用", direction=brief["direction"].replace("/", "-"))
 
 
 def split_quantity(n, chunk):
