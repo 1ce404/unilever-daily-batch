@@ -10,7 +10,8 @@
     python3 scripts/clipo_batch.py share     --config qingyang --run runs/20261104 [--dry-run] [--partial]   # 每个 brief 一个分享链接
     python3 scripts/clipo_batch.py status    --config qingyang --run runs/20261104   # where is today's run? (offline)
 
-This script only moves the flow along. The agent writes each brief's copy at step ④ and a human approves it;
+This script only moves the flow along. Each brief is ONE platform generation task (later rounds and top-ups are
+added with /continue) and every generation carries the brand's compliance watermark (config `watermark`). The agent writes each brief's copy at step ④ and a human approves it;
 submit has the platform build the script from that copy verbatim (packaging from the product prompt
 video_script_create), turns on AI rewrite for every segment, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
 briefs a human approved (review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll
@@ -213,6 +214,15 @@ def video_title(cfg, brief, n=None):
         audience=brief.get("audience") or "通用", direction=brief["direction"].replace("/", "-"))
 
 
+def gen_body(script_id, quantity):
+    """Body for POST /video-cut-generations, with the brand's compliance watermark (config `watermark`)."""
+    body = {"script_id": script_id, "quantity": quantity}
+    wm = CFG.get("watermark") or {}
+    if wm.get("add"):
+        body.update(add_compliance_watermark=True, compliance_watermark_position=wm.get("position", "bottom_right"))
+    return body
+
+
 def split_quantity(n, chunk):
     """30 with chunk 15 -> [15, 15]; 31 -> [11, 10, 10]: even rounds, none above chunk."""
     k = math.ceil(n / chunk)
@@ -252,6 +262,16 @@ def cmd_submit(cfg, run, args):
                 print(f"💥 {b['brief_id']} 上次生成失败（{job.get('error')}），加 --retry-failed 重新生成")
                 skipped += 1
                 continue
+            if job.get("rounds") is not None and job.get("generation_id"):  # one task per brief: continue it
+                lost = gen_quantity(cfg, b, args) + sum(t.get("quantity", 0) for t in job.get("topped", [])) \
+                    - job.get("landed", 0) - sum(job.get("rounds", []))
+                job["rounds"] = ([lost] if lost > 0 else []) + job.get("rounds", [])
+                job.update(stage="generating")
+                job.pop("error", None)
+                next_round(job)
+                st.save()
+                print(f"🔁 {b['brief_id']} 在原任务上继续生产")
+                continue
             for k in ("generation_id", "error", "stage"):
                 job.pop(k, None)
         if job.get("texts") and job["texts"] != texts and job.get("script_id"):
@@ -282,19 +302,12 @@ def cmd_submit(cfg, run, args):
             continue
         if not job.get("generation_id"):
             chunks = split_quantity(n, cfg.get("generate_chunk") or n)
-            job["generation_id"] = api("POST", "/video-cut-generations",
-                                       {"script_id": job["script_id"], "quantity": chunks[0]})["id"]
-            job["stage"] = "generating"
+            job["generation_id"] = api("POST", "/video-cut-generations", gen_body(job["script_id"], chunks[0]))["id"]
+            job.update(stage="generating", rounds=chunks[1:], landed=0)
             job.pop("topups", None)
-            offset = chunks[0]
-            for c in chunks[1:]:
-                gid = api("POST", "/video-cut-generations", {"script_id": job["script_id"], "quantity": c})["id"]
-                job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,
-                                                     "quantity": c, "at": time.strftime("%Y-%m-%d %H:%M")})
-                offset += c
             st.save()
             submitted += 1
-            print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
+            print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），平台上一个任务，分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
     if args.dry_run:
         print(f"\n(dry run) 将生成 {total} 条视频，跳过 {skipped} 个 brief。确认后去掉 --dry-run 提交")
         return
@@ -380,11 +393,17 @@ def cmd_topup(cfg, run, args):
               f"通过率 {ok}/{len(vids)}，补生成 {want} 条（V{offset+1:02d} 起）")
         if args.dry_run:
             continue
-        for c in split_quantity(want, cfg.get("generate_chunk") or want):
-            gid = api("POST", "/video-cut-generations", {"script_id": job["script_id"], "quantity": c})["id"]
-            job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,
-                                                 "quantity": c, "at": time.strftime("%Y-%m-%d %H:%M")})
-            offset += c
+        if job.get("rounds") is not None and not job.get("topups"):  # one platform task per brief: continue it
+            job["rounds"] = job.get("rounds", []) + split_quantity(want, cfg.get("generate_chunk") or want)
+            job.setdefault("topped", []).append({"quantity": want, "at": time.strftime("%Y-%m-%d %H:%M")})
+            job["stage"] = "generating"
+            next_round(job)
+        else:  # runs submitted before 11-06 (separate tasks per round)
+            for c in split_quantity(want, cfg.get("generate_chunk") or want):
+                gid = api("POST", "/video-cut-generations", gen_body(job["script_id"], c))["id"]
+                job.setdefault("topups", []).append({"generation_id": gid, "stage": "generating", "offset": offset,
+                                                     "quantity": c, "at": time.strftime("%Y-%m-%d %H:%M")})
+                offset += c
         st.save()
     if args.dry_run:
         print(f"\n(dry run) 将补生成 {total} 条（消耗额度）。确认后去掉 --dry-run")
@@ -403,7 +422,11 @@ def pull_generation(st, cfg, b, job, gen):
     except RuntimeError as e:
         gen["last_error"] = str(e)[:300]
         return
-    if g["status"] == "success" and g["cut_ids"]:
+    single = gen is job and job.get("rounds") is not None  # one task per brief, rounds added via /continue
+    landed_more = single and len(g.get("cut_ids") or []) > job.get("landed", 0)
+    if g["status"] in ("failed", "error"):
+        gen["stage"], gen["error"] = "failed", f"生成失败 {g.get('error_code')}: {g.get('error_message')}"
+    if (g["status"] == "success" and g["cut_ids"]) or landed_more:
         prod = cfg["products"][b["product_key"]]
         vids = []
         for k, cut_id in enumerate(g["cut_ids"], 1):
@@ -426,10 +449,25 @@ def pull_generation(st, cfg, b, job, gen):
                 v["render_job"], v["stage"] = r["job_id"], "rendering"
             except RuntimeError as e:
                 v["last_error"] = str(e)[:300]
-        if all(st.videos[x].get("render_job") for x in vids):
+        if single:
+            job["landed"] = len(g["cut_ids"])
+            if g["status"] == "success":
+                if job.get("rounds"):
+                    next_round(job)
+                elif all(st.videos[x].get("render_job") for x in vids):
+                    gen["stage"] = "generated"
+        elif all(st.videos[x].get("render_job") for x in vids):
             gen["stage"] = "generated"
-    elif g["status"] in ("failed", "error"):
-        gen["stage"], gen["error"] = "failed", f"生成失败 {g.get('error_code')}: {g.get('error_message')}"
+
+
+def next_round(job):
+    """Add the brief's next round to its own platform task (POST /video-cut-generations/{id}/continue)."""
+    c = job["rounds"][0]
+    try:
+        api("POST", f"/video-cut-generations/{job['generation_id']}/continue", {"quantity": c})
+        job["rounds"] = job["rounds"][1:]
+    except RuntimeError as e:  # e.g. previous round still running; retried on the next poll
+        job["last_error"] = str(e)[:300]
 
 
 def generating(job):

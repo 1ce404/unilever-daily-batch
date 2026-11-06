@@ -77,7 +77,8 @@ python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后
 ```
 - **AI 建脚本**：`POST /video-script-generations` 把审过的文案逐字交给平台，平台按产品提示词配画面、配音、BGM、字幕、贴图、音效；建完按排期命名、每段开 AI 改写、把审过的备选说法写进这条脚本的改写要求（`vo_rewrite_prompt`），再读回核对每段一字不差，对不上就删掉不生成
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
-- 每个 brief 生成 排期 × `generate_factor`（2）条，拆成每轮 ≤ `generate_chunk`（15）条提交
+- 每个 brief 生成 排期 × `generate_factor`（2）条。平台上一个 brief 一条生成任务，每轮 ≤ `generate_chunk`（15）条，第二轮起在同一条任务上继续生产
+- 每条视频右下角都加「AI生成」合规水印（config 的 `watermark`，清扬、力士都开）
 - 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
 - 跑完有 brief 不够数：`topup --dry-run` 报补多少，用户确认后 `topup`，再 `poll`。用同一份审过的脚本，不用重审
 

@@ -114,5 +114,11 @@
     "until": "2026-11-11",
     "_note": "节点期内每条 CTA 或机制句带上节点词（团队 10.19 后脚本约一半带双十一）"
   },
-  "_products_note": "每个产品一个文件：config/lux/<product_key>.json（jingyou 精油香氛洗发水 / mist 小香瓶）"
+  "_products_note": "每个产品一个文件：config/lux/<product_key>.json（jingyou 精油香氛洗发水 / mist 小香瓶）",
+  "watermark": {
+    "add": true,
+    "position": "bottom_right",
+    "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）"
+  },
+  "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒（11.03 B04 一次要 30 条超时，整轮 0 条落地），所以一轮最多这么多条。用户 11-06：一个 brief 在平台上只建一条生成任务，超过的轮次和补生成都 continue 到这条任务上"
 }

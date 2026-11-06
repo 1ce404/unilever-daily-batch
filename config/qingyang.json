@@ -16,7 +16,7 @@
   "generate_factor": 2,
   "_generate_factor_note": "每个 brief 一次生成 排期条数 × 2（用户 11-05 定：3 倍太多）。平台 AI 审核通过率约 40%，2 倍时一次就够数的概率约四成，不够的用 topup 按实际通过率补",
   "generate_chunk": 15,
-  "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒：11.03 B04 一次要 30 条超时，整轮 0 条落地。所以一个 brief 要生成的条数拆成每轮 ≤ 这个数分别提交，一轮失败不连累其它轮",
+  "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒（11.03 B04 一次要 30 条超时，整轮 0 条落地），所以一轮最多这么多条。用户 11-06：一个 brief 在平台上只建一条生成任务，超过的轮次和补生成都 continue 到这条任务上",
   "store_to_product": {
     "清扬官方旗舰店": "2x",
     "旗舰": "2x",
@@ -149,5 +149,10 @@
     "_note": "排期「内容方向」括号里的说明是长期沿用的标签，不是要写进口播的素材。先看团队同方向已交付的脚本怎么写",
     "法国人头发发质蓬松溯源": "团队 0914~1009 的品牌背书 2X 脚本 14 条，只有 10.20 一条在钩子里提了一句法国，其余都不提。写法：清扬这个牌子都不陌生 / 清扬专研头皮护理多年 / 大品牌值得信赖 → 专属SCA控油蓬松技术 → 2倍立体蓬松高颅顶，发根支棱不塌陷。不要整条围绕法国"
   },
-  "_products_note": "每个产品一个文件：config/qingyang/<product_key>.json（2x 控油蓬松洗发水 / huxi 控油呼吸瓶 / selenium 二硫化硒蓝C瓶）。这里只放品牌共用的：资料来源、店铺映射、禁用词、文案长度、生成数量、待确认项"
+  "_products_note": "每个产品一个文件：config/qingyang/<product_key>.json（2x 控油蓬松洗发水 / huxi 控油呼吸瓶 / selenium 二硫化硒蓝C瓶）。这里只放品牌共用的：资料来源、店铺映射、禁用词、文案长度、生成数量、待确认项",
+  "watermark": {
+    "add": true,
+    "position": "bottom_right",
+    "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）"
+  }
 }

@@ -36,14 +36,15 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 
 | 接口 | 用途 |
 |---|---|
-| `POST /video-cut-generations` | 提交生成。body：`script_id`、`quantity`（1~300）；可选 `add_compliance_watermark`、`compliance_watermark_position`（「AI生成」合规水印） |
+| `POST /video-cut-generations` | 提交生成。body：`script_id`、`quantity`（1~300）、`add_compliance_watermark`、`compliance_watermark_position`。skill 按 config 的 `watermark` 每次都带上：清扬、力士都是 `true` + `bottom_right`（右下角「AI生成」水印，用户 11-06 定） |
 | `GET /video-cut-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；`generated_count / quantity` 是进度；`success` 时 `cut_ids` 是这批剪辑 |
-| `POST /video-cut-generations/{id}/continue` | 往同一个任务追加 `quantity` 条（要等上一轮跑完）。skill 补生成时另提交一条新任务，效果一样 |
+| `POST /video-cut-generations/{id}/continue` | 往同一个任务追加 `quantity` 条（要等上一轮跑完；水印沿用任务的设置）。skill 的第二轮起和补生成都用它，平台上一个 brief 只有一条任务 |
 | `GET /video-cuts/{cut_id}` | 读一条剪辑：`draft`（整份时间轴，渲染要用）、`random_result.vo_rewrite`（这条改写后的口播）、`random_result.tts_speaker_id`（音色） |
 
 要点：
 
-- **每一轮全有全无**：一条没组装成，这一轮一条剪辑都不落，也不扣额度。所以一个 brief 要的条数拆成每轮 ≤ `generate_chunk`（15）条分别提交，一轮失败不连累别的轮
+- **一个 brief 在平台上只有一条生成任务**（用户 11-06：之前每轮单独提交，平台列表里一个脚本出现两行 10/10，看着奇怪）。第一轮 `POST`，后面的轮次和补生成都 `continue` 到这条任务上，`poll` 每落地一轮就接着提交下一轮
+- **每一轮全有全无**：一条没组装成，这一轮一条剪辑都不落，也不扣额度，之前几轮的产出照旧保留。一轮最多 `generate_chunk`（15）条，超过的分几轮 `continue`；某轮失败用 `submit --retry-failed` 在同一条任务上继续
 - **一次多生成**：每个 brief 生成 排期 × `generate_factor`（2）条，平台 AI 审核通过率约 40%，不够的用 `topup` 补
 - `poll` 读回每条的 `random_result.vo_rewrite`，用 lint 再查一遍，违规的记进 `copy_issues`，按驳回处理
 - 失败原因：`voiceover_rewrite_failed`（平台改写模型 502/503，过一会儿 `submit --retry-failed`）、`timeout`（一轮组装超过 600 秒，减小每轮条数）
