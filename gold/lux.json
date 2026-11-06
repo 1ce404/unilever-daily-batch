@@ -296,6 +296,366 @@
           "text": "给自己一份小美好，从头开始香香软软，双十一进直播间带回家！"
         }
       ]
+    },
+    {
+      "id": "LUX-1106-L06",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "洗完头一吹干，怎么还是毛毛的？"
+        },
+        {
+          "role": "pain",
+          "text": "其实是发丝缺水，光洗干净还不够。"
+        },
+        {
+          "role": "selling",
+          "text": "换成力士精油香氛洗发水，天然鲜花精油搭配4D玻尿酸。"
+        },
+        {
+          "role": "effect",
+          "text": "润养发丝，改善毛躁，一梳到底。"
+        },
+        {
+          "role": "effect",
+          "text": "还有层次丰富的法式奢香，撩发都是花香。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一进直播间，把顺滑香氛洗护带回家。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L07",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "好看的披发，靠的是发丝那点光泽。"
+        },
+        {
+          "role": "pain",
+          "text": "发尾一干，光泽感就跟着没了。"
+        },
+        {
+          "role": "selling",
+          "text": "力士精油香氛洗发水，4D玻尿酸搭配天然鲜花精油。"
+        },
+        {
+          "role": "effect",
+          "text": "洗完发丝水润，碎发服帖多了。"
+        },
+        {
+          "role": "effect",
+          "text": "弱酸性温和配方，泡沫绵密好冲洗。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一想要顺顺的头发，进直播间挑一瓶。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L08",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "秋冬穿搭配好了，头发却拖了后腿。"
+        },
+        {
+          "role": "pain",
+          "text": "发尾干干的，配上大衣更显毛躁。"
+        },
+        {
+          "role": "selling",
+          "text": "力士精油香氛洗发水，天然鲜花精油融合4D玻尿酸。"
+        },
+        {
+          "role": "effect",
+          "text": "润养干枯发丝，发尾软软的有光泽。"
+        },
+        {
+          "role": "effect",
+          "text": "法式奢香很有层次，走动时香气跟着发丝。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一香氛洗护好价，进直播间看看。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L09",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "头发香不香，一撩就知道。"
+        },
+        {
+          "role": "pain",
+          "text": "要是发丝还毛毛躁躁，香气也打折扣。"
+        },
+        {
+          "role": "selling",
+          "text": "试试力士精油香氛洗发水，鲜花精油加4D玻尿酸。"
+        },
+        {
+          "role": "effect",
+          "text": "发丝润了，碎发服帖，扎起来更利落。"
+        },
+        {
+          "role": "effect",
+          "text": "法式奢香淡淡的，一甩马尾就闻到。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一进直播间，柔顺香氛洗护带回家。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L10",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "头发香香顺顺的，就是给自己的情绪价值。"
+        },
+        {
+          "role": "pain",
+          "text": "可发尾总是毛躁打结，香也香不起来。"
+        },
+        {
+          "role": "selling",
+          "text": "力士精油香氛洗发水，天然鲜花精油搭配4D玻尿酸。"
+        },
+        {
+          "role": "effect",
+          "text": "润养发丝，改善毛躁，柔顺又亮泽。"
+        },
+        {
+          "role": "effect",
+          "text": "层次丰富的法式奢香，撩发都是花香。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一给自己安排上，进直播间挑一瓶。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L11",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "头发好不好看，一半看发丝有没有水润感。"
+        },
+        {
+          "role": "pain",
+          "text": "发丝一干，就容易毛躁、没光泽。"
+        },
+        {
+          "role": "selling",
+          "text": "换成力士精油香氛洗发水，4D玻尿酸搭配鲜花精油。"
+        },
+        {
+          "role": "effect",
+          "text": "发丝喝饱水，摸起来柔柔顺顺。"
+        },
+        {
+          "role": "effect",
+          "text": "弱酸性温和配方，泡沫绵密，洗感舒服。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一想换香氛洗护，进直播间看看。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L12",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "发尾总是乱翘，怎么理都不服帖？"
+        },
+        {
+          "role": "pain",
+          "text": "其实是发丝太干，毛鳞片都翘起来了。"
+        },
+        {
+          "role": "selling",
+          "text": "力士精油香氛洗发水，鲜花精油加4D玻尿酸。"
+        },
+        {
+          "role": "effect",
+          "text": "洗完发尾服服帖帖，柔顺有光泽。"
+        },
+        {
+          "role": "effect",
+          "text": "还有法式奢香，撩发都是花香。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一想要精致的头发，进直播间看看。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L13",
+      "kind": "用户确认",
+      "product": "jingyou",
+      "direction": "日常",
+      "selling_point": "全SKU",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "你的头发，是不是也总比你先显累？"
+        },
+        {
+          "role": "pain",
+          "text": "发丝一毛躁，整个人都显得不够利落。"
+        },
+        {
+          "role": "selling",
+          "text": "试试力士精油香氛洗发水，4D玻尿酸搭配天然鲜花精油。"
+        },
+        {
+          "role": "effect",
+          "text": "润养发丝，梳子一下梳到底。"
+        },
+        {
+          "role": "effect",
+          "text": "层次丰富的法式奢香，洗完头发香香的。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一进直播间，把顺滑带回家。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L14",
+      "kind": "用户确认",
+      "product": "mist",
+      "direction": "日常",
+      "selling_point": "随身发香",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "头发毛躁了，想补救又不想重新洗？"
+        },
+        {
+          "role": "pain",
+          "text": "发尾一干一乱，整个人都显得不精致。"
+        },
+        {
+          "role": "selling",
+          "text": "试试力士小香瓶，7D玻尿酸加水解角蛋白。"
+        },
+        {
+          "role": "effect",
+          "text": "对着发尾轻轻喷几下，毛躁被抚平。"
+        },
+        {
+          "role": "effect",
+          "text": "喷完头发带着淡淡的香气。"
+        },
+        {
+          "role": "cta",
+          "text": "20ml小巧一支，双十一进直播间挑香调。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
+    },
+    {
+      "id": "LUX-1106-L15",
+      "kind": "用户确认",
+      "product": "mist",
+      "direction": "日常",
+      "selling_point": "随身发香",
+      "why": "用户 11-06 确认交付：开头轮换类型、不带具体场景；精油香氛只写全SKU，不点名香型",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "氛围感这件事，有时就差一点发香。"
+        },
+        {
+          "role": "pain",
+          "text": "发丝顺一点、香一点，整个人都不一样。"
+        },
+        {
+          "role": "selling",
+          "text": "力士小香瓶精油香氛喷雾，添加7D玻尿酸。"
+        },
+        {
+          "role": "effect",
+          "text": "轻轻喷几下，发丝柔顺有光泽。"
+        },
+        {
+          "role": "effect",
+          "text": "清新花果香、绿叶花香、木质花香，三种随你挑。"
+        },
+        {
+          "role": "cta",
+          "text": "双十一进直播间，挑一支喜欢的香调。"
+        }
+      ],
+      "status": "confirmed",
+      "confirmed_on": "2026-11-06"
     }
   ]
 }
