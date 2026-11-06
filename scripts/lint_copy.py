@@ -102,6 +102,7 @@ def lint_brief(brief, cfg):
     if any(i[0] == "error" and "没有文案" in i[1] for i in issues):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
+    issues += lint_opening(segs, cfg, product)
     camp = cfg.get("campaign")
     if camp and brief.get("date", "") <= camp["until"] and not any(camp["name"] in t for t in texts):
         issues.append(("warn", f"{camp['name']}期间没提「{camp['name']}」（放进机制或 CTA 句）"))
@@ -220,6 +221,22 @@ def lint_variety(briefs, cfg, run):
 
 def o_same_day(label, todays):
     return any(o["brief_id"] == label for o in todays)
+
+
+OPENING_BANNED = re.compile(r"拍[一二三四五六七八九十\d]+发|到手|\d+(?:\.\d+)?\s*元|套组|瓶背|背面|成分表|配方表")
+
+
+def lint_opening(segs, cfg, product):
+    """User 11-06: the first line is about the viewer's hair, never the price / deal / bottle back / ingredient list."""
+    if not segs:
+        return []
+    out = []
+    for k, t in enumerate([seg_text(segs[0])] + seg_alts(segs[0]), 1):
+        m = OPENING_BANNED.search(t)
+        if m:
+            label = "第一句" if k == 1 else f"第一句说法{k}"
+            out.append(("error", f"{label}出现「{m.group(0)}」：开头只写人和头发状态，机制放最后一句，不讲瓶背成分表"))
+    return out
 
 
 def lint_script(texts, segs, brief, cfg, product):
