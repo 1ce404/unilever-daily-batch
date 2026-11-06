@@ -88,7 +88,7 @@ python3 -I scripts/clipo_batch.py report --config $C --run $R              # rep
 python3 -I scripts/clipo_batch.py share  --config $C --run $R --dry-run    # 看哪些 brief 要发分享
 python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每个够数的 brief 一个分享链接，当天的收进一个分组
 ```
-- 分享链接（交付文件夹）命名 `TZ-26-1106-LUX-精油香氛-brief1`（config 的 `delivery_naming`：年-日期-品牌-产品简称-brief 序号；清扬写「清扬」，如 `TZ-26-1106-清扬-控油蓬松-brief1`；brief 号按日期、按产品各自从 1 升序）。视频名是文件夹名加序号
+- 分享链接（交付文件夹）命名 `TZ-26-1106-LUX-精油香氛-brief1`（config 的 `delivery_naming`：年-日期-品牌-产品简称-brief 序号；清扬写「清扬」，如 `TZ-26-1106-清扬-控油蓬松-brief1`；brief 号按日期、按产品各自从 1 升序）。视频名是文件夹名加序号；当天的分组命名 `TZ-26-1106-LUX` / `TZ-26-1106-清扬`（`delivery_group_naming`）
 - 每个 brief 挑够排期条数的可交付视频，建一个平台分享链接（`/share/{id}`）；当天这个品牌的所有分享收进一个分组（`/share/group/{id}`），一个链接看全部
 - 不够数的 brief 默认不发，要先发加 `--partial`；补生成后挑的视频变了，再跑 `share` 会换成新链接（分组里自动换掉，旧链接删除）
 - 链接写进 `delivery.md`，每个 brief 一行
