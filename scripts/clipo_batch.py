@@ -2,7 +2,7 @@
 """Run approved briefs through Clipo Remix: preflight → submit → poll (generate, render, AI review) → topup → report.
 
     python3 scripts/clipo_batch.py preflight --config qingyang --run runs/20261104
-    python3 scripts/clipo_batch.py submit    --config qingyang --run runs/20261104 [--brief 1104-B01] [--dry-run] [--retry-failed]
+    python3 scripts/clipo_batch.py submit    --config qingyang --run runs/20261104 [--brief 1104-B01] [--dry-run] [--scripts-only] [--retry-failed]
     python3 scripts/clipo_batch.py poll      --config qingyang --run runs/20261104 [--wait 3600]
     python3 scripts/clipo_batch.py topup     --config qingyang --run runs/20261104 [--dry-run]
     python3 scripts/clipo_batch.py report    --config qingyang --run runs/20261104   # report.md + delivery.md
@@ -263,7 +263,7 @@ def cmd_submit(cfg, run, args):
         if job.get("generation_id"):
             continue  # already on the platform; poll / topup handle it
         n = gen_quantity(cfg, b, args)
-        total += n
+        total += 0 if args.scripts_only else n
         if args.dry_run:
             print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）")
             continue
@@ -275,6 +275,10 @@ def cmd_submit(cfg, run, args):
                 skipped += 1
                 continue
             st.save()
+            print(f"📝 {b['brief_id']} 平台脚本已建好并核对：{job['script_id']}（{title}）")
+        if args.scripts_only:
+            submitted += 1
+            continue
         if not job.get("generation_id"):
             chunks = split_quantity(n, cfg.get("generate_chunk") or n)
             job["generation_id"] = api("POST", "/video-cut-generations",
@@ -292,6 +296,9 @@ def cmd_submit(cfg, run, args):
             print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
     if args.dry_run:
         print(f"\n(dry run) 将生成 {total} 条视频，跳过 {skipped} 个 brief。确认后去掉 --dry-run 提交")
+        return
+    if args.scripts_only:
+        print(f"\n建好 {submitted} 个平台脚本，跳过 {skipped} 个，没有生成视频。生成前先 submit --dry-run 报条数")
         return
     print(f"\n新提交 {submitted} 个 brief，跳过 {skipped} 个。下一步：clipo_batch.py poll")
 
@@ -683,6 +690,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--partial", action="store_true", help="share: 不够数的 brief 也先发")
     ap.add_argument("--refresh", action="store_true", help="share: 已有分享也重建（换掉旧链接）")
+    ap.add_argument("--scripts-only", action="store_true", help="submit: 只在平台建脚本并核对，不生成视频（不扣额度）")
     ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
     ap.add_argument("--factor", type=float, help="submit: 一次生成排期条数的几倍，默认取 config.generate_factor")
     ap.add_argument("--margin", type=float, default=1.3, help="topup: 按通过率估算后再多要的倍数")

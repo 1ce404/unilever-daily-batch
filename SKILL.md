@@ -70,6 +70,7 @@ QC 文档和昨天比有变化，读清扬段：新卡审词、新机制先改 c
 
 **⑧ 生产**
 ```bash
+python3 -I scripts/clipo_batch.py submit --config $C --run $R --scripts-only   # 只建平台脚本并核对，不生成、不扣额度（可先给用户看）
 python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run   # 报总条数给用户确认（消耗额度）
 python3 -I scripts/clipo_batch.py submit --config $C --run $R
 python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后台跑
