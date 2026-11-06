@@ -14,7 +14,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 - **照团队的写法写。** 5~6 句，每句一个任务：开头 → 引产品 → 卖点 → 效果 → 机制 + CTA。内容方向和人群决定开头，开头每条新写；卖点句、机制句用 config 里的固定说法，可以跨 brief 复用；每句写 2~3 个说法给审核人挑、给平台改写当范围。详见 [writing.md](references/writing.md)
 - **人只审底稿，必须人审。** lint 查底稿，`poll` 查每条改写，平台 AI 审核查成片
 - **文案的事实只有一个来源**：`config/<brand>.json`（品牌共用）+ `config/<brand>/<产品>.json`（每个产品）。产品规则变了只改那个产品的文件
-- **按可交付数交付。** 通过率约 40%，一次生成排期的 2 倍，不够再补，直到每个 brief 够数；每个 brief 交付一个分享链接
+- **按可交付数交付。** 一次生成排期的 2 倍（11.6 实测通过率 80%~95%，小香瓶约 55%），不够再补，直到每个 brief 够数；每个 brief 交付一个分享链接，每天一个品牌一个分组
 
 不知道做到哪了，先跑 `status`，它会给出下一步（离线）。
 
@@ -60,7 +60,7 @@ QC 文档和昨天比有变化，读清扬段：新卡审词、新机制先改 c
 错误清零才能给人审。查事实、合规、产品名位置、卖点、机制、CTA、短句长度（每句和每个备选说法都查），以及开头撞车：开头两句和范本 / 近 7 天 / 当天其它稿相似度超过 50%，或同一天第一句开头一样。卖点句、机制句复用不算。不查文风。
 
 **⑥ 待审 ⏸** `review_doc.py render --config $C --run $R` → `review.md` / `review.xml`
-把每条脚本完整发给用户看（每条展示创作思路、完整口播/分段和最像的旧稿；相似度只用于辅助判断）。要发飞书：`lark-cli docs +create --content @$R/review.xml`，**第一次往飞书写、往群里发之前先问用户**放哪。**然后停下等审核**。
+把每条脚本完整发给用户看（每条展示完整口播、分段和每句的备选说法、开头最像的旧稿；相似度只用于辅助判断）。要发飞书：`lark-cli docs +create --content @$R/review.xml`，**第一次往飞书写、往群里发之前先问用户**放哪。**然后停下等审核**。
 
 **⑦ 记录审核**
 - 用户在对话里说通过：`review_doc.py approve --brief <id> --by 用户 --note "<原话>"`
@@ -79,21 +79,22 @@ python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
 - 每个 brief 生成 排期 × `generate_factor`（2）条。平台上一个 brief 一条生成任务，每轮 ≤ `generate_chunk`（15）条，第二轮起在同一条任务上继续生产
 - 每条视频右下角都加「AI生成」合规水印（config 的 `watermark`，清扬、力士都开）
-- 某轮失败（平台改写模型 502/503、组装超时）：等一会儿 `submit --retry-failed`，失败的轮不扣额度
+- 某轮失败：失败的轮不扣额度，`submit --retry-failed` 在同一条任务上继续。常见原因：平台改写模型 502/503（等一会儿重试）、组装超时（减小每轮条数）、`tts_failed` 音色配不出来（11.6 L07：平台建脚本抽到了坏音色，在平台脚本里删掉这个音色再重试，并提醒用户在音色库停用）
+- 改了平台审核提示词，或放宽了 config 的文案规则：`rereview` 把被驳回的成片重新送 AI 审核、按当前规则重查改写，不重新生成。它和后台 `poll` 都写进度记录，先停 `poll` 再跑
 - 跑完有 brief 不够数：`topup --dry-run` 报补多少，用户确认后 `topup`，再 `poll`。用同一份审过的脚本，不用重审
 
 **⑨ 交付**
 ```bash
 python3 -I scripts/clipo_batch.py report --config $C --run $R              # report.md（每条结果和驳回原因）+ delivery.md（交付清单）
 python3 -I scripts/clipo_batch.py share  --config $C --run $R --dry-run    # 看哪些 brief 要发分享
-python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每个够数的 brief 一个分享链接，当天的收进一个分组
+python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每个够数的 brief 一个分享链接（10 条），当天的收进一个分组
 ```
 - 分享链接（交付文件夹）命名 `TZ-26-1106-LUX-精油香氛-brief1`（config 的 `delivery_naming`：年-日期-品牌-产品简称-brief 序号；清扬写「清扬」，如 `TZ-26-1106-清扬-控油蓬松-brief1`；brief 号按日期、按产品各自从 1 升序）。视频名是文件夹名加序号；当天的分组命名 `TZ-26-1106-LUX` / `TZ-26-1106-清扬`（`delivery_group_naming`）
 - 每个 brief 挑够排期条数的可交付视频，建一个平台分享链接（`/share/{id}`）；当天这个品牌的所有分享收进一个分组（`/share/group/{id}`），一个链接看全部
 - 不够数的 brief 默认不发，要先发加 `--partial`；补生成后挑的视频变了，再跑 `share` 会换成新链接（分组里自动换掉，旧链接删除）
 - 链接写进 `delivery.md`，每个 brief 一行
 
-回复用户：每个 brief 可交付 / 排期条数和分享链接、当天的分组链接、驳回原因分类、没生产的、要人决定的事。有 brief 不够数就不说「全部够数」。
+回复用户：每个 brief 可交付 / 排期条数、驳回原因分类、没生产的、要人决定的事；最后给一段**能直接复制**的链接清单（代码块，分组链接在前，每行「交付文件夹名：链接」）。有 brief 不够数就不说「全部够数」。
 
 ## 铁律
 
