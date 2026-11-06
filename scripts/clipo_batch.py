@@ -5,6 +5,7 @@
     python3 scripts/clipo_batch.py submit    --config qingyang --run runs/20261104 [--brief 1104-B01] [--dry-run] [--scripts-only] [--retry-failed]
     python3 scripts/clipo_batch.py poll      --config qingyang --run runs/20261104 [--wait 3600]
     python3 scripts/clipo_batch.py topup     --config qingyang --run runs/20261104 [--dry-run]
+    python3 scripts/clipo_batch.py rereview  --config qingyang --run runs/20261104 [--dry-run] [--all]   # 改了平台审核提示词后，驳回的重新审
     python3 scripts/clipo_batch.py report    --config qingyang --run runs/20261104   # report.md + delivery.md
     python3 scripts/clipo_batch.py share     --config qingyang --run runs/20261104 [--dry-run] [--partial]   # 每个 brief 一个分享链接
     python3 scripts/clipo_batch.py status    --config qingyang --run runs/20261104   # where is today's run? (offline)
@@ -301,6 +302,39 @@ def cmd_submit(cfg, run, args):
         print(f"\n建好 {submitted} 个平台脚本，跳过 {skipped} 个，没有生成视频。生成前先 submit --dry-run 报条数")
         return
     print(f"\n新提交 {submitted} 个 brief，跳过 {skipped} 个。下一步：clipo_batch.py poll")
+
+
+# ---------- re-review ----------
+
+def cmd_rereview(cfg, run, args):
+    """After the user changes a platform review prompt (or the copy rules in config): send rendered videos
+    that were rejected back to AI review, and re-lint every rewrite with today's rules. Nothing is regenerated
+    or re-rendered. --all also resubmits videos that passed."""
+    st = State(run)
+    briefs = {b["brief_id"]: b for b in load_briefs(run)}
+    again, relinted = [], 0
+    for vid, v in sorted(st.videos.items()):
+        b = briefs.get(v["brief_id"])
+        if v.get("stage") != "done" or not b or (args.brief and v["brief_id"] != args.brief):
+            continue
+        prod = cfg["products"][b["product_key"]]
+        got = v.get("texts") or []
+        issues = [m for t in got for l, m in lint_text(t, cfg, prod) if l == "error"]
+        issues += [m for l, m in lint_script(got, b["segments"], b, cfg, prod) if l == "error"]
+        relinted += issues != v.get("copy_issues")
+        v["copy_issues"] = issues
+        if args.all or v.get("ai_review") != "pass":
+            again.append(v)
+    print(f"重新查改写：{relinted} 条结论变了；要重新 AI 审核的：{len(again)} 条")
+    if args.dry_run:
+        return
+    for i in range(0, len(again), 100):
+        batch = again[i:i + 100]
+        api("POST", "/video-cuts/review", {"cut_ids": [v["cut_id"] for v in batch]})
+        for v in batch:
+            v["stage"], v["ai_review"], v["ai_reason"] = "reviewing", None, None
+    st.save()
+    print("已提交，poll 会读回新结论")
 
 
 # ---------- top-up ----------
@@ -683,13 +717,14 @@ def cmd_share(cfg, run, args):
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "report", "share", "status"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "status"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--partial", action="store_true", help="share: 不够数的 brief 也先发")
     ap.add_argument("--refresh", action="store_true", help="share: 已有分享也重建（换掉旧链接）")
+    ap.add_argument("--all", action="store_true", help="rereview: 通过的也重新审")
     ap.add_argument("--scripts-only", action="store_true", help="submit: 只在平台建脚本并核对，不生成视频（不扣额度）")
     ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
     ap.add_argument("--factor", type=float, help="submit: 一次生成排期条数的几倍，默认取 config.generate_factor")
@@ -701,7 +736,7 @@ def main():
     cfg = load_config(args.config)
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
-    {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "report": cmd_report, "share": cmd_share,
+    {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "rereview": cmd_rereview, "report": cmd_report, "share": cmd_share,
      "status": cmd_status}[args.cmd](cfg, args.run, args)
 
 
