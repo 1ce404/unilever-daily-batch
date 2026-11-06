@@ -239,6 +239,18 @@ def lint_opening(segs, cfg, product):
     return out
 
 
+def approved_variant(text, seg):
+    """True when a rewritten line keeps the substance of one of the approved phrasings of its segment."""
+    norm = lambda x: re.sub(r"[^一-鿿A-Za-z0-9]", "", x)
+    return any(difflib.SequenceMatcher(None, norm(text), norm(a)).ratio() >= 0.6 for a in [seg_text(seg)] + seg_alts(seg))
+
+
+def covered_by_variant(term, texts, segs):
+    """A kept term may be missing when the rewrite follows an approved alternative that leaves it out."""
+    return any(term in seg_text(sg) and any(term not in a for a in seg_alts(sg)) and approved_variant(t, sg)
+               for t, sg in zip(texts, segs))
+
+
 def lint_script(texts, segs, brief, cfg, product):
     """Whole-script checks; also used on Clipo's rewritten copy."""
     issues = []
@@ -262,12 +274,17 @@ def lint_script(texts, segs, brief, cfg, product):
     for k, t in enumerate(texts):
         if re.search(r"(这|那)(瓶|款|个洗发水)", t) and k not in named and (not named or named[0] > k):
             issues.append(("error", f"S{k + 1}「{re.search(r'(这|那)(瓶|款|个洗发水)', t).group(0)}」指代产品：这一句要说完整产品名「{product['full_name']}」"))
+    # A rewrite may say a line the way one of its reviewer-approved alternatives does (user 11-06): judge
+    # the selling point and kept terms segment by segment, against the approved text and alternatives.
+    said = lambda m: any(m in t for t in texts) or any(
+        any(m in a for a in [seg_text(sg)] + seg_alts(sg)) and approved_variant(t, sg)
+        for t, sg in zip(texts, segs))
     sp = product["selling_points"].get(brief.get("selling_point", ""))
-    if sp and not any(m in t for t in texts for m in sp["must_mention"]):
+    if sp and not any(said(m) for m in sp["must_mention"]):
         issues.append(("error", f"测试卖点「{brief['selling_point']}」没有出现（需要提到 {sp['must_mention']}）"))
     base = " ".join(seg_text(s) for s in segs)
     for term in product.get("keep_terms", []):
-        if term in base and not any(term in t for t in texts):
+        if term in base and not any(term in t for t in texts) and not covered_by_variant(term, texts, segs):
             issues.append(("error", f"术语「{term}」没有逐字保留（可能被改写成近义词）"))
     lim = cfg["copy_limits"]
     n = sum(visible_len("".join(split_clauses(t))) for t in texts)
