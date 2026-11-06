@@ -223,6 +223,25 @@ def gen_body(script_id, quantity):
     return body
 
 
+def delivery_name(cfg, brief, briefs):
+    """Share (delivery folder) name, user 11-06: TZ-26-1106-LUX-精油香氛-brief1. brief n counts up per date and
+    per product in brief-id order; brief["delivery_date"] (MMDD) and brief["delivery_no"] override the run date and
+    the number when a batch is split across days or added after an earlier delivery."""
+    fmt = cfg.get("delivery_naming")
+    if not fmt or brief.get("delivery_legacy_name"):  # delivered before the naming rule; keep its old name
+        return video_title(cfg, brief)
+    day = lambda b: b.get("delivery_date") or b["date"].replace("-", "")[4:]
+    if brief.get("delivery_no"):  # set by hand when a batch has to slot in after earlier deliveries
+        n = brief["delivery_no"]
+    else:
+        same = sorted(x["brief_id"] for x in briefs if x["product_key"] == brief["product_key"] and day(x) == day(brief)
+                      and not x.get("delivery_no"))
+        n = same.index(brief["brief_id"]) + 1
+    return fmt.format(yy=brief["date"][2:4], date=day(brief), brand_tag=cfg.get("brand_tag", cfg["brand"]),
+                      product_short=cfg["products"][brief["product_key"]].get("short_name", brief["product_key"]),
+                      n=n)
+
+
 def split_quantity(n, chunk):
     """30 with chunk 15 -> [15, 15]; 31 -> [11, 10, 10]: even rounds, none above chunk."""
     k = math.ceil(n / chunk)
@@ -695,6 +714,7 @@ def cmd_share(cfg, run, args):
     Re-running updates a brief whose picked videos changed: a new share replaces the old one in the group."""
     st = State(run)
     briefs = {b["brief_id"]: b for b in load_briefs(run, args.brief)}
+    all_briefs = load_briefs(run)
     shares = st.data.setdefault("shares", {})
     todo = []
     for bid in sorted(briefs):
@@ -707,13 +727,14 @@ def cmd_share(cfg, run, args):
             print(f"⏸  {bid} 可交付 {len(pick)}/{b['quantity']}，不够数先不发（要先发加 --partial）")
             continue
         old = shares.get(bid)
-        if old and old["videos"] == pick and not args.refresh:
+        same_name = old and (old.get("title") or video_title(cfg, b)) == delivery_name(cfg, b, all_briefs)
+        if old and old["videos"] == pick and same_name and not args.refresh:
             print(f"✅ {bid} 已有分享 {share_url(old['id'])}")
             continue
         todo.append((b, pick, old))
     if args.dry_run:
         for b, pick, old in todo:
-            print(f"🧪 {b['brief_id']} 将{'更新' if old else '新建'}分享，{len(pick)} 条")
+            print(f"🧪 {b['brief_id']} 将{'更新' if old else '新建'}分享「{delivery_name(cfg, b, all_briefs)}」，{len(pick)} 条")
         print(f"\n(dry run) 将建 {len(todo)} 个分享链接。确认后去掉 --dry-run")
         return
     day = Path(run).name
@@ -728,7 +749,7 @@ def cmd_share(cfg, run, args):
         vids = [st.videos[k] for k in pick]
         payload = {"script_id": st.data["briefs"][bid]["script_id"],
                    "product_id": cfg["products"][b["product_key"]]["clipo_product_id"],
-                   "group_id": group["id"], "title": video_title(cfg, b), "video_name_prefix": video_title(cfg, b) + "-V",
+                   "group_id": group["id"], "title": delivery_name(cfg, b, all_briefs), "video_name_prefix": delivery_name(cfg, b, all_briefs) + "-",
                    "videos": []}
         for v in vids:
             cut = api("GET", f"/video-cuts/{v['cut_id']}")
@@ -744,9 +765,9 @@ def cmd_share(cfg, run, args):
             ids = [x["id"] for x in g["shares"] if x["id"] != old["id"]]
             api("PATCH", f"/video-share-groups/{group['id']}", {"video_share_ids": ids})
             api("DELETE", f"/video-shares/{old['id']}")
-        shares[bid] = {"id": sh["id"], "videos": pick, "at": time.strftime("%Y-%m-%d %H:%M")}
+        shares[bid] = {"id": sh["id"], "videos": pick, "title": payload["title"], "at": time.strftime("%Y-%m-%d %H:%M")}
         st.save()
-        print(f"🔗 {bid} {len(pick)} 条 → {share_url(sh['id'])}")
+        print(f"🔗 {bid} {payload['title']} {len(pick)} 条 → {share_url(sh['id'])}")
     if group:
         print(f"\n今天全部分享（分组）：{BASE.replace('/api/v1', '')}/share/group/{group['id']}")
     write_delivery(st, {b["brief_id"]: b for b in load_briefs(run)}, run)

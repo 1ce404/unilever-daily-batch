@@ -120,5 +120,8 @@
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）"
   },
-  "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒（11.03 B04 一次要 30 条超时，整轮 0 条落地），所以一轮最多这么多条。用户 11-06：一个 brief 在平台上只建一条生成任务，超过的轮次和补生成都 continue 到这条任务上"
+  "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒（11.03 B04 一次要 30 条超时，整轮 0 条落地），所以一轮最多这么多条。用户 11-06：一个 brief 在平台上只建一条生成任务，超过的轮次和补生成都 continue 到这条任务上",
+  "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
+  "brand_tag": "LUX",
+  "_delivery_naming_note": "用户 11-06：分享链接（交付文件夹）命名 TZ-26-1104-LUX-精油香氛-brief1，brief 号按日期、按产品各自从 1 升序；清扬写「清扬」，如 TZ-26-1106-清扬-控油蓬松-brief1"
 }

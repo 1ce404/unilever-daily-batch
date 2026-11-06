@@ -154,5 +154,8 @@
     "add": true,
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）"
-  }
+  },
+  "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
+  "brand_tag": "清扬",
+  "_delivery_naming_note": "用户 11-06：分享链接（交付文件夹）命名 TZ-26-1104-LUX-精油香氛-brief1，brief 号按日期、按产品各自从 1 升序；清扬写「清扬」，如 TZ-26-1106-清扬-控油蓬松-brief1"
 }
