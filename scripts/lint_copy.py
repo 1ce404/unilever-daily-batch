@@ -34,6 +34,9 @@ def lint_text(text, cfg, product):
     for w in bw["error"]:
         if w in scrubbed:
             issues.append(("error", f"禁用词「{w}」"))
+    for w in product.get("banned_words", []):  # per-product words the user ruled out (e.g. spray ingredients)
+        if w in scrubbed:
+            issues.append(("error", f"这个产品不写「{w}」"))
     allowed = set(product.get("allow_words", []))
     for w in bw["warn"] + product.get("warn_words", []):
         if w in scrubbed and w not in allowed:
