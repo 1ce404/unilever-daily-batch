@@ -150,6 +150,13 @@ def cmd_preflight(cfg, run, args):
         else:
             print(f"   建脚本提示词：{'产品自定义' if create.get('is_custom') else '平台默认'}，"
                   f"{'更新于 ' + create['updated_at'][:10] if create.get('updated_at') else '未改过'}")
+            if not create.get("is_custom"):
+                print("   ❌ 建脚本提示词是平台默认：会自己搜音效（11.9 喷雾配进了泡泡、竖琴、闪亮声），配音字幕也和别的产品不一样。"
+                      "先让用户把别的产品的提示词复制过来再生产")
+                bad = True
+            if "搜索相关音效" in (create.get("prompt") or ""):
+                print("   ❌ 建脚本提示词允许「其他画面搜索相关音效」：会配进怪音效（11.05 定：其他画面不配置音效），告诉用户改")
+                bad = True
         out[key] = {"product_id": pid, "name": p["name"], "segments": total, "risky": risky, "tag_counts": counts,
                     "empty_tags": empty, "description": desc}
         bad |= total == 0
