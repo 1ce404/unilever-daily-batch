@@ -103,6 +103,11 @@ def lint_brief(brief, cfg):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
     issues += lint_opening(segs, cfg, product)
+    known = set(product.get("footage_tags") or [])
+    for sg in segs:
+        for t in sg.get("visual_tags") or []:
+            if known and t not in known:
+                issues.append(("error", f"S{sg.get('id')} 画面标签「{t}」这个产品没有素材（有：{'、'.join(sorted(known))}）"))
     camp = cfg.get("campaign")
     if camp and brief.get("date", "") <= camp["until"] and not any(camp["name"] in t for t in texts):
         issues.append(("warn", f"{camp['name']}期间没提「{camp['name']}」（放进机制或 CTA 句）"))

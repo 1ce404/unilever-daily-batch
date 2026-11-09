@@ -79,5 +79,15 @@
   "collection_labels": [
     "小香瓶"
   ],
-  "short_name": "小香瓶"
+  "short_name": "小香瓶",
+  "footage_tags": [
+    "产品外观",
+    "CTA",
+    "产品质地",
+    "头发顺滑",
+    "头发干枯毛躁",
+    "头发油",
+    "闻香味"
+  ],
+  "_footage_tags_note": "2026-11-09 平台上这个产品有可用素材的画面标签；brief 分段的 visual_tags 只能从这里挑"
 }

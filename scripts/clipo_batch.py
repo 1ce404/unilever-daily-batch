@@ -186,6 +186,7 @@ def build_script(pid, brief, title):
     for ps, sg in zip(script["segments"], segs):
         ps["content"] = seg_text(sg)
         ps["ai_rewrite"] = True
+        pin_visual(ps, sg)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
     body["vo_rewrite_prompt"] = alt_prompt(segs)
@@ -197,6 +198,33 @@ def build_script(pid, brief, title):
         api("DELETE", f"/video-scripts/{sid}")
         raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}），已删掉，没有生成")
     return sid
+
+
+def pin_visual(platform_seg, seg):
+    """User 11-06/11-09: the line decides the footage. A brief segment may pin `visual_tags` (product footage
+    tags, any of them may match, e.g. ["泡沫丰富", "产品质地"] for a line about using the shampoo); otherwise the
+    platform's own choice stays."""
+    tags = seg.get("visual_tags")
+    v = platform_seg.get("visual") or {}
+    if tags and v.get("mode") == "material_segment":
+        v.setdefault("props", {})["tags"] = list(tags)
+
+
+def sync_visuals(script_id, segs):
+    """Apply pinned `visual_tags` to an already-built platform script (copy and everything else untouched)."""
+    script = api("GET", f"/video-scripts/{script_id}")
+    if len(script["segments"]) != len(segs):
+        raise RuntimeError("平台脚本段数和 brief 对不上")
+    for ps, sg in zip(script["segments"], segs):
+        pin_visual(ps, sg)
+    body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments", "title") if k in script}
+    api("PUT", f"/video-scripts/{script_id}", body)
+    got = api("GET", f"/video-scripts/{script_id}")["segments"]
+    bad = [i + 1 for i, (x, sg) in enumerate(zip(got, segs))
+           if sg.get("visual_tags") and x["visual"]["props"].get("tags") != list(sg["visual_tags"])]
+    if bad:
+        raise RuntimeError(f"画面标签没写进去的段 {bad}")
+    return [x["visual"]["props"].get("tags") for x in got]
 
 
 def alt_prompt(segs):
