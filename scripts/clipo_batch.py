@@ -227,10 +227,22 @@ def sync_visuals(script_id, segs):
     return [x["visual"]["props"].get("tags") for x in got]
 
 
+REWRITE_RULES = [
+    # user 11-09: per-segment [#…] voice instructions made one video sound like two different speakers
+    "不要加任何 [#…] 语音指令，每段都直接写正文，整条用同一种自然的语气",
+    # user 11-09: a rewrite turned 「早上喷一下」→「下班发尾干干的」, which reads as the product not working
+    "段落顺序和每段的意思不变：先讲头发的问题，再讲产品；产品出现以后只讲用完的好结果，不写用了以后头发又干、又毛躁、又乱",
+    "不加早上、下午、下班、出门前这类时间线，不编使用场景和前后对比",
+]
+
+
 def alt_prompt(segs):
-    """Team scripts give 2~3 phrasings per line; the reviewed ones go to the rewrite as the range to stay in."""
+    """Rules every rewrite must follow, plus the reviewed phrasings of each line as the range to stay in."""
     rows = [f"第{i + 1}段可以参考的说法：" + " / ".join([seg_text(sg)] + seg_alts(sg)) for i, sg in enumerate(segs) if seg_alts(sg)]
-    return ("# 用户要求\n每段改写时，在下面这些人审过的说法范围内换措辞，事实和机制不变：\n" + "\n".join(rows)) if rows else ""
+    out = "# 用户要求\n" + "\n".join(f"- {r}" for r in REWRITE_RULES)
+    if rows:
+        out += "\n每段改写时，在下面这些人审过的说法范围内换措辞，事实和机制不变：\n" + "\n".join(rows)
+    return out
 
 
 def video_title(cfg, brief, n=None):
@@ -401,7 +413,8 @@ def cmd_rereview(cfg, run, args):
 # ---------- top-up ----------
 
 def deliverable(v):
-    return v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
+    return (v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
+            and not v.get("voice_cmd"))
 
 
 def cmd_topup(cfg, run, args):
@@ -486,7 +499,9 @@ def pull_generation(st, cfg, b, job, gen):
             try:
                 cut = api("GET", f"/video-cuts/{cut_id}")
                 rr = cut.get("random_result") or {}
-                got = [re.sub(r"\[#[^\]]*\]", "", x["content"]) for x in rr.get("vo_rewrite", [])] or job["texts"]
+                raw = [x["content"] for x in rr.get("vo_rewrite", [])]
+                got = [re.sub(r"\[#[^\]]*\]", "", t) for t in raw] or job["texts"]
+                v["voice_cmd"] = any("[#" in t for t in raw)  # user 11-09: sounds like two speakers
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
                 v["duration_s"] = round(cut["draft"]["composition"]["durationInFrames"] / 30, 1)
                 if (CFG.get("watermark") or {}).get("add") and "水印" not in [t.get("name") for t in cut["draft"]["tracks"]]:

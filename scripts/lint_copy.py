@@ -256,9 +256,20 @@ def covered_by_variant(term, texts, segs):
                for t, sg in zip(texts, segs))
 
 
+AFTER_USE_BAD = re.compile(r"(下班|下午|晚上|回家|一天下来|过了一会|没多久|又)[^。！？]{0,8}(干|毛躁|乱|塌|油|打结|炸)")
+TIMELINE = re.compile(r"早上|下午|下班|出门前|晚上")
+
+
 def lint_script(texts, segs, brief, cfg, product):
     """Whole-script checks; also used on Clipo's rewritten copy."""
     issues = []
+    # user 11-09: never let the copy say the hair turns bad again after the product (reads as "it doesn't work")
+    named = next((k for k, t in enumerate(texts) if any(a in t for a in product["name_aliases"])), None)
+    for k, t in enumerate(texts):
+        if named is not None and k > named and AFTER_USE_BAD.search(t):
+            issues.append(("error", f"S{k + 1} 产品出现后又写头发变差「{AFTER_USE_BAD.search(t).group(0)}」：像在说产品没用"))
+    if sum(bool(TIMELINE.search(t)) for t in texts) >= 2:
+        issues.append(("error", "文案里有早上 / 下班这类时间线：容易被读成用了以后又变差，不写时间线"))
     cta = [t for s, t in zip(segs, texts) if s.get("role") == "cta"] or texts[-1:]
     if not any(p in cta[-1] for p in product["cta_required"]):
         issues.append(("error", f"结尾没有「{'/'.join(product['cta_required'])}」"))
