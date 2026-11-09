@@ -781,7 +781,8 @@ def cmd_share(cfg, run, args):
             continue
         old = shares.get(bid)
         same_name = old and (old.get("title") or video_title(cfg, b)) == delivery_name(cfg, b, all_briefs)
-        if old and old["videos"] == pick and same_name and not args.refresh:
+        cuts = [st.videos[k]["cut_id"] for k in pick]  # a redo reuses V01.. numbers, so compare the actual cuts
+        if old and old["videos"] == pick and old.get("cuts", cuts) == cuts and same_name and not args.refresh:
             print(f"✅ {bid} 已有分享 {share_url(old['id'])}")
             continue
         todo.append((b, pick, old))
@@ -819,7 +820,7 @@ def cmd_share(cfg, run, args):
             ids = [x["id"] for x in g["shares"] if x["id"] != old["id"]]
             api("PATCH", f"/video-share-groups/{group['id']}", {"video_share_ids": ids})
             api("DELETE", f"/video-shares/{old['id']}")
-        shares[bid] = {"id": sh["id"], "videos": pick, "title": payload["title"], "at": time.strftime("%Y-%m-%d %H:%M")}
+        shares[bid] = {"id": sh["id"], "videos": pick, "cuts": [v["cut_id"] for v in vids], "title": payload["title"], "at": time.strftime("%Y-%m-%d %H:%M")}
         st.save()
         print(f"🔗 {bid} {payload['title']} {len(pick)} 条 → {share_url(sh['id'])}")
     if group:
