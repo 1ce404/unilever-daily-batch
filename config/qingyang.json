@@ -153,7 +153,9 @@
   "watermark": {
     "add": true,
     "position": "bottom_right",
-    "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）"
+    "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
+    "mode": "global",
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
   },
   "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
   "brand_tag": "清扬",

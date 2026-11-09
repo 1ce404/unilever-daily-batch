@@ -247,7 +247,8 @@ def gen_body(script_id, quantity):
     body = {"script_id": script_id, "quantity": quantity}
     wm = CFG.get("watermark") or {}
     if wm.get("add"):
-        body.update(add_compliance_watermark=True, compliance_watermark_position=wm.get("position", "bottom_right"))
+        body.update(add_compliance_watermark=True, compliance_watermark_position=wm.get("position", "bottom_right"),
+                    compliance_watermark_mode=wm.get("mode", "global"))  # platform default "segments" skips real footage
     return body
 
 
@@ -400,7 +401,7 @@ def cmd_rereview(cfg, run, args):
 # ---------- top-up ----------
 
 def deliverable(v):
-    return v.get("ai_review") == "pass" and not v.get("copy_issues")
+    return v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
 
 
 def cmd_topup(cfg, run, args):
@@ -488,6 +489,8 @@ def pull_generation(st, cfg, b, job, gen):
                 got = [re.sub(r"\[#[^\]]*\]", "", x["content"]) for x in rr.get("vo_rewrite", [])] or job["texts"]
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
                 v["duration_s"] = round(cut["draft"]["composition"]["durationInFrames"] / 30, 1)
+                if (CFG.get("watermark") or {}).get("add") and "水印" not in [t.get("name") for t in cut["draft"]["tracks"]]:
+                    v["watermark_missing"] = True
                 issues = [m for t in got for l, m in lint_text(t, cfg, prod) if l == "error"]
                 issues += [m for l, m in lint_script(got, b["segments"], b, cfg, prod) if l == "error"]
                 v["copy_issues"] = issues
