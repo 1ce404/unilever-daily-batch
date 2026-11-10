@@ -884,8 +884,11 @@ def cmd_share(cfg, run, args):
     day = Path(run).name
     group = st.data.get("share_group")
     if todo and not group:
-        name = cfg.get("delivery_group_naming", "{date}-{brand_tag}").format(
-            yy=day[2:4], date=day[4:8], brand_tag=cfg.get("brand_tag", cfg["brand"]))
+        camp = cfg.get("campaign")
+        in_camp = camp and f"{day[:4]}-{day[4:6]}-{day[6:8]}" <= camp["until"]
+        name = re.sub(r"--+", "-", cfg.get("delivery_group_naming", "{date}-{brand_tag}").format(
+            yy=day[2:4], yymmdd=day[2:8], date=day[4:8], brand_tag=cfg.get("brand_tag", cfg["brand"]),
+            campaign=camp["name"] if in_camp else ""))
         g = api("POST", "/video-share-groups", {"name": name})
         group = st.data["share_group"] = {"id": g["id"], "name": name}
         st.save()
