@@ -194,6 +194,7 @@ def build_script(pid, brief, title):
         ps["content"] = seg_text(sg)
         ps["ai_rewrite"] = True
         pin_visual(ps, sg)
+    pin_voices(script, brief)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
     body["vo_rewrite_prompt"] = alt_prompt(segs)
@@ -201,10 +202,32 @@ def build_script(pid, brief, title):
     got = api("GET", f"/video-scripts/{sid}")["segments"]
     wrong = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if (x.get("content") or "") != seg_text(sg)]
     off = [i + 1 for i, x in enumerate(got) if not x.get("ai_rewrite")]
+    saved_voices = [x["id"] for x in api("GET", f"/video-scripts/{sid}")["config"]["tts"]["voices"]]
+    if stable_voices(brief) and saved_voices != stable_voices(brief):
+        wrong = wrong or ["音色没写进去"]
     if wrong or off:
         api("DELETE", f"/video-scripts/{sid}")
         raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}），已删掉，没有生成")
     return sid
+
+
+def stable_voices(brief):
+    """Voice ids to use for this brief (config `tts`): user 11-09/11-10 heard two speakers in one video because
+    the platform voices each segment separately and some voices swing wildly between segments."""
+    tts = CFG.get("tts") or {}
+    if tts.get("voices"):
+        return tts["voices"]
+    g = CFG["products"][brief["product_key"]].get("voice_gender")
+    return (tts.get("voices_by_gender") or {}).get(g) or []
+
+
+def pin_voices(script, brief):
+    """Replace the platform's voice picks with the brand's stable voices; keep volume / speech rate."""
+    ids = stable_voices(brief)
+    if not ids:
+        return
+    tts = script.setdefault("config", {}).setdefault("tts", {})
+    tts["voices"] = [{"id": i, "platform": "volcengine", "voice_type": i, "config": {"resource_id": "seed-tts-2.0"}} for i in ids]
 
 
 def pin_visual(platform_seg, seg):
@@ -421,7 +444,7 @@ def cmd_rereview(cfg, run, args):
 
 def deliverable(v):
     return (v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
-            and not v.get("voice_cmd"))
+            and not v.get("voice_cmd") and not v.get("bad_voice"))
 
 
 def cmd_topup(cfg, run, args):
@@ -509,6 +532,8 @@ def pull_generation(st, cfg, b, job, gen):
                 raw = [x["content"] for x in rr.get("vo_rewrite", [])]
                 got = [re.sub(r"\[#[^\]]*\]", "", t) for t in raw] or job["texts"]
                 v["voice_cmd"] = any("[#" in t for t in raw)  # user 11-09: sounds like two speakers
+                if rr.get("tts_speaker_id") in ((CFG.get("tts") or {}).get("bad_voices") or []):
+                    v["bad_voice"] = rr.get("tts_speaker_id")
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
                 v["duration_s"] = round(cut["draft"]["composition"]["durationInFrames"] / 30, 1)
                 if (CFG.get("watermark") or {}).get("add") and "水印" not in [t.get("name") for t in cut["draft"]["tracks"]]:

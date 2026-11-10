@@ -78,6 +78,7 @@ python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后
 - **AI 建脚本**：`POST /video-script-generations` 把审过的文案逐字交给平台，平台按产品提示词配画面、配音、BGM、字幕、贴图、音效；建完按排期命名、每段开 AI 改写、把审过的备选说法写进这条脚本的改写要求（`vo_rewrite_prompt`），再读回核对每段一字不差，对不上就删掉不生成
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
 - 每个 brief 生成 排期 × `generate_factor`（2）条。平台上一个 brief 一条生成任务，每轮 ≤ `generate_chunk`（15）条，第二轮起在同一条任务上继续生产
+- **配音只用稳定音色**（用户 11-09/11-10：好几条听着像两个人在说）。平台每段单独合成配音，一部分音色段与段之间音高能差 35%~51%，听着就像换了人。建脚本时把音色换成 config `tts` 里实测稳定的那几个（力士女声；清扬按产品 `voice_gender`，2X、呼吸瓶男声，二硫化硒女声），`bad_voices` 里的不用；改写要求里也写死了不加语音指令。成片抽到不稳音色或带语音指令的，不算可交付。新加音色先测再加
 - 每条视频右下角都加「AI生成」合规水印（config 的 `watermark`，清扬、力士都开）
 - 某轮失败：失败的轮不扣额度，`submit --retry-failed` 在同一条任务上继续。常见原因：平台改写模型 502/503（等一会儿重试）、组装超时（减小每轮条数）、`tts_failed` 音色配不出来（11.6 L07：平台建脚本抽到了坏音色，在平台脚本里删掉这个音色再重试，并提醒用户在音色库停用）
 - 改了平台审核提示词，或放宽了 config 的文案规则：`rereview` 把被驳回的成片重新送 AI 审核、按当前规则重查改写，不重新生成。它和后台 `poll` 都写进度记录，先停 `poll` 再跑

@@ -160,5 +160,36 @@
   "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
   "brand_tag": "清扬",
   "_delivery_naming_note": "用户 11-06：分享链接（交付文件夹）命名 TZ-26-1104-LUX-精油香氛-brief1，brief 号按日期、按产品各自从 1 升序；清扬写「清扬」，如 TZ-26-1106-清扬-控油蓬松-brief1",
-  "delivery_group_naming": "TZ-{yy}-{date}-{brand_tag}"
+  "delivery_group_naming": "TZ-{yy}-{date}-{brand_tag}",
+  "tts": {
+    "voices": null,
+    "bad_voices": [
+      "zh_female_qiaopinv_uranus_bigtts",
+      "zh_male_guanggaojieshuo_uranus_bigtts",
+      "zh_female_zhishuaiyingzi_uranus_bigtts",
+      "zh_female_qingchezizi_uranus_bigtts",
+      "zh_female_tianmeitaozi_uranus_bigtts",
+      "ICL_uranus_zh_female_chunchenvsheng_tob",
+      "zh_female_meilinvyou_uranus_bigtts",
+      "ICL_uranus_zh_female_meilinvyou_tob"
+    ],
+    "_note": "用户 11-09/11-10：配音像两个人。平台每段单独合成，部分音色段与段之间音高差很大（11.10 实测 80 条，最高一段比最低一段高 35%~51%）。voices 固定用实测稳定的音色（段间差 ≤1.25）；speech_rate 等全局设置原样保留。bad 列表是实测不稳或配不出来的，不用。",
+    "voices_by_gender": {
+      "男": [
+        "ICL_uranus_zh_male_cixingnansang_tob",
+        "zh_male_cixingjieshuonan_uranus_bigtts",
+        "ICL_uranus_zh_male_huoposhuanglang_tob",
+        "ICL_uranus_zh_male_shuanglangxiaoyang_tob"
+      ],
+      "女": [
+        "ICL_uranus_zh_female_zhixingwenwan_tob",
+        "zh_female_chunribu_uranus_bigtts",
+        "ICL_uranus_zh_female_tianmeihuopo_tob",
+        "ICL_uranus_zh_female_zhixinjiejie_tob",
+        "zh_female_qinqienv_uranus_bigtts",
+        "ICL_uranus_zh_female_xingganyujie_tob"
+      ]
+    },
+    "_gender_note": "清扬按产品受众选：2x / huxi 男声，selenium 女声（产品 config 的 audience_note）"
+  }
 }
