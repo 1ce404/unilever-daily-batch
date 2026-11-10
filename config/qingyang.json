@@ -171,13 +171,13 @@
       "zh_female_tianmeitaozi_uranus_bigtts",
       "ICL_uranus_zh_female_chunchenvsheng_tob",
       "zh_female_meilinvyou_uranus_bigtts",
-      "ICL_uranus_zh_female_meilinvyou_tob"
+      "ICL_uranus_zh_female_meilinvyou_tob",
+      "zh_male_cixingjieshuonan_uranus_bigtts"
     ],
     "_note": "用户 11-09/11-10：配音像两个人。平台每段单独合成，部分音色段与段之间音高差很大（11.10 实测 80 条，最高一段比最低一段高 35%~51%）。voices 固定用实测稳定的音色（段间差 ≤1.25）；speech_rate 等全局设置原样保留。bad 列表是实测不稳或配不出来的，不用。",
     "voices_by_gender": {
       "男": [
         "ICL_uranus_zh_male_cixingnansang_tob",
-        "zh_male_cixingjieshuonan_uranus_bigtts",
         "ICL_uranus_zh_male_huoposhuanglang_tob",
         "ICL_uranus_zh_male_shuanglangxiaoyang_tob"
       ],
@@ -191,7 +191,6 @@
       ],
       "男女": [
         "ICL_uranus_zh_male_cixingnansang_tob",
-        "zh_male_cixingjieshuonan_uranus_bigtts",
         "ICL_uranus_zh_male_huoposhuanglang_tob",
         "ICL_uranus_zh_male_shuanglangxiaoyang_tob",
         "ICL_uranus_zh_female_zhixingwenwan_tob",
@@ -202,6 +201,7 @@
         "ICL_uranus_zh_female_xingganyujie_tob"
       ]
     },
-    "_gender_note": "用户 11-10：清扬 2X、呼吸瓶配音男女声都要用，不能只有男声；二硫化硒女声"
+    "_gender_note": "用户 11-10：清扬 2X、呼吸瓶配音男女声都要用，不能只有男声；二硫化硒女声",
+    "_bad_note": "11-10 实测：磁性解说男声 24 条平均段间差 1.25、5 条 ≥1.35，另外 3 个男声平均 1.09~1.15、0 条；移出"
   }
 }
