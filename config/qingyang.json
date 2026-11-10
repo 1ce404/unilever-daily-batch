@@ -188,8 +188,20 @@
         "ICL_uranus_zh_female_zhixinjiejie_tob",
         "zh_female_qinqienv_uranus_bigtts",
         "ICL_uranus_zh_female_xingganyujie_tob"
+      ],
+      "男女": [
+        "ICL_uranus_zh_male_cixingnansang_tob",
+        "zh_male_cixingjieshuonan_uranus_bigtts",
+        "ICL_uranus_zh_male_huoposhuanglang_tob",
+        "ICL_uranus_zh_male_shuanglangxiaoyang_tob",
+        "ICL_uranus_zh_female_zhixingwenwan_tob",
+        "zh_female_chunribu_uranus_bigtts",
+        "ICL_uranus_zh_female_tianmeihuopo_tob",
+        "ICL_uranus_zh_female_zhixinjiejie_tob",
+        "zh_female_qinqienv_uranus_bigtts",
+        "ICL_uranus_zh_female_xingganyujie_tob"
       ]
     },
-    "_gender_note": "清扬按产品受众选：2x / huxi 男声，selenium 女声（产品 config 的 audience_note）"
+    "_gender_note": "用户 11-10：清扬 2X、呼吸瓶配音男女声都要用，不能只有男声；二硫化硒女声"
   }
 }
