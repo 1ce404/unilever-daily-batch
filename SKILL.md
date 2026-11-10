@@ -90,7 +90,7 @@ python3 -I scripts/clipo_batch.py report --config $C --run $R              # rep
 python3 -I scripts/clipo_batch.py share  --config $C --run $R --dry-run    # 看哪些 brief 要发分享
 python3 -I scripts/clipo_batch.py share  --config $C --run $R              # 每个够数的 brief 一个分享链接（10 条），当天的收进一个分组
 ```
-- **清扬命名（用户 11-10）**：链接名和视频名都是 `TZ-261110-双十一-caliber2x960g-AIGC视频-智能生产-巧用热点-人在喝大-特赞`：生产日期 YYMMDD-当前大促（没有就去掉）-产品段（2X `caliber2x960g`、呼吸瓶 `呼吸瓶1500g`、二硫化硒 `蓝C瓶`）-二级标签-智能生产-十大类型-脚本第一句前 4 个字-特赞；二级标签、十大类型按排期方向查 config `direction_tags`，对不上用 AIGC视频 / 解决问题，brief 可写 `video_type` / `content_type` 覆盖。一个链接 10 条同一个名字，视频名后加序号
+- **清扬命名（用户 11-10）**：`TZ-261109-双十一-tz-cryptic控油樱花1500g-AIGC视频-智能生产-原生种草-双十一福利-特赞-brief7-价格优惠(机制)|大促方向(货架、超市等)`。只有这几段变：日期 YYMMDD、克数（洗护号呼吸瓶 1500g、控油蓬松 960g，二硫化硒待定）、十大类型（按排期方向查 `direction_tags`）、第一句前几个字、视频方向，其余固定。链接名就是这个；视频名是它加 `-序号`（平台只能把序号加在最后）
 - 力士：分享链接（交付文件夹）命名 `TZ-26-1106-LUX-精油香氛-brief1`（config 的 `delivery_naming`：年-日期-品牌-产品简称-brief 序号；清扬写「清扬」，如 `TZ-26-1106-清扬-控油蓬松-brief1`；brief 号按日期、按产品各自从 1 升序）。视频名是文件夹名加序号；当天的分组命名 `TZ-26-1106-LUX` / `TZ-26-1106-清扬`（`delivery_group_naming`）
 - 每个 brief 挑够排期条数的可交付视频，建一个平台分享链接（`/share/{id}`）；当天这个品牌的所有分享收进一个分组（`/share/group/{id}`），一个链接看全部
 - 不够数的 brief 默认不发，要先发加 `--partial`；补生成后挑的视频变了，再跑 `share` 会换成新链接（分组里自动换掉，旧链接删除）

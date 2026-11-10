@@ -352,13 +352,17 @@ def delivery_name(cfg, brief, briefs):
     tags = direction_tags(cfg, brief)
     camp = cfg.get("campaign")
     in_camp = camp and brief.get("date", "") <= camp["until"]
-    first = re.sub(r"[^一-鿿A-Za-z0-9]", "", seg_text((brief.get("segments") or [{}])[0]))
+    clause = re.split(r"[，,。！？!?；;、]", seg_text((brief.get("segments") or [{}])[0]))[0]
+    first = re.sub(r"[^一-鿿A-Za-z0-9]", "", clause)[:5]
+    direction = (brief.get("direction") or "").translate(str.maketrans({"（": "(", "）": ")", "｜": "|", "/": "|"}))
     name = fmt.format(yy=brief["date"][2:4], yymmdd=brief["date"].replace("-", "")[2:], date=day(brief),
                       brand_tag=cfg.get("brand_tag", cfg["brand"]),
                       product_short=prod.get("short_name", brief["product_key"]),
                       product_naming=prod.get("naming_product", prod.get("short_name", brief["product_key"])),
+                      grams=prod.get("naming_grams") or "（克数待确认）",
                       campaign=camp["name"] if in_camp else "", video_type=tags["video_type"],
-                      content_type=tags["content_type"], keyword=first[:4], n=n)
+                      content_type=tags["content_type"], keyword=first, n=n,
+                      brief_no=int(re.sub(r"\D", "", brief["brief_id"].split("-")[-1]) or 0), direction=direction)
     return re.sub(r"--+", "-", name)  # no campaign → drop that segment
 
 
