@@ -94,5 +94,14 @@
     "泡沫丰富",
     "闻香味"
   ],
-  "_footage_tags_note": "2026-11-09 平台上这个产品有可用素材的画面标签；brief 分段的 visual_tags 只能从这里挑"
+  "_footage_tags_note": "2026-11-09 平台上这个产品有可用素材的画面标签；brief 分段的 visual_tags 只能从这里挑",
+  "ingredient_terms": [
+    "4D玻尿酸",
+    "鲜花精油",
+    "弱酸性"
+  ],
+  "ingredient_footage": [
+    "产品质地"
+  ],
+  "_ingredient_note": "用户 11-10：口播提到成分 / 技术（如 SCA）的那句配质地画面；brief 没指定 visual_tags 时自动按这个配"
 }

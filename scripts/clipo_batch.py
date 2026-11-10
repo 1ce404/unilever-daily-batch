@@ -193,7 +193,7 @@ def build_script(pid, brief, title):
     for ps, sg in zip(script["segments"], segs):
         ps["content"] = seg_text(sg)
         ps["ai_rewrite"] = True
-        pin_visual(ps, sg)
+        pin_visual(ps, sg, CFG["products"][brief["product_key"]])
     pin_voices(script, brief)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
@@ -230,11 +230,51 @@ def pin_voices(script, brief):
     tts["voices"] = [{"id": i, "platform": "volcengine", "voice_type": i, "config": {"resource_id": "seed-tts-2.0"}} for i in ids]
 
 
-def pin_visual(platform_seg, seg):
+_SEGMENTS = {}
+
+
+def footage_index(product_key):
+    """Platform footage segments of a product, by the file name of their video (draft clips point at it)."""
+    if product_key not in _SEGMENTS:
+        pid, idx, skip = CFG["products"][product_key]["clipo_product_id"], {}, 0
+        while True:
+            r = api("GET", f"/products/{pid}/segments?skip={skip}&limit=100")
+            items = r if isinstance(r, list) else r.get("items", [])
+            for x in items:
+                if x.get("object_url"):
+                    idx[x["object_url"].split("?")[0].rsplit("/", 1)[-1]] = x
+            if len(items) < 100:
+                break
+            skip += 100
+        _SEGMENTS[product_key] = idx
+    return _SEGMENTS[product_key]
+
+
+def bad_footage(product_key, draft):
+    """Shots in a cut that the user ruled out (user 11-10: no dandruff footage), found by segment description.
+    The platform picks footage by tag, and dandruff shots often carry tags like 头皮出油 / 头发油."""
+    words = CFG.get("banned_footage_words") or []
+    if not words:
+        return []
+    idx, out = footage_index(product_key), []
+    for c in draft.get("clips", []):
+        if c.get("trackId") != "main":
+            continue
+        seg = idx.get((c.get("props", {}).get("src") or "").split("?")[0].rsplit("/", 1)[-1])
+        d = (seg or {}).get("description") or ""
+        hit = next((w for w in words if w in d), None)
+        if hit:
+            out.append(f"{hit}：{d[:30]}")
+    return out
+
+
+def pin_visual(platform_seg, seg, product=None):
     """User 11-06/11-09: the line decides the footage. A brief segment may pin `visual_tags` (product footage
     tags, any of them may match, e.g. ["泡沫丰富", "产品质地"] for a line about using the shampoo); otherwise the
     platform's own choice stays."""
     tags = seg.get("visual_tags")
+    if not tags and product and any(t in seg_text(seg) for t in product.get("ingredient_terms", [])):
+        tags = product.get("ingredient_footage")  # user 11-10: a line about an ingredient / tech shows texture
     v = platform_seg.get("visual") or {}
     if tags and v.get("mode") == "material_segment":
         v.setdefault("props", {})["tags"] = list(tags)
@@ -426,6 +466,7 @@ def cmd_rereview(cfg, run, args):
         issues += [m for l, m in lint_script(got, b["segments"], b, cfg, prod) if l == "error"]
         relinted += issues != v.get("copy_issues")
         v["copy_issues"] = issues
+        v["bad_footage"] = bad_footage(b["product_key"], api("GET", f"/video-cuts/{v['cut_id']}")["draft"])
         if args.all or v.get("ai_review") != "pass":
             again.append(v)
     print(f"重新查改写：{relinted} 条结论变了；要重新 AI 审核的：{len(again)} 条")
@@ -444,7 +485,8 @@ def cmd_rereview(cfg, run, args):
 
 def deliverable(v):
     return (v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
-            and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift"))
+            and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift")
+            and not v.get("bad_footage"))
 
 
 def cmd_topup(cfg, run, args):
@@ -532,6 +574,7 @@ def pull_generation(st, cfg, b, job, gen):
                 raw = [x["content"] for x in rr.get("vo_rewrite", [])]
                 got = [re.sub(r"\[#[^\]]*\]", "", t) for t in raw] or job["texts"]
                 v["voice_cmd"] = any("[#" in t for t in raw)  # user 11-09: sounds like two speakers
+                v["bad_footage"] = bad_footage(b["product_key"], cut["draft"])
                 if rr.get("tts_speaker_id") in ((CFG.get("tts") or {}).get("bad_voices") or []):
                     v["bad_voice"] = rr.get("tts_speaker_id")
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")

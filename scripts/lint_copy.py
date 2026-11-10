@@ -106,6 +106,11 @@ def lint_brief(brief, cfg):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
     issues += lint_opening(segs, cfg, product)
+    for sg in segs:  # user 11-10: a line about an ingredient / tech shows texture footage
+        vt = sg.get("visual_tags")
+        if vt and any(t in seg_text(sg) for t in product.get("ingredient_terms", [])) \
+                and not set(vt) & set(product.get("ingredient_footage") or []):
+            issues.append(("warn", f"S{sg.get('id')} 讲到成分，画面配的是 {vt}：成分句配质地画面 {product.get('ingredient_footage')}"))
     known = set(product.get("footage_tags") or [])
     for sg in segs:
         for t in sg.get("visual_tags") or []:

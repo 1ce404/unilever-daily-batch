@@ -101,12 +101,22 @@
     "CTA",
     "产品质地",
     "头发油",
-    "头屑",
     "男士使用",
     "科技净澈",
     "补充装",
     "泡沫丰富"
   ],
   "_footage_tags_note": "2026-11-10 平台上有可用素材的画面标签（头发油 11、男士使用 2、泡沫丰富 1 都很少）；brief 分段的 visual_tags 只能从这里挑",
-  "voice_gender": "男女"
+  "voice_gender": "男女",
+  "ingredient_terms": [
+    "超微分子",
+    "10层深净澈",
+    "十层深净澈",
+    "香氛生花"
+  ],
+  "ingredient_footage": [
+    "产品质地",
+    "科技净澈"
+  ],
+  "_ingredient_note": "用户 11-10：口播提到成分 / 技术（如 SCA）的那句配质地画面；brief 没指定 visual_tags 时自动按这个配"
 }
