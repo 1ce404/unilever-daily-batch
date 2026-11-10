@@ -444,7 +444,7 @@ def cmd_rereview(cfg, run, args):
 
 def deliverable(v):
     return (v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
-            and not v.get("voice_cmd") and not v.get("bad_voice"))
+            and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift"))
 
 
 def cmd_topup(cfg, run, args):
