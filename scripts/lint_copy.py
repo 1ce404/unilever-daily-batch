@@ -201,6 +201,17 @@ def earlier_copy(run, brief, cfg):
     return out
 
 
+def other_brand_openings(run, cfg):
+    """First lines of the same day's briefs of the OTHER brands in this run (user 11-10: 清扬 B14 and 力士 L03
+    opened with the same sentence; per-brand lint never compared them)."""
+    out = []
+    for p in sorted((Path(run) / "briefs").glob("*.json")):
+        b = json.loads(p.read_text())
+        if b.get("brand") != cfg.get("brand_key") and b.get("segments"):
+            out.append((b["brief_id"], seg_text(b["segments"][0])))
+    return out
+
+
 def lint_variety(briefs, cfg, run):
     """Team scripts share the selling-point line and the mechanism + CTA line across briefs (see
     references/writing.md), so only the opening is compared: the first two lines, with product names,
@@ -209,7 +220,14 @@ def lint_variety(briefs, cfg, run):
     lim = cfg["copy_limits"].get("opening_similar_max", 0.5)
     out = {}
     todays = [b for b in briefs if b.get("segments")]
+    cross = other_brand_openings(run, cfg)
     for b in todays:
+        first = re.sub(r"[^一-鿿A-Za-z0-9]", "", seg_text(b["segments"][0]))
+        for label, t in cross:
+            r = difflib.SequenceMatcher(None, first, re.sub(r"[^一-鿿A-Za-z0-9]", "", t), autojunk=False).ratio()
+            if r > lim:
+                out.setdefault(b["brief_id"], []).append(
+                    ("error", f"第一句和另一个品牌的 {label} 相似度 {r:.0%}：同一天两个品牌的开头也要不一样"))
         mine = strip_fixed(opening(b["segments"]), cfg)
         others = earlier_copy(run, b, cfg) + [(o["brief_id"], o["segments"]) for o in todays if o is not b]
         worst = None
