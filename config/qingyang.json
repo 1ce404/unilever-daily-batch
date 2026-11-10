@@ -157,9 +157,9 @@
     "mode": "global",
     "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
   },
-  "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
+  "delivery_naming": "TZ-{yymmdd}-{campaign}-{product_naming}-{video_type}-智能生产-{content_type}-{keyword}-特赞",
   "brand_tag": "清扬",
-  "_delivery_naming_note": "用户 11-06：分享链接（交付文件夹）命名 TZ-26-1104-LUX-精油香氛-brief1，brief 号按日期、按产品各自从 1 升序；清扬写「清扬」，如 TZ-26-1106-清扬-控油蓬松-brief1",
+  "_delivery_naming_note": "用户 11-10：清扬交付命名 TZ-260401-双十一-caliber2x960g-视频类型（二级标签）-智能生产-十大类型-（关键词）视频前三四个字-特赞。链接名和视频名都用它，链接里 10 条来自同一份脚本，关键词相同（审过稿第一句的前 4 个字），视频名后面再加序号。日期是生产日期 YYMMDD；大促段跟 campaign 走，没有大促就去掉这段。二级标签、十大类型按排期方向查 direction_tags，brief 可写 video_type / content_type 覆盖",
   "delivery_group_naming": "TZ-{yy}-{date}-{brand_tag}",
   "tts": {
     "voices": null,
@@ -210,5 +210,81 @@
     "皮屑",
     "白屑"
   ],
-  "_banned_footage_note": "用户 11-10：头皮屑素材不可用。平台按标签抽画面，这类切片常被标成「头皮出油」「头发油」「产品外观」混进来；poll 按切片描述查，成片用到就不算可交付"
+  "_banned_footage_note": "用户 11-10：头皮屑素材不可用。平台按标签抽画面，这类切片常被标成「头皮出油」「头发油」「产品外观」混进来；poll 按切片描述查，成片用到就不算可交付",
+  "direction_tags": {
+    "_note": "按排期「内容方向」里的关键词匹配，从上往下第一个命中的算；都不命中用 default",
+    "rules": [
+      {
+        "match": [
+          "蹭热点",
+          "热点"
+        ],
+        "video_type": "AIGC视频",
+        "content_type": "巧用热点"
+      },
+      {
+        "match": [
+          "双人演绎",
+          "剧情",
+          "演绎"
+        ],
+        "video_type": "剧情演绎",
+        "content_type": "剧情代入"
+      },
+      {
+        "match": [
+          "达人",
+          "金句混剪"
+        ],
+        "video_type": "达人视频",
+        "content_type": "试用体验"
+      },
+      {
+        "match": [
+          "单人口播",
+          "口播"
+        ],
+        "video_type": "伪达人",
+        "content_type": "试用体验"
+      },
+      {
+        "match": [
+          "追根溯源",
+          "成分",
+          "品牌背书"
+        ],
+        "video_type": "AIGC视频",
+        "content_type": "概念科普"
+      },
+      {
+        "match": [
+          "价格",
+          "机制",
+          "大促",
+          "爆款复刻"
+        ],
+        "video_type": "AIGC视频",
+        "content_type": "产品摆拍"
+      },
+      {
+        "match": [
+          "两性",
+          "场景"
+        ],
+        "video_type": "AIGC视频",
+        "content_type": "场景触发"
+      },
+      {
+        "match": [
+          "痛点"
+        ],
+        "video_type": "AIGC视频",
+        "content_type": "解决问题"
+      }
+    ],
+    "default": {
+      "video_type": "AIGC视频",
+      "content_type": "解决问题"
+    }
+  }
 }

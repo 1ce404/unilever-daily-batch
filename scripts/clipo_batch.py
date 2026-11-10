@@ -348,9 +348,27 @@ def delivery_name(cfg, brief, briefs):
         same = sorted(x["brief_id"] for x in briefs if x["product_key"] == brief["product_key"] and day(x) == day(brief)
                       and not x.get("delivery_no"))
         n = same.index(brief["brief_id"]) + 1
-    return fmt.format(yy=brief["date"][2:4], date=day(brief), brand_tag=cfg.get("brand_tag", cfg["brand"]),
-                      product_short=cfg["products"][brief["product_key"]].get("short_name", brief["product_key"]),
-                      n=n)
+    prod = cfg["products"][brief["product_key"]]
+    tags = direction_tags(cfg, brief)
+    camp = cfg.get("campaign")
+    in_camp = camp and brief.get("date", "") <= camp["until"]
+    first = re.sub(r"[^一-鿿A-Za-z0-9]", "", seg_text((brief.get("segments") or [{}])[0]))
+    name = fmt.format(yy=brief["date"][2:4], yymmdd=brief["date"].replace("-", "")[2:], date=day(brief),
+                      brand_tag=cfg.get("brand_tag", cfg["brand"]),
+                      product_short=prod.get("short_name", brief["product_key"]),
+                      product_naming=prod.get("naming_product", prod.get("short_name", brief["product_key"])),
+                      campaign=camp["name"] if in_camp else "", video_type=tags["video_type"],
+                      content_type=tags["content_type"], keyword=first[:4], n=n)
+    return re.sub(r"--+", "-", name)  # no campaign → drop that segment
+
+
+def direction_tags(cfg, brief):
+    """二级标签 / 十大类型 for the delivery name (user 11-10), from the schedule direction; brief fields override."""
+    dt = cfg.get("direction_tags") or {}
+    hit = next((r for r in dt.get("rules", []) if any(m in (brief.get("direction") or "") for m in r["match"])),
+               dt.get("default") or {"video_type": "", "content_type": ""})
+    return {"video_type": brief.get("video_type") or hit["video_type"],
+            "content_type": brief.get("content_type") or hit["content_type"]}
 
 
 def split_quantity(n, chunk):
