@@ -552,7 +552,10 @@ def cmd_rereview(cfg, run, args):
 # ---------- top-up ----------
 
 def deliverable(v):
-    return (v.get("ai_review") == "pass" and not v.get("copy_issues") and not v.get("watermark_missing")
+    """Passed AI review, or the user released this video by name (`review_waived` holds their words: user 11-11
+    released 爆款-opener videos the reviewer rejected only for the clip's own burned-in text). Our own checks
+    (copy, voice, footage, watermark) still apply either way."""
+    return ((v.get("ai_review") == "pass" or bool(v.get("review_waived"))) and not v.get("copy_issues") and not v.get("watermark_missing")
             and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift")
             and not v.get("bad_footage"))
 
