@@ -896,8 +896,84 @@ def write_delivery(st, briefs, run):
     head = [f"# {Path(run).name} 交付清单", ""] + ([f"**今天全部分享链接**：{BASE.replace('/api/v1', '')}/share/group/{group['id']}", ""] if group else []) + [
             f"**交付 {total} / {need} 条**{'，全部够数' if total >= need else f'，还差 {need - total} 条（topup）'}。"
             f"共生成 {gen} 条，AI 审核通过 {passed} 条（{passed / max(gen, 1):.0%}）。", ""]
+    packs = [(k[5:], v) for k, v in st.data.get("shares", {}).items() if k.startswith("pack:")]
+    if packs:
+        head += ["## 合并交付链接（每个 10 条，混着不同开头）", ""]
+        head += [f"- {name}（{len(v['videos'])} 条）：{share_url(v['id'])}" for name, v in sorted(packs)] + [""]
     (Path(run) / out_name(CFG, "delivery.md")).write_text("\n".join(head + out))
     print(f"→ {Path(run) / out_name(CFG, 'delivery.md')}（交付 {total}/{need}）")
+
+
+def pack_links(cfg, briefs, st):
+    """User 11-11: deliver in links of `brief_size` (10) even when a product's videos were made as smaller briefs
+    (one per 爆款 opener). Briefs of one product and day that set `pack` are pooled and dealt out round-robin, so
+    every link mixes the openers. Returns [(name, [video ids], product_key, [brief ids])] or [] when nobody packs."""
+    size = cfg.get("brief_size", 10)
+    out, groups = [], {}
+    for b in sorted(briefs.values(), key=lambda x: x["brief_id"]):
+        if b.get("pack"):
+            groups.setdefault((b["product_key"], b["date"]), []).append(b)
+    for (pk, day), bs in sorted(groups.items()):
+        queues = [picks(st, b["brief_id"], b["quantity"])[0] for b in bs]
+        need = sum(b["quantity"] for b in bs)
+        pool = []
+        while any(queues):
+            for q in queues:
+                if q:
+                    pool.append(q.pop(0))
+        if len(pool) < need:
+            print(f"⏸  {pk} 合并交付可交付 {len(pool)}/{need}，不够数先不发")
+            continue
+        first = bs[0]
+        for i in range(0, need, size):
+            name = delivery_name(cfg, dict(first, delivery_no=i // size + 1 + (first.get("pack_offset") or 0)), list(briefs.values()))
+            out.append((name, pool[i:i + size], pk, [b["brief_id"] for b in bs]))
+    return out
+
+
+def cmd_share_packed(cfg, run, args, st, briefs, group):
+    """Share links for packed briefs (see pack_links); stored under shares["pack:<name>"]."""
+    shares = st.data.setdefault("shares", {})
+    for name, pick, pk, bids in pack_links(cfg, briefs, st):
+        key = f"pack:{name}"
+        old = shares.get(key)
+        cuts = [st.videos[k]["cut_id"] for k in pick]
+        if old and old["cuts"] == cuts and not args.refresh:
+            print(f"✅ {name} 已有分享 {share_url(old['id'])}")
+            continue
+        if args.dry_run:
+            print(f"🧪 将{'更新' if old else '新建'}分享「{name}」{len(pick)} 条，来自 {sorted({st.videos[k]['brief_id'] for k in pick})}")
+            continue
+        payload = {"product_id": cfg["products"][pk]["clipo_product_id"], "group_id": group["id"], "title": name,
+                   "video_name_prefix": name + "-", "videos": [share_video(st.videos[k]) for k in pick]}
+        sh = api("POST", "/video-shares", payload)
+        if old:
+            g = api("GET", f"/video-share-groups/{group['id']}")
+            api("PATCH", f"/video-share-groups/{group['id']}", {"video_share_ids": [x["id"] for x in g["shares"] if x["id"] != old["id"]]})
+            api("DELETE", f"/video-shares/{old['id']}")
+        shares[key] = {"id": sh["id"], "videos": pick, "cuts": cuts, "title": name, "briefs": bids, "at": time.strftime("%Y-%m-%d %H:%M")}
+        st.save()
+        print(f"🔗 {name} {len(pick)} 条 → {share_url(sh['id'])}")
+    for bid, b in briefs.items():  # a packed brief's own link (from before it was packed) leaves the group
+        old = shares.get(bid)
+        if b.get("pack") and old:
+            if args.dry_run:
+                print(f"🧪 将删掉按 brief 建的旧链接「{old.get('title')}」")
+                continue
+            g = api("GET", f"/video-share-groups/{group['id']}")
+            api("PATCH", f"/video-share-groups/{group['id']}", {"video_share_ids": [x["id"] for x in g["shares"] if x["id"] != old["id"]]})
+            api("DELETE", f"/video-shares/{old['id']}")
+            st.data.setdefault("retired_shares", {})[bid] = shares.pop(bid)
+            st.save()
+            print(f"🗑  删掉旧链接「{old.get('title')}」（已合并进 10 条一个的链接）")
+
+
+def share_video(v):
+    cut = api("GET", f"/video-cuts/{v['cut_id']}")
+    comp = cut["draft"]["composition"]
+    cover = re.search(r"\.aliyuncs\.com/([^?]+)", cut["draft"].get("cover_url") or "")
+    return {"video_object_key": cut.get("output_object_key") or v["object_key"], "cover_object_key": cover.group(1) if cover else None,
+            "duration_seconds": round(comp["durationInFrames"] / comp.get("fps", 30), 2), "width": comp["width"], "height": comp["height"]}
 
 
 def cmd_share(cfg, run, args):
@@ -911,6 +987,8 @@ def cmd_share(cfg, run, args):
     todo = []
     for bid in sorted(briefs):
         b = briefs[bid]
+        if b.get("pack"):
+            continue  # delivered in packed links of brief_size (pack_links)
         pick, _ = picks(st, bid, b["quantity"])
         if not pick:
             print(f"⏸  {bid} 还没有可交付的视频")
@@ -928,11 +1006,14 @@ def cmd_share(cfg, run, args):
     if args.dry_run:
         for b, pick, old in todo:
             print(f"🧪 {b['brief_id']} 将{'更新' if old else '新建'}分享「{delivery_name(cfg, b, all_briefs)}」，{len(pick)} 条")
+        if any(b.get("pack") for b in all_briefs):
+            cmd_share_packed(cfg, run, args, st, {b["brief_id"]: b for b in all_briefs}, None)
         print(f"\n(dry run) 将建 {len(todo)} 个分享链接。确认后去掉 --dry-run")
         return
     day = Path(run).name
     group = st.data.get("share_group")
-    if todo and not group:
+    packed = any(b.get("pack") for b in briefs.values())
+    if (todo or packed) and not group:
         camp = cfg.get("campaign")
         in_camp = camp and f"{day[:4]}-{day[4:6]}-{day[6:8]}" <= camp["until"]
         name = re.sub(r"--+", "-", cfg.get("delivery_group_naming", "{date}-{brand_tag}").format(
@@ -947,15 +1028,7 @@ def cmd_share(cfg, run, args):
         payload = {"script_id": st.data["briefs"][bid]["script_id"],
                    "product_id": cfg["products"][b["product_key"]]["clipo_product_id"],
                    "group_id": group["id"], "title": delivery_name(cfg, b, all_briefs), "video_name_prefix": delivery_name(cfg, b, all_briefs) + "-",
-                   "videos": []}
-        for v in vids:
-            cut = api("GET", f"/video-cuts/{v['cut_id']}")
-            comp = cut["draft"]["composition"]
-            cover = re.search(r"\.aliyuncs\.com/([^?]+)", cut["draft"].get("cover_url") or "")
-            payload["videos"].append({"video_object_key": cut.get("output_object_key") or v["object_key"],
-                                      "cover_object_key": cover.group(1) if cover else None,
-                                      "duration_seconds": round(comp["durationInFrames"] / comp.get("fps", 30), 2),
-                                      "width": comp["width"], "height": comp["height"]})
+                   "videos": [share_video(v) for v in vids]}
         sh = api("POST", "/video-shares", payload)
         if old:  # keep the group pointing at the newest share for this brief
             g = api("GET", f"/video-share-groups/{group['id']}")
@@ -965,6 +1038,8 @@ def cmd_share(cfg, run, args):
         shares[bid] = {"id": sh["id"], "videos": pick, "cuts": [v["cut_id"] for v in vids], "title": payload["title"], "at": time.strftime("%Y-%m-%d %H:%M")}
         st.save()
         print(f"🔗 {bid} {payload['title']} {len(pick)} 条 → {share_url(sh['id'])}")
+    if packed and group:
+        cmd_share_packed(cfg, run, args, st, {b["brief_id"]: b for b in all_briefs}, group)
     if group:
         print(f"\n今天全部分享（分组）：{BASE.replace('/api/v1', '')}/share/group/{group['id']}")
     write_delivery(st, {b["brief_id"]: b for b in load_briefs(run)}, run)
