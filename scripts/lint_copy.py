@@ -105,7 +105,7 @@ def lint_brief(brief, cfg):
     if any(i[0] == "error" and "没有文案" in i[1] for i in issues):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
-    issues += lint_opening(segs, cfg, product)
+    issues += lint_opening(segs, cfg, product, brief)
     for sg in segs:  # user 11-10: a line about an ingredient / tech shows texture footage
         vt = sg.get("visual_tags")
         if vt and any(t in seg_text(sg) for t in product.get("ingredient_terms", [])) \
@@ -257,13 +257,20 @@ def o_same_day(label, todays):
 OPENING_BANNED = re.compile(r"拍[一二三四五六七八九十\d]+发|到手|\d+(?:\.\d+)?\s*元|套组|瓶背|背面|成分表|配方表")
 
 
-def lint_opening(segs, cfg, product):
-    """User 11-06: the first line is about the viewer's hair, never the price / deal / bottle back / ingredient list."""
+MECH_OPENING_OK = ("爆款复刻",)  # user 11-11: 爆款复刻 copies viral videos that open with the deal
+
+
+def lint_opening(segs, cfg, product, brief=None):
+    """User 11-06: the first line is about the viewer's hair, never the price / deal / bottle back / ingredient list.
+    User 11-11: 爆款复刻 may open with the deal, because the viral videos it copies do; bottle back is still out."""
     if not segs:
         return []
+    deal_ok = brief is not None and any(k in (brief.get("direction") or "") for k in MECH_OPENING_OK)
     out = []
     for k, t in enumerate([seg_text(segs[0])] + seg_alts(segs[0]), 1):
         m = OPENING_BANNED.search(t)
+        if m and deal_ok and m.group(0) not in ("瓶背", "背面", "成分表", "配方表"):
+            continue
         if m:
             label = "第一句" if k == 1 else f"第一句说法{k}"
             out.append(("error", f"{label}出现「{m.group(0)}」：开头只写人和头发状态，机制放最后一句，不讲瓶背成分表"))
