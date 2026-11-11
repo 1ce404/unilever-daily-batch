@@ -360,6 +360,7 @@ def delivery_name(cfg, brief, briefs):
                       product_short=prod.get("short_name", brief["product_key"]),
                       product_naming=prod.get("naming_product", prod.get("short_name", brief["product_key"])),
                       grams=prod.get("naming_grams") or "（克数待确认）",
+                      naming_code=prod.get("naming_code") or "（产品段待确认）",
                       campaign=camp["name"] if in_camp else "", video_type=tags["video_type"],
                       content_type=tags["content_type"], keyword=first, n=n,
                       brief_no=int(re.sub(r"\D", "", brief["brief_id"].split("-")[-1]) or 0), direction=direction)

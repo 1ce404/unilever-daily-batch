@@ -157,9 +157,9 @@
     "mode": "global",
     "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
   },
-  "delivery_naming": "TZ-{yymmdd}-{campaign}-tz-cryptic控油樱花{grams}-AIGC视频-智能生产-{content_type}-{keyword}-特赞-brief{brief_no}-{direction}",
+  "delivery_naming": "TZ-{yymmdd}-{campaign}-tz-{naming_code}-AIGC视频-智能生产-{content_type}-{keyword}-特赞-brief{brief_no}-{direction}",
   "brand_tag": "清扬",
-  "_delivery_naming_note": "用户 11-10 定的清扬命名：TZ-261109【时间】-双十一-tz-cryptic控油樱花1500g【克数】-AIGC视频-智能生产-原生种草【十大类型】-双十一福利【视频前几个字】-特赞-brief7-1-价格优惠(机制)|大促方向(货架、超市等)【视频方向】。只有【】里的变：日期、克数（洗护号呼吸瓶 1500g，控油蓬松 960g）、十大类型、第一句前几个字、视频方向；其余固定。用户 11-10：只要链接名对就行，视频名无所谓（视频名＝链接名加 -序号）",
+  "_delivery_naming_note": "用户 11-10 定的清扬命名：TZ-261109【时间】-双十一-tz-cryptic控油樱花1500g【克数】-AIGC视频-智能生产-原生种草【十大类型】-双十一福利【视频前几个字】-特赞-brief7-1-价格优惠(机制)|大促方向(货架、超市等)【视频方向】。只有【】里的变：日期、克数（洗护号呼吸瓶 1500g，控油蓬松 960g）、十大类型、第一句前几个字、视频方向；其余固定。用户 11-10：只要链接名对就行，视频名无所谓（视频名＝链接名加 -序号）。11-11 客户改正：控油蓬松（2X）的产品段是 caliber2x960g（tz-caliber2x960g），不是 cryptic控油樱花960g；洗护号呼吸瓶是 cryptic控油樱花1500g",
   "delivery_group_naming": "TZ-{yymmdd}-{campaign}-清扬",
   "tts": {
     "voices": null,
