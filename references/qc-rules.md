@@ -22,7 +22,7 @@ QC 标准原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb（�
 | 产品类 5 系列不可混淆 | `foreign_claims`：别的 SKU 的卖点出现即报错 |
 | 平台通用 1 文字规范 | 短句按显示宽度 > 12 提醒、> 20 报错，产品名不跨句，不带 emoji / `[#…]`；「齁」字会被判错别字，不写 |
 | 清扬定制 | CTA「戳直播间」；`banned_words` 里的近期卡审词 |
-| AIGC 标准 | 靠人审 + 平台审：不要掉头屑 AI 素材、明星脸、AI 仿真人第一人称使用 |
+| AIGC 标准 | 靠人审 + 平台审：不要掉头屑 AI 素材、明星脸、AI 仿真人第一人称使用；AI 真人不要秃顶 / 头顶稀疏（用户 11-11） |
 
 QC 文档或近期脚本 callout 新增了条目，**先改 config 再写脚本**。新的品牌定制段（如「Dove-PC：不能写提亮，要写焕亮」）进对应品牌的 config。
 
