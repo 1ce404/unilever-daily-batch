@@ -30,7 +30,7 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
 | 品牌 | 产品（`config/<品牌>/<key>.json`） | 每天多少条 |
 |---|---|---|
 | 清扬 `qingyang` | `2x` 控油蓬松洗发水、`huxi` 控油呼吸瓶、`selenium` 二硫化硒蓝C瓶 | 看飞书排期表 |
-| 力士 `lux` | `jingyou` 精油香氛洗发水、`mist` 小香瓶 | 没有排期表，固定：精油香氛 40、小香瓶 10（`config/lux.json` 的 `daily_quota`） |
+| 力士 `lux` | `jingyou` 精油香氛洗发水、`spray` 护发精油喷雾、`mist` 小香瓶 | 没有排期表，按 `config/lux.json` 的 `daily_quota`（11.9 起这周：精油香氛 40 + 护发精油喷雾 10，小香瓶暂停） |
 
 | 文件 | 用途 |
 |---|---|

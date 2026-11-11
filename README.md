@@ -16,8 +16,9 @@ Agent skill：联合利华（清扬、力士）千川混剪视频每日批量生
 | 清扬 | `2x` | 清扬控油蓬松洗发水 | 飞书排期 |
 | 清扬 | `huxi` | 清扬控油呼吸瓶 | 飞书排期 |
 | 清扬 | `selenium` | 清扬二硫化硒蓝C瓶 | 飞书排期 |
-| 力士 | `jingyou` | 力士精油香氛洗发水 | 固定 40 |
-| 力士 | `mist` | 力士小香瓶 | 固定 10 |
+| 力士 | `jingyou` | 力士精油香氛洗发水 | 固定条数（这周 40） |
+| 力士 | `spray` | 力士护发精油喷雾 | 固定条数（这周 10） |
+| 力士 | `mist` | 力士小香瓶 | 这周暂停 |
 
 ## 安装
 
@@ -29,7 +30,7 @@ git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/
 
 入口是 `SKILL.md`，支持 skills 的 agent（Claude Code、Codex、Cursor 等）都能用。
 
-依赖：Python 3.9+（只用标准库）、[`lark-cli`](https://github.com/larksuite)（读飞书文档）、能访问 Clipo Remix。
+依赖：Python 3.9+（只用标准库）、[`lark-cli`](https://github.com/larksuite)（读飞书文档）、能访问 Clipo Remix；测配音（`scripts/voice_check.py`）另需 ffmpeg 和 numpy。
 
 ## 用法
 
