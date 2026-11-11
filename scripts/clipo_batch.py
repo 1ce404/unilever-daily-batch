@@ -245,7 +245,8 @@ def stable_voices(brief):
     tts = CFG.get("tts") or {}
     if tts.get("voices"):
         return tts["voices"]
-    g = CFG["products"][brief["product_key"]].get("voice_gender")
+    # user 11-11: a brief whose lines name the partner (「女朋友夸我」) is read by the matching voice only
+    g = brief.get("voice_gender") or CFG["products"][brief["product_key"]].get("voice_gender")
     return (tts.get("voices_by_gender") or {}).get(g) or []
 
 
@@ -306,6 +307,9 @@ def pin_visual(platform_seg, seg, product=None):
     v = platform_seg.get("visual") or {}
     if tags and v.get("mode") == "material_segment":
         v.setdefault("props", {})["tags"] = list(tags)
+        q = seg.get("visual_query")  # user 11-11: a 双人演绎 line shows one AI scene clip, pinned like a silent opening
+        if q:
+            v["props"]["query"], v["props"]["score"] = q["query"], q.get("score", 0.8)
 
 
 def sync_visuals(script_id, segs):

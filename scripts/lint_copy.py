@@ -101,9 +101,14 @@ def lint_brief(brief, cfg):
         if not t.strip():
             issues.append(("error", f"S{s.get('id')} 没有文案"))
             continue
-        issues += [(lvl, f"S{s['id']} {msg}") for lvl, msg in lint_text(t, cfg, product)]
+        # user 11-11: a line pinned to an AI scene clip (visual_query) may name that scene: the footage shows it
+        keep = (lambda m: "是具体场景" not in m) if s.get("visual_query") else (lambda m: True)
+        issues += [(lvl, f"S{s['id']} {msg}") for lvl, msg in lint_text(t, cfg, product) if keep(msg)]
         for k, a in enumerate(seg_alts(s), 2):
-            issues += [(lvl, f"S{s['id']} 说法{k} {msg}") for lvl, msg in lint_text(a, cfg, product)]
+            issues += [(lvl, f"S{s['id']} 说法{k} {msg}") for lvl, msg in lint_text(a, cfg, product) if keep(msg)]
+        q = s.get("visual_query")
+        if q and not (q.get("query") and q.get("segment_id") and s.get("visual_tags")):
+            issues.append(("error", f"S{s['id']} visual_query 要写 segment_id、query，并配 visual_tags（检索范围）"))
     if any(i[0] == "error" and "没有文案" in i[1] for i in issues):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
