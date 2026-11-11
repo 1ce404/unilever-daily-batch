@@ -19,7 +19,7 @@ from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import seg_alts, day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
+from common import seg_alts, voiced, day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
 
 PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元|拍[一二三四五六七八九十\d]+发[一二三四五六七八九十\d]+|\d+\s*[gG克]")
 
@@ -94,6 +94,8 @@ def lint_brief(brief, cfg):
     segs = brief.get("segments") or []
     if not segs:
         return [("error", "还没有写分段")]
+    issues += lint_silent(segs)
+    segs = voiced(segs)
     texts = [seg_text(s) for s in segs]
     for s, t in zip(segs, texts):
         if not t.strip():
@@ -158,7 +160,7 @@ def lint_day(briefs, cfg):
                 out.setdefault(x["brief_id"], []).append(
                     ("warn", f"和 {y['brief_id']} 有相同的句子：{'、'.join(sorted(shared)[:3])}"))
         if a.get("product_key") == b.get("product_key") and a.get("direction") == b.get("direction"):
-            ha, hb = (normalize_copy(seg_text(x["segments"][0]))[:6] for x in (a, b))
+            ha, hb = (normalize_copy(seg_text((voiced(x["segments"]) or [{}])[0]))[:6] for x in (a, b))
             if ha and ha == hb:
                 for x, y in ((a, b), (b, a)):
                     out.setdefault(x["brief_id"], []).append(
@@ -169,7 +171,7 @@ def lint_day(briefs, cfg):
 def opening(segs, n=2):
     """The first `n` lines with product names, selling-point terms, mechanism and the campaign stripped:
     the part of a script that is supposed to be new every time (team scripts reuse the rest)."""
-    return "".join(seg_text(s) for s in segs[:n] if s.get("role") != "cta")
+    return "".join(seg_text(s) for s in voiced(segs)[:n] if s.get("role") != "cta")
 
 
 def strip_fixed(text, cfg):
@@ -183,6 +185,7 @@ def strip_fixed(text, cfg):
 
 def head(segs):
     """First four characters of the opening line (谁懂啊 / 双十一 / 头盔一…)."""
+    segs = voiced(segs)
     return strip_fixed(seg_text(segs[0]), {"products": {}, "brand": "", "campaign": None})[:4] if segs else ""
 
 
@@ -213,7 +216,7 @@ def other_brand_openings(run, cfg):
     for p in sorted((Path(run) / "briefs").glob("*.json")):
         b = json.loads(p.read_text())
         if b.get("brand") != cfg.get("brand_key") and b.get("segments"):
-            out.append((b["brief_id"], seg_text(b["segments"][0])))
+            out.append((b["brief_id"], seg_text((voiced(b["segments"]) or [{}])[0])))
     return out
 
 
@@ -227,7 +230,7 @@ def lint_variety(briefs, cfg, run):
     todays = [b for b in briefs if b.get("segments")]
     cross = other_brand_openings(run, cfg)
     for b in todays:
-        first = re.sub(r"[^一-鿿A-Za-z0-9]", "", seg_text(b["segments"][0]))
+        first = re.sub(r"[^一-鿿A-Za-z0-9]", "", seg_text((voiced(b["segments"]) or [{}])[0]))
         for label, t in cross:
             r = difflib.SequenceMatcher(None, first, re.sub(r"[^一-鿿A-Za-z0-9]", "", t), autojunk=False).ratio()
             if r > lim:
@@ -260,9 +263,29 @@ OPENING_BANNED = re.compile(r"拍[一二三四五六七八九十\d]+发|到手|\
 MECH_OPENING_OK = ("爆款复刻",)  # user 11-11: 爆款复刻 copies viral videos that open with the deal
 
 
+def lint_silent(segs):
+    """A `silent` segment opens on one pinned clip with its own sound (user 11-11: 爆款 clip first, no voiceover).
+    It needs the clip (`footage.segment_id` + `footage.query` the platform matches it by) and no copy."""
+    out = []
+    for k, sg in enumerate(segs):
+        if not sg.get("silent"):
+            continue
+        f = sg.get("footage") or {}
+        if k != 0:
+            out.append(("error", f"S{sg.get('id')} 无口播原片段只能放第一段（开头）"))
+        if not (f.get("segment_id") and f.get("query")):
+            out.append(("error", f"S{sg.get('id')} 无口播原片段要写 footage.segment_id 和 footage.query（钉住哪条素材）"))
+        if seg_text(sg).strip() or seg_alts(sg):
+            out.append(("error", f"S{sg.get('id')} 是无口播原片段，不能写文案"))
+    if segs and all(s.get("silent") for s in segs):
+        out.append(("error", "全是无口播段，没有口播文案"))
+    return out
+
+
 def lint_opening(segs, cfg, product, brief=None):
     """User 11-06: the first line is about the viewer's hair, never the price / deal / bottle back / ingredient list.
     User 11-11: 爆款复刻 may open with the deal, because the viral videos it copies do; bottle back is still out."""
+    segs = voiced(segs)
     if not segs:
         return []
     deal_ok = brief is not None and any(k in (brief.get("direction") or "") for k in MECH_OPENING_OK)

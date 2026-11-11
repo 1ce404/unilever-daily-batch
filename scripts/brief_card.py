@@ -21,7 +21,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import SKILL_DIR, day_briefs, load_config, load_gold
+from common import SKILL_DIR, day_briefs, load_config, load_gold, voiced
 from lint_copy import earlier_copy, seg_text
 
 
@@ -133,7 +133,7 @@ def card(cfg, run, brief, today):
         out += [f"  「{e['before']}」→「{e['after']}」" for e in ed]
     seen = earlier_copy(run, brief, cfg) + [(o["brief_id"], o["segments"]) for o in today
                                             if o["brief_id"] != brief["brief_id"] and o.get("segments")]
-    used = [(label, seg_text(segs[0])) for label, segs in seen if segs and not label.startswith("范本")]
+    used = [(label, seg_text(voiced(segs)[0])) for label, segs in seen if voiced(segs) and not label.startswith("范本")]
     if used:
         out.append("已经用过的开头（这条换一个）：")
         out += [f"  {label}：{t}" for label, t in used[-10:]]

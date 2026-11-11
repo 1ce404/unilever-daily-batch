@@ -26,6 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import seg_alts, SKILL_DIR, copy_hash, day_briefs, lark_fetch, load_config, out_name, parse_table
 from lint_copy import lint_brief, lint_day, lint_variety, seg_text
+from common import voiced
 
 ROLE_CN = {"hook": "钩子", "pain": "痛点", "product": "产品", "selling": "卖点", "effect": "体感", "cta": "CTA"}
 HEAD = ["结构", "店铺 / 产品", "内容方向", "测试卖点", "测试人群", "文案", "和旧稿比", "QC 提醒", "审核"]
@@ -39,6 +40,10 @@ def copy_cell(b):
     lines = []
     for s in b["segments"]:
         tag = f"【S{s['id']} {s.get('title') or ROLE_CN.get(s.get('role'), s.get('role', ''))}】"
+        if s.get("silent"):  # user 11-11: opens on a pinned 爆款 clip with its own sound
+            f = s.get("footage") or {}
+            lines.append(f"{tag}（无口播，原片原声）{f.get('name') or f.get('query', '')}" + (f"｜原片里说：{f['says']}" if f.get("says") else ""))
+            continue
         lines.append(f"{tag}{seg_text(s)}")
         if seg_alts(s):
             lines.append("备选：" + " / ".join(seg_alts(s)))
@@ -85,7 +90,7 @@ def render(cfg, run):
         rows_xml.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
         md += [f"## {b['brief_id']} · {b['store']} · {b['direction']} · {b.get('selling_point','')} · {b.get('audience','')}",
                f"数量：{b['quantity']}", ""]
-        md += ["完整口播：", "".join(seg_text(s) for s in b['segments']), "", "分段（修改这里，「/」后面是同一句的其它说法）："]
+        md += ["完整口播：", "".join(seg_text(s) for s in voiced(b['segments'])), "", "分段（修改这里，「/」后面是同一句的其它说法）："]
         md += copy_cell(b)
         md += ["", "和旧稿比：" + "；".join(closest_cell(b))]
         md += ["", "QC：" + "；".join(qc), ""]
@@ -145,6 +150,9 @@ def sync(cfg, run, doc):
         merged = []
         for s in new:
             base = dict(old.get(s["id"], {"id": s["id"], "role": ""}))
+            if base.get("silent"):  # the silent 爆款 opening has no copy to edit; keep it as is
+                merged.append(base)
+                continue
             if seg_text(base) != s["text"]:
                 changed += 1
                 edits.append({"date": b.get("date"), "brief_id": bid, "direction": b.get("direction"),

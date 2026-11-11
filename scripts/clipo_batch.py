@@ -28,7 +28,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import seg_alts, approval_problem, day_briefs, load_config, normalize_copy, out_name
+from common import seg_alts, voiced, approval_problem, day_briefs, load_config, normalize_copy, out_name
 from lint_copy import lint_brief, lint_day, lint_variety, lint_script, lint_text, seg_text
 
 BASE = None
@@ -173,7 +173,7 @@ def build_script(pid, brief, title):
     words. Then: title it after the schedule, turn on AI rewrite for every segment (user 11-05: CTA too), hand
     the reviewer-approved alternative phrasings to the rewrite as reference, and read it back. Any mismatch:
     delete the script and raise, nothing is generated."""
-    segs = brief["segments"]
+    segs = voiced(brief["segments"])
     lines = "\n".join(f"第{i + 1}段（{sg.get('title') or sg.get('role')}）：{seg_text(sg)}" for i, sg in enumerate(segs))
     req = (f"按下面已经人审通过的口播文案建脚本：一共 {len(segs)} 段，每段的口播文案逐字照抄，不改字、不加字、不合并、不拆分；"
            f"每段都允许 AI 改写。画面、字幕、配音、BGM、贴图、音效按产品提示词配。\n{lines}")
@@ -195,13 +195,17 @@ def build_script(pid, brief, title):
         ps["ai_rewrite"] = True
         pin_visual(ps, sg, CFG["products"][brief["product_key"]])
     pin_voices(script, brief)
+    script["segments"] = with_silent(script["segments"], brief["segments"], pid)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
     body["vo_rewrite_prompt"] = alt_prompt(segs)
     api("PUT", f"/video-scripts/{sid}", body)
-    got = api("GET", f"/video-scripts/{sid}")["segments"]
+    allsegs = api("GET", f"/video-scripts/{sid}")["segments"]
+    got = [x for x in allsegs if x["type"] != "original"]
     wrong = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if (x.get("content") or "") != seg_text(sg)]
     off = [i + 1 for i, x in enumerate(got) if not x.get("ai_rewrite")]
+    if [x["type"] for x in allsegs] != ["original" if sg.get("silent") else "dubbing" for sg in brief["segments"]]:
+        wrong = wrong or ["无口播原片段没写对"]
     saved_voices = [x["id"] for x in api("GET", f"/video-scripts/{sid}")["config"]["tts"]["voices"]]
     if stable_voices(brief) and saved_voices != stable_voices(brief):
         wrong = wrong or ["音色没写进去"]
@@ -209,6 +213,30 @@ def build_script(pid, brief, title):
         api("DELETE", f"/video-scripts/{sid}")
         raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}），已删掉，没有生成")
     return sid
+
+
+def silent_segment(sg, pid):
+    """A voiceless opening segment on one pinned clip (user 11-11: open on the 爆款 clip, no voiceover; the clip
+    keeps its own sound). The platform has no segment-id field: it matches `query` against clip descriptions within
+    `tags`, and `score` is the lowest similarity accepted, set so only the chosen clip clears it (checked at
+    writing time with POST /materials/segments/search)."""
+    f = sg["footage"]
+    props = {"product_id": pid, "tags": f.get("tags") or ["爆款"], "query": f["query"], "score": f.get("score", 0.8)}
+    if f.get("duration_ms_lt"):
+        props["duration_ms_lt"] = f["duration_ms_lt"]
+    return {"id": "0", "type": "original", "title": sg.get("title") or "开头（原片无口播）", "content": "",
+            "ai_rewrite": False, "visual": {"mode": "material_segment", "props": props}, "transition": [],
+            "word_art": None, "sticker": None, "sound_effects": None, "subtitle_style": None, "tts": None}
+
+
+def with_silent(platform_segs, brief_segs, pid):
+    """Platform segments (spoken lines only) with the brief's silent segments put back in place; ids renumbered."""
+    it, out = iter(platform_segs), []
+    for sg in brief_segs:
+        out.append(silent_segment(sg, pid) if sg.get("silent") else next(it))
+    for i, x in enumerate(out, 1):
+        x["id"] = str(i)
+    return out
 
 
 def stable_voices(brief):
@@ -286,7 +314,8 @@ def sync_visuals(script_id, segs):
     if len(script["segments"]) != len(segs):
         raise RuntimeError("平台脚本段数和 brief 对不上")
     for ps, sg in zip(script["segments"], segs):
-        pin_visual(ps, sg)
+        if not sg.get("silent"):
+            pin_visual(ps, sg)
     body = {k: script[k] for k in ("product_id", "video", "config", "vo_rewrite_prompt", "segments", "title") if k in script}
     api("PUT", f"/video-scripts/{script_id}", body)
     got = api("GET", f"/video-scripts/{script_id}")["segments"]
@@ -308,7 +337,8 @@ REWRITE_RULES = [
 
 def alt_prompt(segs):
     """Rules every rewrite must follow, plus the reviewed phrasings of each line as the range to stay in."""
-    rows = [f"第{i + 1}段可以参考的说法：" + " / ".join([seg_text(sg)] + seg_alts(sg)) for i, sg in enumerate(segs) if seg_alts(sg)]
+    rows = [f"「{sg.get('title') or sg.get('role')}」这段可以参考的说法：" + " / ".join([seg_text(sg)] + seg_alts(sg))
+            for sg in voiced(segs) if seg_alts(sg)]
     out = "# 用户要求\n" + "\n".join(f"- {r}" for r in REWRITE_RULES)
     if rows:
         out += "\n每段改写时，在下面这些人审过的说法范围内换措辞，事实和机制不变：\n" + "\n".join(rows)
@@ -352,7 +382,7 @@ def delivery_name(cfg, brief, briefs):
     tags = direction_tags(cfg, brief)
     camp = cfg.get("campaign")
     in_camp = camp and brief.get("date", "") <= camp["until"]
-    clause = re.split(r"[，,。！？!?；;、]", seg_text((brief.get("segments") or [{}])[0]))[0]
+    clause = re.split(r"[，,。！？!?；;、]", seg_text((voiced(brief.get("segments")) or [{}])[0]))[0]
     first = re.sub(r"[^一-鿿A-Za-z0-9]", "", clause)[:5]
     direction = (brief.get("direction") or "").translate(str.maketrans({"（": "(", "）": ")", "｜": "|", "/": "|"}))
     name = fmt.format(yy=brief["date"][2:4], yymmdd=brief["date"].replace("-", "")[2:], date=day(brief),
@@ -486,7 +516,7 @@ def cmd_rereview(cfg, run, args):
         prod = cfg["products"][b["product_key"]]
         got = v.get("texts") or []
         issues = [m for t in got for l, m in lint_text(t, cfg, prod) if l == "error"]
-        issues += [m for l, m in lint_script(got, b["segments"], b, cfg, prod) if l == "error"]
+        issues += [m for l, m in lint_script(got, voiced(b["segments"]), b, cfg, prod) if l == "error"]
         relinted += issues != v.get("copy_issues")
         v["copy_issues"] = issues
         v["bad_footage"] = bad_footage(b["product_key"], api("GET", f"/video-cuts/{v['cut_id']}")["draft"])
@@ -595,7 +625,7 @@ def pull_generation(st, cfg, b, job, gen):
                 cut = api("GET", f"/video-cuts/{cut_id}")
                 rr = cut.get("random_result") or {}
                 raw = [x["content"] for x in rr.get("vo_rewrite", [])]
-                got = [re.sub(r"\[#[^\]]*\]", "", t) for t in raw] or job["texts"]
+                got = [re.sub(r"\[#[^\]]*\]", "", t) for t in raw] or [t for t in job["texts"] if t]
                 v["voice_cmd"] = any("[#" in t for t in raw)  # user 11-09: sounds like two speakers
                 v["bad_footage"] = bad_footage(b["product_key"], cut["draft"])
                 if rr.get("tts_speaker_id") in ((CFG.get("tts") or {}).get("bad_voices") or []):
@@ -605,7 +635,7 @@ def pull_generation(st, cfg, b, job, gen):
                 if (CFG.get("watermark") or {}).get("add") and "水印" not in [t.get("name") for t in cut["draft"]["tracks"]]:
                     v["watermark_missing"] = True
                 issues = [m for t in got for l, m in lint_text(t, cfg, prod) if l == "error"]
-                issues += [m for l, m in lint_script(got, b["segments"], b, cfg, prod) if l == "error"]
+                issues += [m for l, m in lint_script(got, voiced(b["segments"]), b, cfg, prod) if l == "error"]
                 v["copy_issues"] = issues
                 r = api("POST", "/render-jobs", {"spec": cut["draft"], "options": {"codec": "h264", "quality": "high", "scale": 1},
                                                 "cut_id": cut_id, "idempotency_key": f"udb-{cut_id}"})

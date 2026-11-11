@@ -103,10 +103,17 @@ def seg_alts(seg):
     return [a] if isinstance(a, str) else [x for x in a if x]
 
 
+def voiced(segs):
+    """The spoken segments. A `silent` segment (user 11-11: open on a pinned 爆款 clip with its own sound, no
+    voiceover) has no copy; every copy check and the platform's voiceover rewrite skip it."""
+    return [s for s in segs or [] if not s.get("silent")]
+
+
 def copy_hash(brief):
     """Fingerprint of the copy a reviewer saw. Approval is only valid while this still matches."""
     import hashlib
     body = "\n".join(f"{x.get('id')}|{x.get('role')}|{x.get('text', '')}" + "".join(f"|{a}" for a in seg_alts(x))
+                     + (f"|footage:{(x.get('footage') or {}).get('segment_id')}" if x.get("silent") else "")
                      for x in brief.get("segments") or [])
     return hashlib.sha1(body.encode()).hexdigest()[:12]
 
