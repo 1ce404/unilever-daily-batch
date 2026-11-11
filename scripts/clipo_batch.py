@@ -294,15 +294,19 @@ def bad_footage(product_key, draft):
     """Shots in a cut that the user ruled out (user 11-10: no dandruff footage), found by segment description.
     The platform picks footage by tag, and dandruff shots often carry tags like 头皮出油 / 头发油."""
     words = CFG.get("banned_footage_words") or []
-    if not words:
+    banned_files = CFG.get("banned_footage_files") or {}
+    if not words and not banned_files:
         return []
     idx, out = footage_index(product_key), []
     for c in draft.get("clips", []):
         if c.get("trackId") != "main":
             continue
-        seg = idx.get((c.get("props", {}).get("src") or "").split("?")[0].rsplit("/", 1)[-1])
+        name = (c.get("props", {}).get("src") or "").split("?")[0].rsplit("/", 1)[-1]
+        seg = idx.get(name)
         d = (seg or {}).get("description") or ""
         hit = next((w for w in words if w in d), None)
+        if name in banned_files:  # user 11-11: deleted from the platform, but cuts made before still use it
+            hit, d = "已删素材", banned_files[name]
         if hit:
             out.append(f"{hit}：{d[:30]}")
     return out
