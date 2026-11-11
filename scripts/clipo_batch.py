@@ -62,9 +62,20 @@ class State:
         self.path = Path(run) / "clipo" / out_name(CFG, "state.json")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {"videos": {}}
+        self._seen = {key: set(self.data.get(key) or {}) for key in ("briefs", "videos")}
 
     def save(self):
+        """11-11: a background poll and a submit share this file; a plain dump made the poll erase the 5 briefs
+        submit had just added. Briefs / videos on disk that this process never loaded are kept."""
+        if self.path.exists():
+            disk = json.loads(self.path.read_text())
+            for key in ("briefs", "videos"):
+                mine = self.data.setdefault(key, {})
+                for k, v in (disk.get(key) or {}).items():
+                    if k not in mine and k not in self._seen.get(key, set()):
+                        mine[k] = v
         self.path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2))
+        self._seen = {key: set(self.data.get(key) or {}) for key in ("briefs", "videos")}
 
     @property
     def videos(self):
