@@ -129,25 +129,34 @@
   "delivery_group_naming": "TZ-{yy}-{date}-{brand_tag}",
   "tts": {
     "voices": [
-      "ICL_uranus_zh_female_zhixingwenwan_tob",
-      "zh_female_chunribu_uranus_bigtts",
-      "ICL_uranus_zh_female_tianmeihuopo_tob",
-      "ICL_uranus_zh_female_zhixinjiejie_tob",
-      "zh_female_qinqienv_uranus_bigtts",
-      "ICL_uranus_zh_female_xingganyujie_tob"
+      "zh_female_zhishuaiyingzi_uranus_bigtts",
+      "zh_female_gujie_uranus_bigtts",
+      "zh_male_xionger_uranus_bigtts",
+      "zh_male_sunwukong_uranus_bigtts",
+      "ICL_uranus_zh_male_paoxiaoxiaoge_tob",
+      "zh_male_liangsangmengzai_uranus_bigtts"
     ],
     "bad_voices": [
       "zh_female_qiaopinv_uranus_bigtts",
       "zh_male_guanggaojieshuo_uranus_bigtts",
-      "zh_female_zhishuaiyingzi_uranus_bigtts",
       "zh_female_qingchezizi_uranus_bigtts",
       "zh_female_tianmeitaozi_uranus_bigtts",
       "ICL_uranus_zh_female_chunchenvsheng_tob",
       "zh_female_meilinvyou_uranus_bigtts",
       "ICL_uranus_zh_female_meilinvyou_tob",
-      "zh_male_cixingjieshuonan_uranus_bigtts"
+      "zh_male_cixingjieshuonan_uranus_bigtts",
+      "ICL_uranus_zh_female_xingganyujie_tob"
     ],
-    "_note": "用户 11-09/11-10：配音像两个人。平台每段单独合成，部分音色段与段之间音高差很大（11.10 实测 80 条，最高一段比最低一段高 35%~51%）。voices 固定用实测稳定的音色（段间差 ≤1.25）；speech_rate 等全局设置原样保留。bad 列表是实测不稳或配不出来的，不用。"
+    "_note": "用户 11-09/11-10：配音像两个人。平台每段单独合成，部分音色段与段之间音高差很大（11.10 实测 80 条，最高一段比最低一段高 35%~51%）。voices 固定用实测稳定的音色（段间差 ≤1.25）；speech_rate 等全局设置原样保留。bad 列表是实测不稳或配不出来的，不用。",
+    "_bad_voice_note_1111": "用户 11-11：性感御姐 2.0 听着像林黛玉，不用",
+    "voices_before_1111": [
+      "ICL_uranus_zh_female_zhixingwenwan_tob",
+      "zh_female_chunribu_uranus_bigtts",
+      "ICL_uranus_zh_female_tianmeihuopo_tob",
+      "ICL_uranus_zh_female_zhixinjiejie_tob",
+      "zh_female_qinqienv_uranus_bigtts"
+    ],
+    "_voices_note_1111": "用户 11-11 指定朗读人：直率英子、顾姐、熊二、猴哥、咆哮小哥、亮嗓萌仔（平台音色库里能找到的 6 个；活泼女声、甜美台妹、湾湾小何、妹坨洁儿库里没有，待同步）。直率英子以前测过段间音高差大，从 bad_voices 拿掉后靠 voice_check 逐条把关"
   },
   "banned_footage_words": [
     "头皮屑",
