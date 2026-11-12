@@ -1047,18 +1047,111 @@ def cmd_share(cfg, run, args):
     if group:
         print(f"\n今天全部分享（分组）：{BASE.replace('/api/v1', '')}/share/group/{group['id']}")
     write_delivery(st, {b["brief_id"]: b for b in load_briefs(run)}, run)
+    if args.download and not args.dry_run:
+        print()
+        cmd_download(cfg, run, args)
+
+
+def remote_size(url):
+    """Size of a signed OSS object. The share URLs are signed for GET only (HEAD gets 403), so ask for one byte."""
+    req = urllib.request.Request(url, headers={"Range": "bytes=0-0"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        cr = r.headers.get("Content-Range") or ""
+        return int(cr.rsplit("/", 1)[1]) if "/" in cr else int(r.headers.get("Content-Length") or 0)
+
+
+def fetch_file(url, dest, tries=3):
+    """Download one MP4 to dest via a temp file; returns its size. Retries; never leaves a partial file."""
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(url, timeout=300) as r, open(tmp, "wb") as f:
+                want = int(r.headers.get("Content-Length") or 0)
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            got = tmp.stat().st_size
+            if got == 0 or (want and got != want):
+                raise RuntimeError(f"文件不完整 {got}/{want} 字节")
+            tmp.replace(dest)
+            return got
+        except Exception as e:  # network hiccup or truncated body: retry, then give up on this file only
+            if tmp.exists():
+                tmp.unlink()
+            if attempt == tries - 1:
+                raise RuntimeError(str(e)[:200])
+            time.sleep(3 * (attempt + 1))
+
+
+def cmd_download(cfg, run, args):
+    """User 11-12 (PR #2): deliver the final share links as local folders too. One folder per share link, named
+    after it, with its videos as <share title>-<n>.mp4 in share order. Default place: <project>/本地交付/YYYYMMDD-品牌/
+    (the project holding runs/; --out overrides). Files already there with the right size are kept, so re-running
+    only fetches what is missing. Writes 下载清单.json next to the folders. Never regenerates or re-renders."""
+    st = State(run)
+    shares = [(k, v) for k, v in st.data.get("shares", {}).items()]
+    if not shares:
+        print("还没有分享链接，先跑 share")
+        return
+    day = Path(run).name
+    # default: the project that holds runs/ (scripts run from the skill dir; MP4s must not land in the skill repo)
+    root = Path(args.out) if args.out else Path(run).resolve().parent.parent / "本地交付" / f"{day}-{cfg['brand']}"
+    if args.dry_run:
+        for _, sh in shares:
+            print(f"🧪 {sh['title']}：{len(sh['videos'])} 条 → {root / sh['title']}")
+        print(f"\n(dry run) 将下载到 {root.resolve()}")
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    manifest, failed, total = [], [], 0
+    for key, sh in sorted(shares, key=lambda x: x[1]["title"]):
+        page = api("GET", f"/video-shares/{sh['id']}")  # fresh signed urls, in the order the client sees
+        folder = root / page["title"]
+        folder.mkdir(exist_ok=True)
+        keep = {f"{v['name']}.mp4" for v in page["videos"]}
+        for old in folder.glob("*.mp4"):  # the link was rebuilt with other videos: drop files no longer in it
+            if old.name not in keep:
+                old.unlink()
+        rows = []
+        for v in page["videos"]:
+            dest = folder / f"{v['name']}.mp4"
+            try:
+                size = remote_size(v["video_url"])
+                if dest.exists() and size and dest.stat().st_size == size:
+                    got = size
+                else:
+                    got = fetch_file(v["video_url"], dest)
+                rows.append({"file": dest.name, "bytes": got})
+            except Exception as e:
+                failed.append(f"{page['title']}/{dest.name}：{str(e)[:120]}")
+        n = len([r for r in rows])
+        total += n
+        mark = "✅" if n == len(page["videos"]) else "⚠️"
+        print(f"{mark} {page['title']}：{n}/{len(page['videos'])} 条", flush=True)
+        manifest.append({"share": page["title"], "url": share_url(sh["id"]), "folder": str(folder.resolve()),
+                         "expected": len(page["videos"]), "saved": n, "files": rows})
+    (root / "下载清单.json").write_text(json.dumps({"at": time.strftime("%Y-%m-%d %H:%M"), "folders": manifest,
+                                                  "failed": failed}, ensure_ascii=False, indent=1))
+    want = sum(m["expected"] for m in manifest)
+    print(f"\n本地交付：{root.resolve()}（{total}/{want} 条）")
+    if failed:
+        print("下载失败（再跑一次 download 只补这些）：")
+        print("\n".join(f"  - {f}" for f in failed))
 
 
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "status"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "status"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--partial", action="store_true", help="share: 不够数的 brief 也先发")
     ap.add_argument("--refresh", action="store_true", help="share: 已有分享也重建（换掉旧链接）")
+    ap.add_argument("--out", help="download / share --download: 本地交付目录，默认 <项目>/本地交付/YYYYMMDD-品牌/（项目 = runs 所在目录）")
+    ap.add_argument("--download", action="store_true", help="share: 建完链接后把成片下载到本地（同 download）")
     ap.add_argument("--all", action="store_true", help="rereview: 通过的也重新审")
     ap.add_argument("--scripts-only", action="store_true", help="submit: 只在平台建脚本并核对，不生成视频（不扣额度）")
     ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
@@ -1072,7 +1165,7 @@ def main():
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
     {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "rereview": cmd_rereview, "report": cmd_report, "share": cmd_share,
-     "status": cmd_status}[args.cmd](cfg, args.run, args)
+     "download": cmd_download, "status": cmd_status}[args.cmd](cfg, args.run, args)
 
 
 if __name__ == "__main__":
