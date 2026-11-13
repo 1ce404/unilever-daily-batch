@@ -113,3 +113,10 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 - 切片改标签 `PATCH /materials/segments/{segment_id}`，人工复核 `POST /materials/segments/{segment_id}/review`
 - 别的产品的切片复制过来 `POST /products/{id}/segments/copy`
 - 产品描述 / 标签 `PATCH /products/{id}`；提示词 `PUT /products/{id}/prompts/{prompt_type}`
+
+
+## 人物AIGC逐条绑定
+
+人物三镜一致、组内独立素材按[aigc-production.md](aigc-production.md)执行。素材生成使用POST /material-generations与GET /material-generations/{id}，参数以当前OpenAPI为准。成功源素材剪片后，通过POST /storage/upload-tokens上传、POST /products/{id}/segments登记；写入每条visual_sets，使用clipo_batch.py bind-aigc。
+
+bind-aigc只替换1/2/4主轨道人物窗口，PUT后GET完整现签draft提交render，不重新生成已成功的源素材。修改素材或修复失败渲染需新render_revision；同一素材组/修订的幂等键不重复提交。share会核对每条draft绑定及组内/跨脚本来源，不逐条看帧。用户自行检查模式可跳过内容AI审核，保留结构与下载确认。

@@ -9,6 +9,8 @@ QC 标准原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb（�
 | 3 平台 AI 审核 | 每条成片渲染完 | Clipo `video-cuts/review` | 成片层面：画面与口播一致、产品外观一致、画面质量、字幕、音画同步 |
 | 4 人工抽查 | 报告出来后 | 你 + 审核人 | 只看 AI 驳回的，和每个 brief 抽 1 条通过的 |
 
+用户明确自行检查时，按[人物流程](aigc-production.md)记录content_review范围；跳过成片AI内容审核、人工抽查和额外内容测试，继续任务状态、素材绑定及下载完整性确认。结构记录不等于面容/表演视觉审核通过。
+
 ## 层 1：QC 文档 → config 的对应
 
 | QC 文档条目 | 配置 / 检查 |
