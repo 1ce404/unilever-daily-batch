@@ -38,6 +38,8 @@ git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/
 
 后续交付默认自动下载全部成片到本地（`clipo_batch.py share --download` / `download`）：每个分享页一个同名文件夹、各 10 条 MP4。未指定位置时保存到 `runs` 所在项目目录的 `本地交付/YYYYMMDD-品牌/`，回复同时包含分享链接和本地文件夹路径，无需再单独提出下载要求。
 
+人物AIGC支持单条三镜同人不同动作、跨脚本场景动作差异及组内逐条独立素材。执行前读[人物生产与返工](references/aigc-production.md)；`bind-aigc`按visual_sets绑定并渲染，分享前自动核对素材来源和区间。用户自行检查模式可跳过内容AI审核。
+
 ## 目录
 
 | 路径 | 内容 |
