@@ -101,14 +101,15 @@ def lint_brief(brief, cfg):
         if not t.strip():
             issues.append(("error", f"S{s.get('id')} 没有文案"))
             continue
-        # user 11-11: a line pinned to an AI scene clip (visual_query) may name that scene: the footage shows it
-        keep = (lambda m: "是具体场景" not in m) if s.get("visual_query") else (lambda m: True)
+        # user 11-11: a line pinned to an AI scene clip (visual_query / footage_pool) may name that scene: the footage shows it
+        keep = (lambda m: "是具体场景" not in m) if (s.get("visual_query") or s.get("footage_pool")) else (lambda m: True)
         issues += [(lvl, f"S{s['id']} {msg}") for lvl, msg in lint_text(t, cfg, product) if keep(msg)]
         for k, a in enumerate(seg_alts(s), 2):
             issues += [(lvl, f"S{s['id']} 说法{k} {msg}") for lvl, msg in lint_text(a, cfg, product) if keep(msg)]
         q = s.get("visual_query")
         if q and not (q.get("query") and q.get("segment_id") and s.get("visual_tags")):
             issues.append(("error", f"S{s['id']} visual_query 要写 segment_id、query，并配 visual_tags（检索范围）"))
+    issues += lint_pools(brief, brief.get("segments") or [])
     if any(i[0] == "error" and "没有文案" in i[1] for i in issues):
         return issues
     issues += lint_script(texts, segs, brief, cfg, product)
@@ -268,6 +269,31 @@ OPENING_BANNED = re.compile(r"拍[一二三四五六七八九十\d]+发|到手|\
 MECH_OPENING_OK = ("爆款复刻",)  # user 11-11: 爆款复刻 copies viral videos that open with the deal
 
 
+POOL_MIN = 3  # user 11-13: one pinned clip made every video of a brief look the same
+
+
+def lint_pools(brief, segs):
+    """Pinned footage must come from a pool: `footage_pool` with at least POOL_MIN clips, each clip used by at most
+    ceil(quantity / clips) of the brief's videos. A single pinned clip (`visual_query`, silent `footage`) is only
+    allowed when the brief is packed with other briefs that bring their own clips (the 11-11 力士 way)."""
+    out = []
+    for sg in segs:
+        pool = sg.get("footage_pool")
+        single = sg.get("visual_query") or (sg.get("silent") and sg.get("footage") and not pool)
+        if pool:
+            n = len(pool.get("clips") or [])
+            if not (pool.get("query") and pool.get("score") and pool.get("tags") is not None):
+                out.append(("error", f"S{sg.get('id')} footage_pool 要有 query、tags、score（用 clipo_batch.py pool 生成）"))
+            if n < POOL_MIN:
+                out.append(("error", f"S{sg.get('id')} 素材池只有 {n} 条，至少 {POOL_MIN} 条同类素材（一个 brief 的视频才不会全是同一条）"))
+            elif brief.get("quantity") and -(-brief["quantity"] // n) > 4:
+                out.append(("warn", f"S{sg.get('id')} 池子 {n} 条、交付 {brief['quantity']} 条，每条素材要用 {-(-brief['quantity'] // n)} 次，再多找几条"))
+        elif single and not brief.get("pack"):
+            out.append(("error", f"S{sg.get('id')} 只钉了一条素材，这个 brief 的视频画面会全一样：用 clipo_batch.py pool 做 {POOL_MIN} 条以上的素材池，"
+                                 "或按素材拆小 brief 再 pack 合并交付"))
+    return out
+
+
 def lint_silent(segs):
     """A `silent` segment opens on one pinned clip with its own sound (user 11-11: 爆款 clip first, no voiceover).
     It needs the clip (`footage.segment_id` + `footage.query` the platform matches it by) and no copy."""
@@ -278,8 +304,8 @@ def lint_silent(segs):
         f = sg.get("footage") or {}
         if k != 0:
             out.append(("error", f"S{sg.get('id')} 无口播原片段只能放第一段（开头）"))
-        if not (f.get("segment_id") and f.get("query")):
-            out.append(("error", f"S{sg.get('id')} 无口播原片段要写 footage.segment_id 和 footage.query（钉住哪条素材）"))
+        if not sg.get("footage_pool") and not (f.get("segment_id") and f.get("query")):
+            out.append(("error", f"S{sg.get('id')} 无口播原片段要写 footage_pool（clipo_batch.py pool 生成），或 footage.segment_id + footage.query"))
         if seg_text(sg).strip() or seg_alts(sg):
             out.append(("error", f"S{sg.get('id')} 是无口播原片段，不能写文案"))
     if segs and all(s.get("silent") for s in segs):

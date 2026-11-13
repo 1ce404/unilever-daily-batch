@@ -231,7 +231,7 @@ def silent_segment(sg, pid):
     keeps its own sound). The platform has no segment-id field: it matches `query` against clip descriptions within
     `tags`, and `score` is the lowest similarity accepted, set so only the chosen clip clears it (checked at
     writing time with POST /materials/segments/search)."""
-    f = sg["footage"]
+    f = sg.get("footage_pool") or sg["footage"]  # a pool (user 11-13): one of several clips per video
     props = {"product_id": pid, "tags": f.get("tags") or ["爆款"], "query": f["query"], "score": f.get("score", 0.8)}
     if f.get("duration_ms_lt"):
         props["duration_ms_lt"] = f["duration_ms_lt"]
@@ -312,17 +312,31 @@ def bad_footage(product_key, draft):
     return out
 
 
+def pinned_clips(brief, draft):
+    """Footage segment id of the first shot of every pinned brief segment (silent opener, pool or visual_query),
+    so picks() can spread a pool's clips over the delivered videos. Draft clip ids are "<script segment id>-<shot>";
+    platform segment ids follow the brief's segment order (with_silent renumbers them from 1)."""
+    pinned = [str(k + 1) for k, sg in enumerate(brief["segments"]) if sg.get("silent") or sg.get("footage_pool") or sg.get("visual_query")]
+    if not pinned:
+        return []
+    idx, first = footage_index(brief["product_key"]), {}
+    for c in sorted((c for c in draft.get("clips", []) if c.get("trackId") == "main"), key=lambda c: c["from"]):
+        x = idx.get((c.get("props", {}).get("src") or "").split("?")[0].rsplit("/", 1)[-1])
+        first.setdefault(str(c.get("id", "")).split("-")[0], x and x["id"])
+    return [first.get(k) for k in pinned]
+
+
 def pin_visual(platform_seg, seg, product=None):
     """User 11-06/11-09: the line decides the footage. A brief segment may pin `visual_tags` (product footage
     tags, any of them may match, e.g. ["泡沫丰富", "产品质地"] for a line about using the shampoo); otherwise the
     platform's own choice stays."""
-    tags = seg.get("visual_tags")
+    tags = seg.get("visual_tags") or (seg.get("footage_pool") or {}).get("tags")
     if not tags and product and any(t in seg_text(seg) for t in product.get("ingredient_terms", [])):
         tags = product.get("ingredient_footage")  # user 11-10: a line about an ingredient / tech shows texture
     v = platform_seg.get("visual") or {}
     if tags and v.get("mode") == "material_segment":
         v.setdefault("props", {})["tags"] = list(tags)
-        q = seg.get("visual_query")  # user 11-11: a 双人演绎 line shows one AI scene clip, pinned like a silent opening
+        q = seg.get("footage_pool") or seg.get("visual_query")  # user 11-11 one AI scene clip; 11-13 a pool of clips
         if q:
             v["props"]["query"], v["props"]["score"] = q["query"], q.get("score", 0.8)
 
@@ -650,6 +664,7 @@ def pull_generation(st, cfg, b, job, gen):
                 got = [re.sub(r"\[#[^\]]*\]", "", t) for t in raw] or [t for t in job["texts"] if t]
                 v["voice_cmd"] = any("[#" in t for t in raw)  # user 11-09: sounds like two speakers
                 v["bad_footage"] = bad_footage(b["product_key"], cut["draft"])
+                v["pinned_clips"] = pinned_clips(b, cut["draft"])
                 if rr.get("tts_speaker_id") in ((CFG.get("tts") or {}).get("bad_voices") or []):
                     v["bad_voice"] = rr.get("tts_speaker_id")
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
@@ -857,10 +872,22 @@ def cmd_report(cfg, run, args):
 
 
 def picks(st, bid, quantity):
-    """(delivered, spares): the first `quantity` deliverable videos of a brief by number, and the rest."""
+    """(delivered, spares): `quantity` deliverable videos of a brief, and the rest. User 11-13: when a brief pins
+    footage from a pool, take them round-robin by the clip each video landed on, so one delivery mixes the pool's
+    clips instead of repeating whichever clip the platform drew most (by number otherwise)."""
     good = sorted((k for k, v in st.videos.items() if v["brief_id"] == bid and deliverable(v)),
                   key=lambda k: int(k.rsplit("V", 1)[1]))
-    return good[:quantity], good[quantity:]
+    by_clip = {}
+    for k in good:
+        by_clip.setdefault(tuple(st.videos[k].get("pinned_clips") or []), []).append(k)
+    if len(by_clip) <= 1:
+        return good[:quantity], good[quantity:]
+    out, queues = [], list(by_clip.values())
+    while len(out) < quantity and any(queues):
+        for q in queues:
+            if q and len(out) < quantity:
+                out.append(q.pop(0))
+    return out, [k for k in good if k not in out]
 
 
 def share_url(share_id):
@@ -1060,6 +1087,60 @@ def remote_size(url):
         return int(cr.rsplit("/", 1)[1]) if "/" in cr else int(r.headers.get("Content-Length") or 0)
 
 
+def cmd_pool(cfg, run, args):
+    """User 11-13: a pinned segment should pull from a pool of clips of the same kind, not one clip (every video of
+    the brief came out with the same AIGC). The platform takes the clips whose description similarity to `query`
+    is at least `score` and draws among them; a long query naming one clip leaves only that clip, so the query
+    must name what the clips share. This searches `--query` within `--tags`, takes the top `--size` usable clips
+    (risk-flagged and banned-footage clips stop the pool), sets `score` between the last one in and the first one
+    out, prints the pool, and with --brief/--seg writes it into that brief segment as `footage_pool`."""
+    pk = args.product or next(iter(cfg["products"]))
+    pid = cfg["products"][pk]["clipo_product_id"]
+    tags = [t for t in (args.tags or "").split(",") if t]
+    body = {"query": args.query, "product_id": pid, "tags": tags, "limit": 40}
+    r = api("POST", "/materials/segments/search", body)
+    hits = r["items"] if isinstance(r, dict) and "items" in r else r.get("hits", r)
+    words = CFG.get("banned_footage_words") or []
+    # AI scene clips are all risk-flagged by the platform's footage review ("纯讲话，无产品介入") by design;
+    # --allow-risk takes them. Banned-footage words (头屑、秃顶…) always stop the pool.
+    usable = lambda x: (args.allow_risk or x["review_result"] != "reject") and not any(w in (x.get("description") or "") for w in words)
+    pool = []
+    for i, h in enumerate(hits):
+        if not usable(h["segment"]):
+            break  # anything ranked below a bad clip would let the bad clip in too
+        pool.append(h)
+        if len(pool) == args.size:
+            break
+    if len(pool) < 2:
+        bad = hits[len(pool)]["segment"] if len(hits) > len(pool) else None
+        why = f"排在第 {len(pool) + 1} 的「{bad['name'][:20]}」是{'风险素材（' + (bad.get('review_reason') or '')[:30] + '）' if bad['review_result'] == 'reject' else '禁用画面'}" if bad else "检索不到更多"
+        raise SystemExit(f"只凑到 {len(pool)} 条能用的：{why}。换个 query（写这类素材的共同点）；"
+                         "AI 真人场景素材平台都标了风险（无产品介入），确认要用就加 --allow-risk")
+    nxt = hits[len(pool)] if len(hits) > len(pool) else None
+    score = round((pool[-1]["score"] + nxt["score"]) / 2, 3) if nxt else round(pool[-1]["score"] - 0.01, 3)
+    gap = (pool[-1]["score"] - nxt["score"]) if nxt else 1
+    print(f"素材池（{len(pool)} 条，score {score}，和池外第一条差 {gap:.3f}）：")
+    for h in pool:
+        x = h["segment"]
+        print(f"  {h['score']:.3f} {(x['end_ms'] - x['begin_ms']) / 1000:4.1f}s {x['id']} {x['name'][:30]}")
+    if nxt:
+        print(f"  ——池外第一条 {nxt['score']:.3f} {nxt['segment']['review_result']} {nxt['segment']['name'][:30]}")
+    if gap < 0.005:
+        print("⚠️ 池内外分数太接近，平台可能挑到池外的：换个 query 再试")
+    fp = {"query": args.query, "tags": tags, "score": score, "clips": [{"segment_id": h["segment"]["id"], "name": h["segment"]["name"]} for h in pool],
+          "_check": f"{time.strftime('%Y-%m-%d')} 检索：池内最低 {pool[-1]['score']:.3f}，池外最高 {nxt['score'] if nxt else 0:.3f}"}
+    if args.brief and args.seg:
+        p = Path(run) / "briefs" / f"{args.brief}.json"
+        b = json.loads(p.read_text())
+        sg = next(x for x in b["segments"] if x["id"] == args.seg)
+        sg["footage_pool"] = fp
+        sg.pop("visual_query", None)
+        if sg.get("silent"):
+            sg.pop("footage", None)
+        p.write_text(json.dumps(b, ensure_ascii=False, indent=2))
+        print(f"→ 写进 {args.brief} S{args.seg}（改了画面要重新给人看、重新审）")
+
+
 def fetch_file(url, dest, tries=3):
     """Download one MP4 to dest via a temp file; returns its size. Retries; never leaves a partial file."""
     tmp = dest.with_suffix(dest.suffix + ".part")
@@ -1143,7 +1224,7 @@ def cmd_download(cfg, run, args):
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "status"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "status"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
@@ -1152,6 +1233,12 @@ def main():
     ap.add_argument("--refresh", action="store_true", help="share: 已有分享也重建（换掉旧链接）")
     ap.add_argument("--out", help="download / share --download: 本地交付目录，默认 <项目>/本地交付/YYYYMMDD-品牌/（项目 = runs 所在目录）")
     ap.add_argument("--download", action="store_true", help="share: 建完链接后把成片下载到本地（同 download）")
+    ap.add_argument("--query", help="pool: 这类素材的共同点，例如「男士摸发根 头发油」")
+    ap.add_argument("--tags", help="pool: 检索范围，逗号隔开的产品素材标签")
+    ap.add_argument("--product", help="pool: 产品 key，默认第一个")
+    ap.add_argument("--size", type=int, default=5, help="pool: 池子要几条，默认 5")
+    ap.add_argument("--seg", help="pool: 写进 brief 的哪一段（段 id），配 --brief")
+    ap.add_argument("--allow-risk", action="store_true", help="pool: 平台标了风险的素材也进池（AI 真人场景素材都被标「无产品介入」）")
     ap.add_argument("--all", action="store_true", help="rereview: 通过的也重新审")
     ap.add_argument("--scripts-only", action="store_true", help="submit: 只在平台建脚本并核对，不生成视频（不扣额度）")
     ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
@@ -1165,7 +1252,7 @@ def main():
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
     {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "rereview": cmd_rereview, "report": cmd_report, "share": cmd_share,
-     "download": cmd_download, "status": cmd_status}[args.cmd](cfg, args.run, args)
+     "download": cmd_download, "pool": cmd_pool, "status": cmd_status}[args.cmd](cfg, args.run, args)
 
 
 if __name__ == "__main__":
