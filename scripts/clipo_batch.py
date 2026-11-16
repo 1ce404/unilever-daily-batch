@@ -18,6 +18,7 @@ briefs a human approved (review_doc.py sync / approve, copy unchanged since) wit
 re-lints every rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
 """
 import argparse
+import copy
 import json
 import math
 import re
@@ -29,6 +30,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import seg_alts, voiced, approval_problem, day_briefs, load_config, normalize_copy, out_name
+from aigc_materials import (required as aigc_required, group_for, segments as aigc_segments,
+                            validate_selection, validate_draft, render_key,
+                            user_review_instruction, release_for_user)
 from lint_copy import lint_brief, lint_day, lint_variety, lint_script, lint_text, seg_text
 
 BASE = None
@@ -571,7 +575,7 @@ def cmd_rereview(cfg, run, args):
 
 def deliverable(v):
     """Passed AI review, or the user released this video by name (`review_waived` holds their words: user 11-11
-    released 爆款-opener videos the reviewer rejected only for the clip's own burned-in text). Our own checks
+    released 爆款-opener videos or explicitly chose to review batch content themselves). Existing known issues
     (copy, voice, footage, watermark) still apply either way."""
     return ((v.get("ai_review") == "pass" or bool(v.get("review_waived"))) and not v.get("copy_issues") and not v.get("watermark_missing")
             and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift")
@@ -674,6 +678,9 @@ def pull_generation(st, cfg, b, job, gen):
                 issues = [m for t in got for l, m in lint_text(t, cfg, prod) if l == "error"]
                 issues += [m for l, m in lint_script(got, voiced(b["segments"]), b, cfg, prod) if l == "error"]
                 v["copy_issues"] = issues
+                if aigc_required(b) and not v.get("aigc_material_set"):
+                    v["stage"] = "aigc_pending"
+                    continue
                 r = api("POST", "/render-jobs", {"spec": cut["draft"], "options": {"codec": "h264", "quality": "high", "scale": 1},
                                                 "cut_id": cut_id, "idempotency_key": f"udb-{cut_id}"})
                 v["render_job"], v["stage"] = r["job_id"], "rendering"
@@ -684,9 +691,9 @@ def pull_generation(st, cfg, b, job, gen):
             if g["status"] == "success":
                 if job.get("rounds"):
                     next_round(job)
-                elif all(st.videos[x].get("render_job") for x in vids):
+                elif all(st.videos[x].get("render_job") or st.videos[x].get("stage") == "aigc_pending" for x in vids):
                     gen["stage"] = "generated"
-        elif all(st.videos[x].get("render_job") for x in vids):
+        elif all(st.videos[x].get("render_job") or st.videos[x].get("stage") == "aigc_pending" for x in vids):
             gen["stage"] = "generated"
 
 
@@ -704,6 +711,61 @@ def generating(job):
     return job.get("stage") == "generating" or any(t.get("stage") == "generating" for t in job.get("topups", []))
 
 
+def cmd_bind_aigc(cfg, run, args):
+    """Bind successful per-video AIGC sets, preserving other tracks; then render each immediately."""
+    st = State(run)
+    briefs = {b["brief_id"]: b for b in load_briefs(run, args.brief)}
+    ready = {}
+    for bid, brief in briefs.items():
+        ready[bid] = [key for key, v in st.videos.items() if v["brief_id"] == bid and
+                      any(g.get("video_key") == key or g.get("cut_id") == v["cut_id"]
+                          for g in brief.get("visual_sets", [])
+                          if g.get("source_generation_id") or g.get("retained_user_approved_demo"))]
+    validate_selection(briefs, st.videos, ready)
+    for bid, keys in ready.items():
+        for key in keys:
+            v = st.videos[key]
+            group = group_for(briefs[bid], key, v)
+            if group.get("retained_user_approved_demo"):
+                continue
+            idem = render_key(v["cut_id"], group)
+            tracked_legacy = (not v.get("aigc_render_key") and v.get("render_job") and
+                              v.get("aigc_material_set") == group["name"] and
+                              v.get("aigc_source_generation_id") == group["source_generation_id"] and
+                              group.get("render_revision", 1) == 1)
+            if (v.get("aigc_render_key") == idem or tracked_legacy) and v.get("stage") in ("rendering", "rendered", "reviewing", "done"):
+                continue
+            if args.dry_run:
+                print(f"{key}: bind {group['name']} and render")
+                continue
+            before = api("GET", f"/video-cuts/{v['cut_id']}")
+            draft = copy.deepcopy(before["draft"])
+            fps = draft["composition"].get("fps", 30)
+            for n, row in aigc_segments(group).items():
+                clips = [c for c in draft["clips"] if c.get("trackId") == "main" and str(c.get("id", "")).split("-")[0] == n]
+                if len(clips) != 1 or not row.get("duration"):
+                    raise RuntimeError(f"{key} S{n}: 需要单一人物窗口与有效源片时长")
+                clip = clips[0]
+                need = clip["durationInFrames"] / fps
+                rate = min(1.0, (row["duration"] - 1 / fps) / need)
+                if rate <= 0:
+                    raise RuntimeError(f"{key}: 源片不足有效一帧")
+                clip["props"].update(src=row["object_key"], startFrom=0, playbackRate=rate)
+                clip["props"].pop("loop", None)
+            validate_draft(group, draft)
+            api("PUT", f"/video-cuts/{v['cut_id']}", {"script_id": before["script_id"], "draft": draft})
+            current = api("GET", f"/video-cuts/{v['cut_id']}")
+            validate_draft(group, current["draft"])
+            job = api("POST", "/render-jobs", {"spec": current["draft"], "options": {"codec": "h264", "quality": "high", "scale": 1},
+                                               "cut_id": v["cut_id"], "idempotency_key": idem})
+            v.update(render_job=job["job_id"], stage="rendering", aigc_render_key=idem,
+                     aigc_material_set=group["name"], aigc_source_generation_id=group["source_generation_id"])
+            for field in ("object_key", "ai_review", "ai_reason", "review_waived", "bad_footage", "error", "last_error"):
+                v.pop(field, None)
+            st.save()
+            print(f"{key}: {group['name']} rendering {job['job_id']}", flush=True)
+
+
 def cmd_poll(cfg, run, args):
     st = State(run)
     deadline = time.time() + args.wait
@@ -718,6 +780,10 @@ def cmd_poll(cfg, run, args):
         rendered = []  # cuts that finished rendering this round: sent to AI review as one batch
         for vid, v in sorted(st.videos.items()):
             stage = v.get("stage")
+            user_instruction = user_review_instruction(st.data, briefs.get(v["brief_id"], {}))
+            if stage == "reviewing" and user_instruction:
+                release_for_user(v, user_instruction)
+                continue
             try:
                 if stage == "rendering":
                     j = api("GET", f"/render-jobs/{v['render_job']}")
@@ -735,8 +801,11 @@ def cmd_poll(cfg, run, args):
             except RuntimeError as e:
                 v["last_error"] = str(e)[:300]
             if v.get("stage") == "rendered":
-                rendered.append(v)
-            pending += v.get("stage") not in ("done", "failed", None)
+                if user_instruction:
+                    release_for_user(v, user_instruction)
+                else:
+                    rendered.append(v)
+            pending += v.get("stage") not in ("done", "failed", "aigc_pending", None)
         for i in range(0, len(rendered), 100):
             batch = rendered[i:i + 100]
             try:
@@ -976,7 +1045,7 @@ def cmd_share_packed(cfg, run, args, st, briefs, group):
             print(f"🧪 将{'更新' if old else '新建'}分享「{name}」{len(pick)} 条，来自 {sorted({st.videos[k]['brief_id'] for k in pick})}")
             continue
         payload = {"product_id": cfg["products"][pk]["clipo_product_id"], "group_id": group["id"], "title": name,
-                   "video_name_prefix": name + "-", "videos": [share_video(st.videos[k]) for k in pick]}
+                   "video_name_prefix": name + "-", "videos": [share_video(st.videos[k], briefs[st.videos[k]["brief_id"]], k) for k in pick]}
         sh = api("POST", "/video-shares", payload)
         if old:
             g = api("GET", f"/video-share-groups/{group['id']}")
@@ -999,8 +1068,10 @@ def cmd_share_packed(cfg, run, args, st, briefs, group):
             print(f"🗑  删掉旧链接「{old.get('title')}」（已合并进 10 条一个的链接）")
 
 
-def share_video(v):
+def share_video(v, brief=None, video_key=None):
     cut = api("GET", f"/video-cuts/{v['cut_id']}")
+    if brief and aigc_required(brief):
+        validate_draft(group_for(brief, video_key, v), cut["draft"])
     comp = cut["draft"]["composition"]
     cover = re.search(r"\.aliyuncs\.com/([^?]+)", cut["draft"].get("cover_url") or "")
     return {"video_object_key": cut.get("output_object_key") or v["object_key"], "cover_object_key": cover.group(1) if cover else None,
@@ -1014,6 +1085,9 @@ def cmd_share(cfg, run, args):
     st = State(run)
     briefs = {b["brief_id"]: b for b in load_briefs(run, args.brief)}
     all_briefs = load_briefs(run)
+    actual_briefs = {b["brief_id"]: b for b in all_briefs}
+    validate_selection(actual_briefs, st.videos,
+                       {bid: picks(st, bid, b["quantity"])[0] for bid, b in actual_briefs.items()})
     shares = st.data.setdefault("shares", {})
     todo = []
     for bid in sorted(briefs):
@@ -1059,7 +1133,7 @@ def cmd_share(cfg, run, args):
         payload = {"script_id": st.data["briefs"][bid]["script_id"],
                    "product_id": cfg["products"][b["product_key"]]["clipo_product_id"],
                    "group_id": group["id"], "title": delivery_name(cfg, b, all_briefs), "video_name_prefix": delivery_name(cfg, b, all_briefs) + "-",
-                   "videos": [share_video(v) for v in vids]}
+                   "videos": [share_video(st.videos[k], b, k) for k in pick]}
         sh = api("POST", "/video-shares", payload)
         if old:  # keep the group pointing at the newest share for this brief
             g = api("GET", f"/video-share-groups/{group['id']}")
@@ -1224,7 +1298,7 @@ def cmd_download(cfg, run, args):
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "status"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "bind-aigc", "status"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
@@ -1252,7 +1326,7 @@ def main():
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
     {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "rereview": cmd_rereview, "report": cmd_report, "share": cmd_share,
-     "download": cmd_download, "pool": cmd_pool, "status": cmd_status}[args.cmd](cfg, args.run, args)
+     "download": cmd_download, "pool": cmd_pool, "bind-aigc": cmd_bind_aigc, "status": cmd_status}[args.cmd](cfg, args.run, args)
 
 
 if __name__ == "__main__":

@@ -277,6 +277,8 @@ def lint_pools(brief, segs):
     ceil(quantity / clips) of the brief's videos. A single pinned clip (`visual_query`, silent `footage`) is only
     allowed when the brief is packed with other briefs that bring their own clips (the 11-11 力士 way)."""
     out = []
+    if brief.get("within_folder_material_diversity_required") and brief.get("visual_sets"):
+        return out  # per-video exact sets are validated by bind-aigc/share, not random pools
     for sg in segs:
         pool = sg.get("footage_pool")
         single = sg.get("visual_query") or (sg.get("silent") and sg.get("footage") and not pool)
