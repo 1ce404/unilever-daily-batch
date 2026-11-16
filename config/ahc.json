@@ -1,0 +1,152 @@
+{
+  "brand": "AHC",
+  "brand_key": "ahc",
+  "_note": "2026-11-16 新接入（用户要做 AHC 超水光水乳）。依据：平台产品 6afaa2711e11d1a9bd53333d 的描述和四份提示词、脚本合集「AHC-千川」段（脚本撰写要求 + 0921~1010 交付稿）、QC 文档「定制化标准 · AHC」。每天条数、排期、命名还没定，见 open_questions",
+  "sources": {
+    "schedule": null,
+    "recent_scripts": "https://tezign.feishu.cn/wiki/D1EOw4Y1Hi3CNUkmf51c1Kh5nFe",
+    "history_scripts": "https://tezign.feishu.cn/wiki/JC0cwK32kilC3bkBVKOcYz2unlx",
+    "qc": "https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb",
+    "recent_scripts_section": "AHC-千川",
+    "qc_custom_sections": [
+      "AHC"
+    ]
+  },
+  "daily_quota": [
+    {
+      "product": "shuiguang",
+      "store": "AHC",
+      "direction": "日常",
+      "quantity": 10,
+      "note": "占位：用户还没给 AHC 的排期和每天条数，开工前问"
+    }
+  ],
+  "brief_prefix": "A",
+  "brief_size": 10,
+  "generate_factor": 2,
+  "generate_chunk": 15,
+  "store_to_product": {
+    "超水光": "shuiguang",
+    "超水光水乳": "shuiguang",
+    "AHC超水光水乳": "shuiguang"
+  },
+  "banned_words": {
+    "error": [
+      "修护",
+      "修复",
+      "修回来",
+      "原价",
+      "拉满",
+      "性价比",
+      "首选",
+      "唯一",
+      "顶级",
+      "国家级",
+      "最高级",
+      "全网",
+      "领先",
+      "史上",
+      "最低价",
+      "历史最低",
+      "立即见效",
+      "立刻见效",
+      "一次解决",
+      "秒变",
+      "根治",
+      "治疗",
+      "国际",
+      "养生",
+      "头皮健康"
+    ],
+    "warn": [
+      "长效",
+      "持久",
+      "临床",
+      "专家",
+      "医生",
+      "伪体香"
+    ],
+    "regex_error": [
+      "最(?!近|后|初|终|早|晚)",
+      "第一(?!次|步|眼|天|口)",
+      "(?<![第\\d.])\\d+\\s*(小时|天|周)"
+    ],
+    "scene_warn": [],
+    "regex_warn": [
+      "(?<![第每])[一二三四五六七八九十两几]+\\s*(个)?(小时|天|周)(?!天|下来|到晚)"
+    ]
+  },
+  "copy_limits": {
+    "clause_hard_max": 20,
+    "clause_warn_max": 12,
+    "clause_warn_min": 1,
+    "combo_chars_min": 75,
+    "combo_chars_max": 150,
+    "chars_per_second": 5.5,
+    "_note": "整条 75~150 字（约 15~25 秒，实测 5.5 字/秒含气口）",
+    "history_days": 7,
+    "name_not_before": 2,
+    "_name_note": "用户 11.04：产品名尽量不在前两段出现（前面先讲头发状态）；说到产品的那一句要说完整产品名，不能用「这瓶」「它」代替",
+    "_clause_note": "短句按显示宽度算（汉字 1、半角字母数字 0.5）：> 12 提醒（单屏一行，团队字幕规范是 12），> 20 报错",
+    "opening_similar_max": 0.5,
+    "_opening_note": "用户 11.05：照团队写法，卖点句、机制 + CTA 句本来就跨 brief 复用（团队 1029/1102 稿就是这样），只比开头两句：去掉产品名、卖点术语、机制后，和范本 / 近 7 天同产品 / 当天其它稿相似度超过 50% 报错；同一天第一句开头 4 个字一样报错"
+  },
+  "clipo": {
+    "base_url": "https://clipo-remix.tezign.com",
+    "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效、改写和审核规则都由平台产品提示词（video_script_create / video_script_rewrite / video_cut_review）管。文案由 Agent 按团队写法写、人审；submit 把审过的文案逐字交给平台建脚本（其余按产品提示词配），再核对一遍"
+  },
+  "naming": "{date}-{brief_no}-V{n:02d}-{product}-{selling_point}",
+  "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
+  "brand_tag": "AHC",
+  "_delivery_naming_note": "暂按力士的格式（TZ-26-1116-AHC-超水光-brief1），客户如有固定命名再改",
+  "delivery_group_naming": "TZ-{yy}-{date}-{brand_tag}",
+  "watermark": {
+    "add": true,
+    "position": "bottom_right",
+    "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
+    "mode": "global",
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+  },
+  "campaign": null,
+  "tts": {
+    "voices": [
+      "ICL_uranus_zh_female_zhixingwenwan_tob",
+      "ICL_uranus_zh_female_zhixinjiejie_tob",
+      "zh_female_qinqienv_uranus_bigtts",
+      "ICL_uranus_zh_female_tianmeihuopo_tob",
+      "zh_female_chunribu_uranus_bigtts"
+    ],
+    "bad_voices": [
+      "zh_female_qiaopinv_uranus_bigtts",
+      "zh_male_guanggaojieshuo_uranus_bigtts",
+      "zh_female_qingchezizi_uranus_bigtts",
+      "zh_female_tianmeitaozi_uranus_bigtts",
+      "ICL_uranus_zh_female_chunchenvsheng_tob",
+      "zh_female_meilinvyou_uranus_bigtts",
+      "ICL_uranus_zh_female_meilinvyou_tob",
+      "zh_male_cixingjieshuonan_uranus_bigtts",
+      "ICL_uranus_zh_female_xingganyujie_tob",
+      "zh_male_xionger_uranus_bigtts",
+      "zh_male_sunwukong_uranus_bigtts"
+    ],
+    "_note": "QC 定制化标准 · AHC：只要女生音色；甜美小橘、台妹、妹坨洁儿等方言朗读人不要，猴哥、熊二不要。用力士 11-10 实测段间音高稳定的 5 个普通话女声（知性温婉、知心姐姐、亲切女声、甜美活泼、春日部姐姐）"
+  },
+  "banned_footage_words": [
+    "秃顶",
+    "脱发",
+    "明星"
+  ],
+  "_banned_footage_note": "QC · AIGC 标准：明星脸素材不能要；禁止仿真人使用产品、AI 仿真人第一人称表达感受（靠人审）",
+  "open_questions": [
+    "AHC 每天做多少条、有没有排期表（现在 daily_quota 是 10 条占位）",
+    "交付链接命名：先按 TZ-26-MMDD-AHC-超水光-brief1，客户有固定格式再改",
+    "机制：脚本合集 0921~1010 稿写的是「拍1套水乳正装 + 60ml 水乳套组 + 水光洁面，二百多」，现在还是不是这个、念不念",
+    "字幕样式：QC 要「蓝底白字、白底黑字」，平台字幕样式里只有「白字_蓝底」，没有白底黑字（只有紫字_白底），平台提示词里还没写，要用户在平台改",
+    "平台建脚本提示词写的贴图分类「彩带炸开」「戳直播间头像-箭头」，和清扬力士用的分类名不一样，preflight 时核对是否存在",
+    "「修护」在品牌禁用词里（沿用力士的卡审词），但 AHC 产品描述和团队稿都写「修护」：要不要放开"
+  ],
+  "review": {
+    "doc_parent_token": null,
+    "notify_chat_id": null
+  }
+}

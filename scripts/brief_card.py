@@ -80,6 +80,7 @@ def card(cfg, run, brief, today):
     sp = prod["selling_points"].get(brief.get("selling_point") or "", {})
     camp = cfg.get("campaign")
     in_camp = camp and brief.get("date", "") <= camp["until"]
+    concern = prod.get("concern_word") or "头发"  # 11-16 AHC: a skincare product talks about the skin
     out = [f"######## {brief['brief_id']} · {prod['full_name']} · {brief['quantity']} 条",
            f"内容方向：{brief['direction']}" + (f"（括号「{brief['direction_note']}」是标签，不写进口播）" if brief.get("direction_note") else ""),
            f"测试卖点：{brief.get('selling_point') or '（无，写机制）'}　人群：{brief.get('audience') or '通用'}（人群是标签，不念）"]
@@ -89,8 +90,8 @@ def card(cfg, run, brief, today):
         out.append(f"用户给的结构：{brief['template']}（照这个分段）")
     out += ["",
             "骨架（团队写法，5~6 句，每句一个任务）：",
-            "  ① 开头：按「方向 + 人群」写，每条新写；同产品当天的几条轮换开头类型（反问 / 判断 / 金句 / 场景引子 / 香味 / 对话 / 热梗 / 直戳头发状态，"
-            "同类型最多两次，见 writing.md 第 3 节），第二句落到头发状态",
+            f"  ① 开头：按「方向 + 人群」写，每条新写；同产品当天的几条轮换开头类型（反问 / 判断 / 金句 / 场景引子 / 香味 / 对话 / 热梗 / 直戳{concern}状态，"
+            f"同类型最多两次，见 writing.md 第 3 节），第二句落到{concern}状态",
             f"  ② 引产品：一句话带出全名「{prod['full_name']}」（尽量第 3 段才出现）",
             f"  ③ 卖点：{sp.get('say') or '（config 没写，按产品卖点表）'}",
             "  ④ 效果：洗完 / 用完看得见、摸得到的结果",
@@ -122,7 +123,7 @@ def card(cfg, run, brief, today):
     hot = hotspot_for(run, brief)
     if hot:
         out.append(f"\n今天的热梗：「{hot['topic']}」（{hot.get('meaning', '')}；来源 {hot.get('source', '')}）"
-                   "\n  只用在开头一句，马上转到头发状态；不编数据，不提平台名")
+                   f"\n  只用在开头一句，马上转到{concern}状态；不编数据，不提平台名")
     rows = team_rows(run, cfg, brief)
     if rows:
         out.append("团队交付过的同方向稿（脚本合集，「/」隔开的是同一句的几个说法）：")

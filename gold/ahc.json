@@ -1,0 +1,110 @@
+{
+  "_note": "AHC 范本库。取自脚本合集「AHC-千川」0921~1010 超水光水乳交付稿（provisional）；按 skill 规则清掉了价格机制、时间和效果数据、医美说法；用户确认后改 confirmed",
+  "scripts": [
+    {
+      "id": "AHC-0921-超水光-结构1",
+      "product": "shuiguang",
+      "kind": "团队已交付",
+      "status": "provisional",
+      "direction": "闺蜜对比",
+      "selling_point": "全SKU",
+      "why": "场景引子（合照被比下去）→ 闺蜜安利引产品 → PDRN 核心 → 5D玻尿酸 / 塑提因肽 → 质地 → 效果 → 直播间",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "三个人坐一起拍合照，就我一个人脸又黄又垮。"
+        },
+        {
+          "role": "product",
+          "text": "多亏闺蜜按头安利的AHC超水光水乳，我直接安排上。"
+        },
+        {
+          "role": "selling",
+          "text": "核心是AHC专研的三重复配式PDRN，让皮肤看起来更水光、更嘭弹。"
+        },
+        {
+          "role": "selling",
+          "text": "5D玻尿酸负责补水，独家塑提因肽让肌肤看起来更饱满。"
+        },
+        {
+          "role": "effect",
+          "text": "精华露有小露珠感，推开不厚重，吸收后是透出来的水光感。"
+        },
+        {
+          "role": "cta",
+          "text": "想要水光肌的姐妹，进直播间把这套带回家。"
+        }
+      ]
+    },
+    {
+      "id": "AHC-0928-超水光-结构4",
+      "product": "shuiguang",
+      "kind": "团队已交付",
+      "status": "provisional",
+      "direction": "熬夜党",
+      "selling_point": "全SKU",
+      "why": "人群开头（熬夜党脸黄）→ 产品 → 质地像蛋清 → 用法 → 效果 → 直播间；原稿没提 PDRN，按撰写要求补上",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "熬夜党真的懂，脸又黄又垮的时候有多崩溃。"
+        },
+        {
+          "role": "product",
+          "text": "现在全靠AHC超水光水乳兜底。"
+        },
+        {
+          "role": "selling",
+          "text": "PDRN打底，质地跟蛋清一样，一抹就化水。"
+        },
+        {
+          "role": "selling",
+          "text": "早晚拍一拍压一压，很快就吸收了，一点都不黏。"
+        },
+        {
+          "role": "effect",
+          "text": "脸越用越透亮，上妆也不卡粉了。"
+        },
+        {
+          "role": "cta",
+          "text": "今晚直播间真的要蹲住了。"
+        }
+      ]
+    },
+    {
+      "id": "AHC-1010-超水光-结构6",
+      "product": "shuiguang",
+      "kind": "团队已交付",
+      "status": "provisional",
+      "direction": "成分种草",
+      "selling_point": "全SKU",
+      "why": "成分开头 → 5D玻尿酸 → 塑提因肽 + 6D胶原 → PDRN → 效果 → 直播间（原稿价格开头已去掉）",
+      "beats": [
+        {
+          "role": "hook",
+          "text": "姐妹们，水光肌的秘密我先说了。"
+        },
+        {
+          "role": "product",
+          "text": "就在AHC超水光水乳里。"
+        },
+        {
+          "role": "selling",
+          "text": "5D玻尿酸深层补水，独家塑提因肽加6D胶原，帮着紧致轮廓。"
+        },
+        {
+          "role": "selling",
+          "text": "再加三重复配式PDRN，让肌肤看起来更水润嘭弹。"
+        },
+        {
+          "role": "effect",
+          "text": "用着用着，脸又水又亮又嘭，素颜都发光。"
+        },
+        {
+          "role": "cta",
+          "text": "点关注，直播间马上开抢。"
+        }
+      ]
+    }
+  ]
+}
