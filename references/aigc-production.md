@@ -15,9 +15,28 @@
 
 1. 在brief写 `within_folder_material_diversity_required: true`。先准备交付N条的N套人物、场景、动作方案和素材对应关系；已确认demo可保留1条，其余补N−1套，不把demo整套用于批量。
 2. `submit`生成平台剪辑后，`poll`将未绑定的人物剪辑置为`aigc_pending`，不先渲染重复默认画面。常规平台建脚本不自动制作独立AIGC源素材，按本节生成并登记。
-3. 使用平台 `POST /material-generations`，每套源视频一次生成三个不同动作、同人同服装。模型、时长、参考支持从平台当前OpenAPI确认；参考受阻时用完全原创文字人物在同次生成中安排三镜，不能默认以三段可能换脸的独立生成降级。
-4. 轮询实际任务ID，只有success取现签object_url。按确认时长切成三个不重叠片段，各动作连续播放一次；不循环、回跳或定格补时长。完整6秒开头或10秒拆三镜以该次已确认方案为准。虚构仓库、工厂、实验室追溯画面标注“AI场景示意”。
-5. 用storage upload token上传并登记产品segments，把实际源ID、三个object_key、source_interval及duration写回brief的`visual_sets`，对应每个video_key与cut_id。每套成功立即剪片、登记、绑定、渲染，不等整批源素材全部成功。
+3. **生成用 `scripts/aigc_gen.py`，不自己写调接口的代码**（用户 11-16：之前每个 agent 各写一套，做法不一、在对话里干等）。先写生成计划 `$R/aigc/<名字>.json`（格式见下），每套源视频一条提示词，一次生成三个不同动作、同人同服装，提示词里写清三个动作的时间（如 0–2 秒 / 2–4 秒 / 4–6 秒），计划里的 `shots` 写同样的起止秒。参考受阻时用完全原创文字人物在同次生成中安排三镜，不能默认以三段可能换脸的独立生成降级。计划和文案一样先给用户看。
+4. `submit --dry-run` 报条数（每条单独计费），用户同意后 `submit`，然后 `poll` 放后台跑（nohup），这一轮对话就结束，不在对话里等。`poll` 读任务状态、成功的打上计划里的 `tag`、被版权检查拦的按 `fallback_prompts` 换方案重试（最多 2 次）、写 `<计划>-report.md`（每个场景成功几条、缺几条）。随时 `report` 看进度，离线。
+5. 平台剪辑出来以后（`clipo_batch.py submit`，待绑定的停在 `aigc_pending`），`aigc_gen.py sets --brief <id>` 把这个场景成功的每条源视频按 `shots` 切成三个不重叠片段、上传、登记为 AI 切片，写进 brief 的 `visual_sets`（一条视频一套独立源，带 cut_id）；不够的报缺几套，不拿别的视频或场景的素材顶。然后 `bind-aigc`。成功一批就绑一批，不等整批源素材全部成功。虚构仓库、工厂、实验室追溯画面标注“AI场景示意”。
+
+```bash
+python3 -I scripts/aigc_gen.py submit --config $C --run $R --plan $R/aigc/<名字>.json --dry-run
+python3 -I scripts/aigc_gen.py submit --config $C --run $R --plan $R/aigc/<名字>.json
+nohup python3 -I scripts/aigc_gen.py poll --config $C --run $R --plan $R/aigc/<名字>.json --wait 5400 > $R/aigc/<名字>.log 2>&1 &
+python3 -I scripts/aigc_gen.py report --config $C --run $R --plan $R/aigc/<名字>.json
+python3 -I scripts/aigc_gen.py sets --config $C --run $R --plan $R/aigc/<名字>.json --brief <id> [--dry-run]
+```
+
+生成计划：
+
+```json
+{"product": "2x", "tag": "AI双人演绎", "duration": 6, "shots": [[0, 2], [2, 4], [4, 6]],
+ "scenes": [{"id": "golf", "actions": ["摘帽摸发根", "和同伴说话", "清爽甩发"],
+             "prompts": ["版本1：人物、服装、场景、0–2秒…、2–4秒…、4–6秒…", "版本2 …"],
+             "fallback_prompts": ["被版权拦时用的重新设计的原创人物方案 …"]}]}
+```
+
+`prompts` 一条一个版本（每版人和动作不同）；同一提示词出多版写 `"prompt": "…", "versions": N`。brief 写 `"aigc_scene": "golf"`，`sets` 就从这个场景取素材。可选：`model`、`resolution`、`ratio`、`generate_audio`（默认 false）、`max_inflight`（同时在跑的上限，默认 20）。只要素材池、不要逐条人物一致时，成功的素材已打标签，直接 `clipo_batch.py pool --tags <tag> --allow-risk`。
 6. `bind-aigc`保留口播、声音、字幕、产品镜头和其他轨道，只替换1/2/4。PUT后GET现签完整draft再提交render。素材/渲染记录存run内；同一state不同时由两个写入任务操作。失败渲染修复后增加该组render_revision再提交，不能复用旧失败job。
 
 ```bash
@@ -48,10 +67,10 @@ visual_sets的每套格式：
 
 ## 失败与等待
 
-- 保存每次request、任务ID、时间、状态、失败原因，不覆盖尝试历史；pending/running只等待，不重复提交。无取消接口不假装取消。
+- `aigc_gen.py` 在 `<计划>-state.json` 保存每次提交的提示词、任务ID、时间、状态、失败原因，不覆盖尝试历史；pending/running只等待，不重复提交。无取消接口不假装取消。
 - 版权/真人参考拦截：停止使用被拒参考，重新设计完全原创的人物和表达，保留年轻帅气、指定人群与已审情境。换模型不能替代解决问题，不将输出检测失败认定为已证实侵权。
 - 超时：确认平台终态后才补，按实际调度容量减少在途任务。上传、登记、绑定、渲染失败优先重试对应环节，不重新生成已经成功的源素材。
-- 同一素材方案最多自动补生成2次。仍失败时标明该项阻塞与实际缺口，停止原方案追加，给出新的具体原创方案；其他已成功的继续剪片渲染。已有授权覆盖新的同范围方案且用户要求继续时按授权执行；新增预算/范围才需再次确认。不能无限轮换相同描述持续提交。
+- 同一素材方案最多自动补生成2次（`aigc_gen.py` 已按这个执行：被拦只用 `fallback_prompts` 里的新方案，没写就直接报缺口；超时或平台错误按原提示词重试）。仍失败时标明该项阻塞与实际缺口，停止原方案追加，给出新的具体原创方案；其他已成功的继续剪片渲染。已有授权覆盖新的同范围方案且用户要求继续时按授权执行；新增预算/范围才需再次确认。不能无限轮换相同描述持续提交。
 - 不擅自以重复素材、无关场景或少做条数代替要求。用户要先发完成部分时可阶段交付，明确数量并继续缺口；最终仍按要求够数。
 - 进度区分平台排队、源生成、剪片/绑定、渲染与下载，不能把所有等待都称为渲染；只报实际数量和失败，不承诺无法控制的完成时间。
 
