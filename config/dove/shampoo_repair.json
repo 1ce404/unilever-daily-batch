@@ -1,0 +1,89 @@
+{
+  "_note": "dove深层修护洗发水。2026-11-17 依据：品线文档 https://tezign.feishu.cn/wiki/MDiuwHukoimr3nkPgJJcQpaQnle、QC 文档 https://tezign.feishu.cn/wiki/LiztwiJAgiioXskaDwOceiMLnDh、平台产品描述与素材标签。卖点待补",
+  "full_name": "多芬深层修护洗发水",
+  "name_aliases": [
+    "多芬深层修护洗发水"
+  ],
+  "short_name": "深层修护洗发水",
+  "collection_labels": [
+    "多芬深层修护洗发水"
+  ],
+  "clipo_product_id": "6afacdb5444be1e093bbb566",
+  "default_selling_point": "全SKU",
+  "selling_points": {
+    "全SKU": {
+      "say": "深层修护洗发水，针对干枯、烫染受损发质。平台描述只有名字，详细卖点待补：写之前问用户",
+      "must_mention": []
+    }
+  },
+  "mechanism": {
+    "spoken": [
+      "链接"
+    ],
+    "allowed_numbers": [],
+    "source": "机制不念（待用户确认）",
+    "verified_on": "2026-11-17"
+  },
+  "cta_required": [
+    "链接"
+  ],
+  "banned_words": [
+    "面护级黄金胜肽",
+    "原生蛋白修护科技",
+    "护肤级3D肽"
+  ],
+  "warn_words": [
+    "临床验证"
+  ],
+  "regex_error": [],
+  "foreign_claims": [
+    "鎏金",
+    "千金瓶",
+    "发膜"
+  ],
+  "keep_terms": [
+    "多芬深层修护洗发水"
+  ],
+  "ingredient_terms": [],
+  "ingredient_footage": [],
+  "audience_note": "女生（姐妹分享口吻）",
+  "speaker_warn": [
+    "兄弟",
+    "哥们"
+  ],
+  "rules": [
+    "开头写人和肌肤 / 沐浴的状态或情绪，不写机制和价格",
+    "说到产品那一句说完整产品名，品牌名不能省（「多芬」「力士」要带上）",
+    "只写正向卖点词，不写问题词",
+    "QC Dove-Hair：提到「仿生氨基酸」那段画面配成分画面；前贴 5 秒左右；「临床验证」会卡审，改成具体的科技或成分功效",
+    "混用新老包装素材时，整条要标注「新老包装随机发货」（告诉剪辑）",
+    "QC 1116：洗发水结尾戳下方链接（发膜是戳直播间）",
+    "卖点待补：先问用户要卖点，不要编",
+    "不写老包装说法「面护级黄金胜肽」",
+    "不写老包装说法「原生蛋白修护科技」",
+    "不写老包装说法「护肤级3D肽」"
+  ],
+  "concern_word": "头发",
+  "footage": {
+    "_note": "2026-11-17 平台素材标签（139 个打标）：见 footage_tags"
+  },
+  "footage_tags": [
+    "0806-AI片头",
+    "0806-live",
+    "0806-剧情",
+    "0825-live",
+    "0825-沙滩前贴",
+    "0826-live前贴",
+    "0826-剧情",
+    "cta",
+    "前贴",
+    "外观",
+    "头发好",
+    "头发烫染受损",
+    "头发细软塌",
+    "头发香",
+    "泡沫",
+    "质地",
+    "配方"
+  ]
+}

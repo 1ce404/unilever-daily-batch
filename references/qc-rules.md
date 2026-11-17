@@ -52,3 +52,16 @@ curl -s -X PUT "$BASE/api/v1/products/<product_id>/prompts/video_cut_review" \
 - 「改写违规」（`copy_issues` 非空：Clipo 改写后出现禁用词、丢了产品名或卖点）的条目一律当驳回处理，并把新出现的违规词补进 `banned_words`
 
 不要说「全部通过」除非报告里 `reject` 和未完成都是 0。
+
+## 规则放在哪（用户 11-17）
+
+QC 规则分两处放，同一条规则不两处都写：
+
+| 放在哪 | 放什么 | 例子 |
+|---|---|---|
+| skill（`config/<品牌>.json` 的 `banned_words`、`config/<品牌>/<产品>.json` 的 `banned_words` / `foreign_claims` / `regex_error` / `rules`） | 文案能查的：禁用词、别的产品 / 香型的卖点、数字、产品名写法、CTA；lint 查底稿，`poll` 查每条改写，`alt_prompt` 把禁用词写进这条脚本的改写要求 | Dove-PC 不写「修护」「提亮」「限时」、不写数字；Lux-PC 墨兰乌木不写竹林 |
+| 平台产品提示词 | 文案查不到的：BGM 类别、字幕样式、贴图位置、音效分类（`video_script_create`）；改写时不准新增的词（`video_script_rewrite`）；成片审核标准（`video_cut_review`） | HC-逛逛结尾箭头左下角放大；Dove 字幕白底浅阴影；Dove 开头是泡沫洗浴画面 |
+
+**改写那一步原来看不到禁用词**（用户 11-17）：禁用词只写在平台的建脚本提示词里，但每条视频的口播是改写提示词写的，所以「性价比」「一天」会被改写加回来。现在两处都补上了：每条脚本的改写要求（skill 写）和每个产品的改写提示词（平台）。
+
+改平台提示词前先备份（`runs/prompt-backup-<时间>.json`）；别人在提示词末尾加的产品信息原样保留。

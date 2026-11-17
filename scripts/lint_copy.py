@@ -41,6 +41,9 @@ def lint_text(text, cfg, product):
     for w in bw["warn"] + product.get("warn_words", []):
         if w in scrubbed and w not in allowed:
             issues.append(("warn", f"卡审风险词「{w}」"))
+    for rx in product.get("regex_error", []):  # per-product patterns (11-17 Dove-PC / Lux-PC: no numbers at all)
+        for m in re.finditer(rx, scrubbed):
+            issues.append(("error", f"这个产品不写数字 / 倍数「{m.group(0)}」（QC）"))
     for rx in bw.get("regex_error", []):
         for m in re.finditer(rx, scrubbed):
             issues.append(("error", f"极限词/时间承诺「{m.group(0)}」"))

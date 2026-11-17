@@ -25,15 +25,17 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
    → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单 + 分享链接 + 本地文件夹
 ```
 
-在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = 当前项目目录下的 `runs/YYYYMMDD`（运行数据放在 skill 安装目录外），`$C` = 品牌：`qingyang`、`lux`、`ahc` 或 `hc`。
+在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = 当前项目目录下的 `runs/YYYYMMDD`（运行数据放在 skill 安装目录外），`$C` = 品牌：`qingyang`、`lux`、`ahc`、`hc`、`dove` 或 `luxpc`。
 
-**每天两个品牌各跑一遍**，共用同一个 `$R`：清扬 brief 编号 `MMDD-Bxx`，力士 `MMDD-Lxx`，AHC `MMDD-Axx`，HC `MMDD-Hxx`，脚本按品牌只读自己的 brief；力士的待审文档、报告、交付清单文件名带 `-lux`。
+**每天两个品牌各跑一遍**，共用同一个 `$R`：清扬 brief 编号 `MMDD-Bxx`，力士 `MMDD-Lxx`，AHC `MMDD-Axx`，HC `MMDD-Hxx`，多芬 `MMDD-Dxx`，力士沐浴 `MMDD-Pxx`，脚本按品牌只读自己的 brief；力士的待审文档、报告、交付清单文件名带 `-lux`。
 
 | 品牌 | 产品（`config/<品牌>/<key>.json`） | 每天多少条 |
 |---|---|---|
 | 清扬 `qingyang` | `2x` 控油蓬松洗发水、`huxi` 控油呼吸瓶、`selenium` 二硫化硒蓝C瓶 | 看飞书排期表 |
 | 力士 `lux` | `jingyou` 精油香氛洗发水、`spray` 护发精油喷雾、`mist` 小香瓶 | 没有排期表，按 `config/lux.json` 的 `daily_quota`（11.9 起这周：精油香氛 40 + 护发精油喷雾 10，小香瓶暂停） |
 | HC-逛逛 `hc` | 奥妙 9 个（`omo_jmcm` 除菌除螨、`omo_scjj` 深层洁净、`omo_5star_rose/bergamot` 5星精油、`omo_pods_eucalyptus/sakura/lavender` 三合一凝珠、`omo_quick_soft/white` 快洗）、金纺 12 个（`cf_5star_rose`、`cf_xingse_freesia/lavender` 型色、`cf_xiangruan_freesia/sakura/lavender` 香软、`cf_xiaoxiang_mumian/tanxiang` 小香瓶、`cf_beads` 留香珠、`cf_pure` 纯净温和、`cf_pet` 防粘毛、`cf_essence` 高能护衣精华）（11-17 新接入） | 每批问用户（`config/hc.json` 的 `daily_quota` 是空的）；**先出 demo 再量产**（见 ⑧） |
+| 多芬 `dove` | PC：`scrub_sakura/pomegranate` 冰淇淋磨砂膏、`scrub_clear` 透明肌磨砂膏、`dual_grape/strawberry` 双重精华、`seasalt` 海盐白柚、`bubble_milk/sakura/osmanthus` 泡泡沐浴露；Hair：`mask_repair/hydra` 小金碗发膜、`shampoo_repair` 深层修护洗发水、`golden` 鎏金千金瓶（11-17 新接入） | 按周排产，每批问用户；先出 demo 再量产 |
+| 力士沐浴 `luxpc` | 2.0 精油香氛沐浴露 `oil_bamboo/orchid/jasmine`、3.0 柑橘香氛磨砂沐浴露 `citrus_bergamot/pomelo/kumquat/all`（11-17 新接入） | 按周排产，每批问用户；先出 demo 再量产 |
 | AHC `ahc` | `shuiguang` 超水光水乳（11-16 新接入） | 还没定：`config/ahc.json` 的 `daily_quota` 是 10 条占位；开工前先看 `open_questions`（条数、机制、命名、字幕样式） |
 
 | 文件 | 用途 |

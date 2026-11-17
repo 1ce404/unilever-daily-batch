@@ -1,0 +1,82 @@
+{
+  "_note": "Lux3.0-柑橘香氛沐浴露（鲜亮金桔）。2026-11-17 依据：品线文档 https://tezign.feishu.cn/wiki/MDiuwHukoimr3nkPgJJcQpaQnle、QC 文档 https://tezign.feishu.cn/wiki/LiztwiJAgiioXskaDwOceiMLnDh、平台产品描述与素材标签。卖点待补；产品全名待确认（品线文档写 Lux柑橘香氛沐浴露，QC 写 Lux磨砂沐浴露）",
+  "full_name": "力士柑橘香氛磨砂沐浴露",
+  "name_aliases": [
+    "力士柑橘香氛磨砂沐浴露",
+    "力士磨砂沐浴露",
+    "力士柑橘香氛沐浴露"
+  ],
+  "short_name": "柑橘磨砂沐浴露-鲜亮金桔",
+  "collection_labels": [
+    "Lux柑橘香氛沐浴露",
+    "Lux磨砂沐浴露"
+  ],
+  "clipo_product_id": "6afacdb3444be1e093bbb563",
+  "default_selling_point": "全SKU",
+  "selling_points": {
+    "全SKU": {
+      "say": "柑橘香氛磨砂沐浴露，鲜亮金桔。平台描述只有名字、历史稿没有，卖点待补：写之前问用户",
+      "must_mention": []
+    }
+  },
+  "mechanism": {
+    "spoken": [
+      "直播间",
+      "链接",
+      "小黄车"
+    ],
+    "allowed_numbers": [],
+    "source": "机制不念（待用户确认）",
+    "verified_on": "2026-11-17"
+  },
+  "cta_required": [
+    "直播间",
+    "链接",
+    "小黄车"
+  ],
+  "banned_words": [],
+  "warn_words": [],
+  "regex_error": [
+    "\\d+"
+  ],
+  "foreign_claims": [
+    "佛手柑",
+    "清甜粉柚",
+    "竹林",
+    "墨兰",
+    "茉莉",
+    "琥珀",
+    "精油香氛沐浴露"
+  ],
+  "keep_terms": [
+    "力士柑橘香氛磨砂沐浴露"
+  ],
+  "ingredient_terms": [],
+  "ingredient_footage": [],
+  "audience_note": "女生（姐妹分享口吻）",
+  "speaker_warn": [
+    "兄弟",
+    "哥们"
+  ],
+  "rules": [
+    "开头写人和肌肤 / 沐浴的状态或情绪，不写机制和价格",
+    "说到产品那一句说完整产品名，品牌名不能省（「多芬」「力士」要带上）",
+    "只写正向卖点词，不写问题词",
+    "QC Lux-PC：「最」是绝对词；产品没有修护功效，不写「修护」；断句注意，该连在一起的不要分两个画面",
+    "QC 1116：产品名称完整输出",
+    "QC Lux（磨砂沐浴露）：产品颜色要和真实实拍图对应（素材挑颜色对的）",
+    "卖点待补：先问用户要卖点，不要编"
+  ],
+  "concern_word": "肌肤",
+  "footage": {
+    "_note": "2026-11-17 平台素材标签（138 个打标）：见 footage_tags"
+  },
+  "footage_tags": [
+    "产品外观",
+    "产品质地",
+    "效果好",
+    "泡沫",
+    "痛点",
+    "金桔"
+  ]
+}

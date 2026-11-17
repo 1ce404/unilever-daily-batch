@@ -213,7 +213,7 @@ def build_script(pid, brief, title):
     script["segments"] = with_silent(script["segments"], brief["segments"], pid)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
-    body["vo_rewrite_prompt"] = alt_prompt(segs)
+    body["vo_rewrite_prompt"] = alt_prompt(segs, CFG["products"][brief["product_key"]])[:2000]
     api("PUT", f"/video-scripts/{sid}", body)
     allsegs = api("GET", f"/video-scripts/{sid}")["segments"]
     got = [x for x in allsegs if x["type"] != "original"]
@@ -367,16 +367,28 @@ REWRITE_RULES = [
     # user 11-09: per-segment [#…] voice instructions made one video sound like two different speakers
     "不要加任何 [#…] 语音指令，每段都直接写正文，整条用同一种自然的语气",
     # user 11-09: a rewrite turned 「早上喷一下」→「下班发尾干干的」, which reads as the product not working
-    "段落顺序和每段的意思不变：先讲头发的问题，再讲产品；产品出现以后只讲用完的好结果，不写用了以后头发又干、又毛躁、又乱",
+    "段落顺序和每段的意思不变：先讲{concern}的问题，再讲产品；产品出现以后只讲用完的好结果，不写用了以后{concern}又变差",
     "不加早上、下午、下班、出门前这类时间线，不编使用场景和前后对比",
 ]
 
 
-def alt_prompt(segs):
+def banned_for(product):
+    """Words a rewrite must never add (user 11-17: the platform's banned list sat only in the script-creation
+    prompt, so the per-video rewrite added 「性价比」「一天」 back). Brand list + product list + other SKUs' claims."""
+    bw = CFG.get("banned_words") or {}
+    words = list(bw.get("error", [])) + list(product.get("banned_words", [])) + list(product.get("foreign_claims", []))
+    return [w for w in dict.fromkeys(words) if w]
+
+
+def alt_prompt(segs, product=None):
     """Rules every rewrite must follow, plus the reviewed phrasings of each line as the range to stay in."""
     rows = [f"「{sg.get('title') or sg.get('role')}」这段可以参考的说法：" + " / ".join([seg_text(sg)] + seg_alts(sg))
             for sg in voiced(segs) if seg_alts(sg)]
-    out = "# 用户要求\n" + "\n".join(f"- {r}" for r in REWRITE_RULES)
+    concern = (product or {}).get("concern_word") or "头发"
+    rules = [r.format(concern=concern) for r in REWRITE_RULES]
+    if product:
+        rules.append("不出现这些词：" + "、".join(banned_for(product)) + "；不写「最」「第一」和具体时间（几小时、几天、几周）")
+    out = "# 用户要求\n" + "\n".join(f"- {r}" for r in rules)
     if rows:
         out += "\n每段改写时，在下面这些人审过的说法范围内换措辞，事实和机制不变：\n" + "\n".join(rows)
     return out

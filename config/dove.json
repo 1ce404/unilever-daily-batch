@@ -1,0 +1,135 @@
+{
+  "brand": "多芬",
+  "brand_key": "dove",
+  "_note": "2026-11-17 新接入：PC-dove（磨砂膏、双重精华、海盐白柚、泡泡沐浴露）和 dove-hair（小金碗、鎏金）。依据：品线文档 https://tezign.feishu.cn/wiki/MDiuwHukoimr3nkPgJJcQpaQnle、QC 文档 https://tezign.feishu.cn/wiki/LiztwiJAgiioXskaDwOceiMLnDh、QC 定制化标准 Dove-PC / Dove-Hair / Dove-多啦、历史脚本合集 DOVE / DOVE-PW",
+  "demo_first": true,
+  "_demo_first_note": "QC 文档（https://tezign.feishu.cn/wiki/LiztwiJAgiioXskaDwOceiMLnDh）Part2 By周任务：周一二确认脚本 → 周三四确定 demo → 周五批量成片。submit 先每个脚本出 1 条 demo，review_doc.py approve-demo 后再 submit 量产",
+  "sources": {
+    "schedule": null,
+    "recent_scripts": "https://tezign.feishu.cn/wiki/JC0cwK32kilC3bkBVKOcYz2unlx",
+    "qc": "https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb",
+    "qc_rules": "https://tezign.feishu.cn/wiki/LiztwiJAgiioXskaDwOceiMLnDh",
+    "product_lines": "https://tezign.feishu.cn/wiki/MDiuwHukoimr3nkPgJJcQpaQnle"
+  },
+  "daily_quota": [],
+  "_daily_quota_note": "按周排产（QC 文档 Part2 总计数量），每批做哪些产品、多少条开工前问用户",
+  "brief_prefix": "D",
+  "brief_size": 10,
+  "generate_factor": 2,
+  "generate_chunk": 15,
+  "store_to_product": {},
+  "banned_words": {
+    "error": [
+      "原价",
+      "拉满",
+      "性价比",
+      "首选",
+      "唯一",
+      "顶级",
+      "国家级",
+      "最高级",
+      "全网",
+      "领先",
+      "史上",
+      "最低价",
+      "历史最低",
+      "立即见效",
+      "立刻见效",
+      "一次解决",
+      "秒变",
+      "根治",
+      "治疗",
+      "限时",
+      "国际",
+      "养生",
+      "头皮健康"
+    ],
+    "warn": [
+      "长效",
+      "持久",
+      "临床",
+      "专家",
+      "医生",
+      "临床验证",
+      "临床"
+    ],
+    "regex_error": [
+      "最(?!近|后|初|终|早|晚)",
+      "第一(?!次|步|眼|天|口)",
+      "(?<![第\\d.])\\d+\\s*(小时|天|周)"
+    ],
+    "scene_warn": [],
+    "regex_warn": [
+      "(?<![第每])[一二三四五六七八九十两几]+\\s*(个)?(小时|天|周)(?!天|下来|到晚)"
+    ],
+    "allow_exceptions": [
+      "多芬透明肌磨砂膏"
+    ]
+  },
+  "copy_limits": {
+    "clause_hard_max": 20,
+    "clause_warn_max": 12,
+    "clause_warn_min": 1,
+    "combo_chars_min": 75,
+    "combo_chars_max": 150,
+    "chars_per_second": 5.5,
+    "_note": "整条 75~150 字（约 15~25 秒，实测 5.5 字/秒含气口）",
+    "history_days": 7,
+    "name_not_before": 2,
+    "_name_note": "用户 11.04：产品名尽量不在前两段出现（前面先讲头发状态）；说到产品的那一句要说完整产品名，不能用「这瓶」「它」代替",
+    "_clause_note": "短句按显示宽度算（汉字 1、半角字母数字 0.5）：> 12 提醒（单屏一行，团队字幕规范是 12），> 20 报错",
+    "opening_similar_max": 0.5,
+    "_opening_note": "用户 11.05：照团队写法，卖点句、机制 + CTA 句本来就跨 brief 复用（团队 1029/1102 稿就是这样），只比开头两句：去掉产品名、卖点术语、机制后，和范本 / 近 7 天同产品 / 当天其它稿相似度超过 50% 报错；同一天第一句开头 4 个字一样报错"
+  },
+  "clipo": {
+    "base_url": "https://clipo-remix.tezign.com",
+    "_note": "视频规格、配音、BGM、字幕、画面标签、贴图、音效、改写和审核规则都由平台产品提示词（video_script_create / video_script_rewrite / video_cut_review）管。文案由 Agent 按团队写法写、人审；submit 把审过的文案逐字交给平台建脚本（其余按产品提示词配），再核对一遍"
+  },
+  "naming": "{date}-{brief_no}-V{n:02d}-{product}-{selling_point}",
+  "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
+  "brand_tag": "Dove",
+  "delivery_group_naming": "TZ-{yy}-{date}-{brand_tag}",
+  "watermark": {
+    "add": true,
+    "position": "bottom_right",
+    "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
+    "mode": "global",
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+  },
+  "campaign": null,
+  "tts": {
+    "voices": [],
+    "bad_voices": [
+      "zh_female_qiaopinv_uranus_bigtts",
+      "zh_male_guanggaojieshuo_uranus_bigtts",
+      "zh_female_qingchezizi_uranus_bigtts",
+      "zh_female_tianmeitaozi_uranus_bigtts",
+      "ICL_uranus_zh_female_chunchenvsheng_tob",
+      "zh_female_meilinvyou_uranus_bigtts",
+      "ICL_uranus_zh_female_meilinvyou_tob",
+      "zh_male_cixingjieshuonan_uranus_bigtts",
+      "ICL_uranus_zh_female_xingganyujie_tob",
+      "zh_female_zhishuaiyingzi_uranus_bigtts",
+      "zh_female_xiaohe_uranus_bigtts"
+    ],
+    "_note": "平台建脚本提示词定音色；量产前跑 voice_check，不稳的加进 bad_voices"
+  },
+  "banned_footage_words": [
+    "头皮屑",
+    "头屑",
+    "皮屑",
+    "明星",
+    "白大褂",
+    "医生"
+  ],
+  "open_questions": [
+    "每批做哪些产品、多少条（daily_quota 空）",
+    "交付链接命名：先按 TZ-26-MMDD-<品牌>-<产品简称>-brief1",
+    "CTA：小金碗发膜戳直播间、洗发水戳下方链接（QC）；PC 沐浴露 / 磨砂膏历史稿是「戳小黄车」，鎏金没写，先放宽为小黄车 / 链接 / 直播间都行，待确认"
+  ],
+  "review": {
+    "doc_parent_token": null,
+    "notify_chat_id": null
+  },
+  "_tts_note": "QC Dove-多啦 / DOVE-PW：湾湾小何、直率英子语速忽快忽慢，不要用"
+}
