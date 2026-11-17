@@ -91,6 +91,9 @@ def main():
         rows = [{"store": q.get("store", cfg["brand"]), "product_key": q["product"], "direction": q.get("direction", "日常"),
                  "selling_point": "", "audience": q.get("audience", ""), "quantity": q["quantity"],
                  "section": "daily_quota", "section_notes": q.get("note", "")} for q in cfg["daily_quota"]]
+    elif "daily_quota" in cfg and not (run / "sources" / "schedule.txt").exists():
+        raise SystemExit(f"{cfg['brand']} 没有排期表，config 的 daily_quota 也是空的：先问用户这次做哪些产品、各多少条，"
+                         f"填进 config/{cfg['brand_key']}.json 的 daily_quota")
     else:
         rows = rows_for((run / "sources" / "schedule.txt").read_text(), day)
     if not rows:

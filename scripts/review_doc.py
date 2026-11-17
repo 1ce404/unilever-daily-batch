@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import seg_alts, SKILL_DIR, copy_hash, day_briefs, lark_fetch, load_config, out_name, parse_table
 from lint_copy import lint_brief, lint_day, lint_variety, seg_text
-from common import voiced
+from common import voiced, approval_problem
 
 ROLE_CN = {"hook": "钩子", "pain": "痛点", "product": "产品", "selling": "卖点", "effect": "体感", "cta": "CTA"}
 HEAD = ["结构", "店铺 / 产品", "内容方向", "测试卖点", "测试人群", "文案", "和旧稿比", "QC 提醒", "审核"]
@@ -214,9 +214,23 @@ def approve(cfg, run, ids, by, note):
         print(f"✅ {bid} 已记为 {by} 审核通过")
 
 
+def approve_demo(cfg, run, ids, by, note):
+    """User 11-17 (HC): record that a person watched a brief's demo and said OK; `submit` then makes the bulk.
+    Pins the copy the demo was made from, so later copy edits need a new demo."""
+    for bid in ids:
+        p = run / "briefs" / f"{bid}.json"
+        b = json.loads(p.read_text())
+        if approval_problem(b):
+            print(f"❌ {bid} 脚本本身还没审过（{approval_problem(b)}），不能记 demo 通过")
+            continue
+        b["demo_approval"] = {"by": by, "note": note, "at": time.strftime("%Y-%m-%d %H:%M"), "copy_hash": copy_hash(b)}
+        p.write_text(json.dumps(b, ensure_ascii=False, indent=2))
+        print(f"✅ {bid} demo 已记为 {by} 审核通过，下一步 clipo_batch.py submit 量产")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["render", "sync", "approve"])
+    ap.add_argument("cmd", choices=["render", "sync", "approve", "approve-demo"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--doc")
@@ -231,8 +245,8 @@ def main():
         sync(cfg, run, args.doc)
     else:
         if not (args.brief and args.by and args.note):
-            raise SystemExit("approve 要写 --brief、--by（审核人）和 --note（审核人原话）")
-        approve(cfg, run, args.brief, args.by, args.note)
+            raise SystemExit(f"{args.cmd} 要写 --brief、--by（审核人）和 --note（审核人原话）")
+        (approve_demo if args.cmd == "approve-demo" else approve)(cfg, run, args.brief, args.by, args.note)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import seg_alts, voiced, approval_problem, day_briefs, load_config, normalize_copy, out_name
+from common import seg_alts, voiced, approval_problem, demo_first, demo_problem, day_briefs, load_config, normalize_copy, out_name
 from aigc_materials import (required as aigc_required, group_for, segments as aigc_segments,
                             validate_selection, validate_draft, render_key,
                             user_review_instruction, release_for_user)
@@ -501,12 +501,32 @@ def cmd_submit(cfg, run, args):
                 continue
             job.pop("script_id")  # synced but never generated: sync the new copy again
         job["texts"] = texts
-        if job.get("generation_id"):
+        bulk_after_demo = False
+        if demo_first(cfg, b) and job.get("generation_id"):
+            # user 11-17: the demo is out; bulk only after a person approved it
+            if job.get("demo_stage") != "demo":
+                continue  # bulk already started; poll / topup handle it
+            why = demo_problem(b)
+            if why:
+                print(f"⏸  {b['brief_id']} {why}，先不量产")
+                skipped += 1
+                continue
+            if generating(job):
+                print(f"⏳ {b['brief_id']} demo 还在跑，先 poll")
+                skipped += 1
+                continue
+            bulk_after_demo = True
+        elif job.get("generation_id"):
             continue  # already on the platform; poll / topup handle it
         n = gen_quantity(cfg, b, args)
+        if demo_first(cfg, b) and not job.get("generation_id"):
+            n = 1  # one demo per script first (user 11-17)
+        if bulk_after_demo:
+            n = max(0, gen_quantity(cfg, b, args) - job.get("landed", 0))
         total += 0 if args.scripts_only else n
         if args.dry_run:
-            print(f"🧪 (dry run，未发送) {title} × {n}（排期 {b['quantity']}）")
+            what = "demo" if demo_first(cfg, b) and not job.get("generation_id") else ("量产" if bulk_after_demo else "")
+            print(f"🧪 (dry run，未发送) {title} × {n}{'（' + what + '）' if what else ''}（排期 {b['quantity']}）")
             continue
         if not job.get("script_id"):
             try:
@@ -520,14 +540,28 @@ def cmd_submit(cfg, run, args):
         if args.scripts_only:
             submitted += 1
             continue
+        if bulk_after_demo:  # same platform task: continue it with the rest (one task per brief, user 11-06)
+            job["rounds"] = split_quantity(n, cfg.get("generate_chunk") or n) if n else []
+            job.update(stage="generating", demo_stage="bulk")
+            if job["rounds"]:
+                next_round(job)
+            st.save()
+            submitted += 1
+            print(f"🚀 {b['brief_id']} demo 已通过（{b['demo_approval']['by']}），量产 {n} 条，接在同一个任务上")
+            continue
         if not job.get("generation_id"):
             chunks = split_quantity(n, cfg.get("generate_chunk") or n)
             job["generation_id"] = api("POST", "/video-cut-generations", gen_body(job["script_id"], chunks[0]))["id"]
             job.update(stage="generating", rounds=chunks[1:], landed=0)
+            if demo_first(cfg, b):
+                job["demo_stage"] = "demo"
             job.pop("topups", None)
             st.save()
             submitted += 1
-            print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），平台上一个任务，分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
+            if demo_first(cfg, b):
+                print(f"🎬 {b['brief_id']} 先出 1 条 demo，poll 跑完后给人看；通过了 review_doc.py approve-demo，再 submit 量产")
+            else:
+                print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），平台上一个任务，分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
     if args.dry_run:
         print(f"\n(dry run) 将生成 {total} 条视频，跳过 {skipped} 个 brief。确认后去掉 --dry-run 提交")
         return
@@ -601,6 +635,9 @@ def cmd_topup(cfg, run, args):
         errs = [m for level, m in lint_brief(b, cfg) if level == 'error']
         if errs:
             print(f"⏸  {bid} 有未解决的文案/整篇审读问题，不补：{errs[:3]}")
+            continue
+        if job.get("demo_stage") == "demo":
+            print(f"⏸  {bid} 还在 demo 阶段：demo 审过后用 submit 量产，不用 topup")
             continue
         vids = [v for v in st.videos.values() if v["brief_id"] == bid]
         if generating(job) or any(v.get("stage") not in ("done", "failed") for v in vids):
@@ -881,7 +918,10 @@ def cmd_status(cfg, run, args):
         elif approval_problem(b) and not job:
             nxt.add(f"⑥ 重新给人审（{approval_problem(b)}）")
         elif b.get("status") == "approved" and not job:
-            nxt.add("⑧ submit")
+            nxt.add("⑧ submit（先出 1 条 demo）" if demo_first(cfg, b) else "⑧ submit")
+        elif job.get("demo_stage") == "demo" and not generating(job):
+            nxt.add("⑧ demo 出来了：share --brief <id> --partial 发给人看 → review_doc.py approve-demo → submit 量产"
+                    if demo_problem(b) else "⑧ demo 已通过：submit 量产")
         elif job.get("stage") == "failed":
             nxt.add("⑧ submit --retry-failed")
         elif job and not generating(job):

@@ -384,7 +384,7 @@ def lint_script(texts, segs, brief, cfg, product):
     else:
         early = cfg["copy_limits"].get("name_not_before", 0)
         if named[0] < early and not brief.get("template"):
-            issues.append(("warn", f"S{named[0] + 1} 就说了产品名：尽量放到第 {early + 1} 段以后，前面先讲头发的状态"))
+            issues.append(("warn", f"S{named[0] + 1} 就说了产品名：尽量放到第 {early + 1} 段以后，前面先讲{product.get('concern_word') or '头发'}的状态"))
         prod_seg = next((k for k, s in enumerate(segs) if s.get("role") == "product"), None)
         if prod_seg is not None and not any(k <= prod_seg for k in named):
             issues.append(("error", f"S{prod_seg + 1} 是产品段但没说完整产品名「{product['full_name']}」（不能用「这瓶」「它」代替）"))

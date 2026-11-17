@@ -130,6 +130,23 @@ def approval_problem(brief):
     return None
 
 
+def demo_first(cfg, brief):
+    """User 11-17 (HC): script review → one demo per script → human review of the demo → then bulk. True when the
+    brand (config `demo_first`) or the brief says so."""
+    return bool(brief.get("demo_first", cfg.get("demo_first", False)))
+
+
+def demo_problem(brief):
+    """Why this demo-first brief may not go to bulk yet, or None. Only a person's recorded OK of the demo counts,
+    and it must be for the copy the platform script was built from."""
+    a = brief.get("demo_approval") or {}
+    if not a.get("by"):
+        return "demo 还没人审过（review_doc.py approve-demo）"
+    if a.get("copy_hash") != copy_hash(brief):
+        return f"{a['by']} 审过 demo 之后文案又改了，要重新出 demo"
+    return None
+
+
 def load_gold(cfg, product_key=None):
     """Gold scripts for the brand; with product_key, only that product's (each script carries `product`)."""
     p = SKILL_DIR / "gold" / f"{cfg['brand_key']}.json"

@@ -25,14 +25,15 @@ description: 联合利华（清扬、力士）千川混剪视频每日批量生�
    → ⑥ 待审 ⏸ → ⑦ 记录审核 → ⑧ 生成 + 渲染 + AI 审核（不够就补） → ⑨ 交付清单 + 分享链接 + 本地文件夹
 ```
 
-在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = 当前项目目录下的 `runs/YYYYMMDD`（运行数据放在 skill 安装目录外），`$C` = 品牌：`qingyang`、`lux` 或 `ahc`。
+在技能目录下跑 `python3 -I scripts/<x>.py`。`$R` = 当前项目目录下的 `runs/YYYYMMDD`（运行数据放在 skill 安装目录外），`$C` = 品牌：`qingyang`、`lux`、`ahc` 或 `hc`。
 
-**每天两个品牌各跑一遍**，共用同一个 `$R`：清扬 brief 编号 `MMDD-Bxx`，力士 `MMDD-Lxx`，AHC `MMDD-Axx`，脚本按品牌只读自己的 brief；力士的待审文档、报告、交付清单文件名带 `-lux`。
+**每天两个品牌各跑一遍**，共用同一个 `$R`：清扬 brief 编号 `MMDD-Bxx`，力士 `MMDD-Lxx`，AHC `MMDD-Axx`，HC `MMDD-Hxx`，脚本按品牌只读自己的 brief；力士的待审文档、报告、交付清单文件名带 `-lux`。
 
 | 品牌 | 产品（`config/<品牌>/<key>.json`） | 每天多少条 |
 |---|---|---|
 | 清扬 `qingyang` | `2x` 控油蓬松洗发水、`huxi` 控油呼吸瓶、`selenium` 二硫化硒蓝C瓶 | 看飞书排期表 |
 | 力士 `lux` | `jingyou` 精油香氛洗发水、`spray` 护发精油喷雾、`mist` 小香瓶 | 没有排期表，按 `config/lux.json` 的 `daily_quota`（11.9 起这周：精油香氛 40 + 护发精油喷雾 10，小香瓶暂停） |
+| HC-逛逛 `hc` | 奥妙 9 个（`omo_jmcm` 除菌除螨、`omo_scjj` 深层洁净、`omo_5star_rose/bergamot` 5星精油、`omo_pods_eucalyptus/sakura/lavender` 三合一凝珠、`omo_quick_soft/white` 快洗）、金纺 12 个（`cf_5star_rose`、`cf_xingse_freesia/lavender` 型色、`cf_xiangruan_freesia/sakura/lavender` 香软、`cf_xiaoxiang_mumian/tanxiang` 小香瓶、`cf_beads` 留香珠、`cf_pure` 纯净温和、`cf_pet` 防粘毛、`cf_essence` 高能护衣精华）（11-17 新接入） | 每批问用户（`config/hc.json` 的 `daily_quota` 是空的）；**先出 demo 再量产**（见 ⑧） |
 | AHC `ahc` | `shuiguang` 超水光水乳（11-16 新接入） | 还没定：`config/ahc.json` 的 `daily_quota` 是 10 条占位；开工前先看 `open_questions`（条数、机制、命名、字幕样式） |
 
 | 文件 | 用途 |
@@ -81,6 +82,20 @@ python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run   # 报�
 python3 -I scripts/clipo_batch.py submit --config $C --run $R
 python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 3600  # 后台跑
 ```
+
+**先出 demo 再量产（用户 11-17：HC-逛逛品线；config 写 `"demo_first": true`，单个 brief 也可写）**：出脚本 → 人审脚本 → 每个脚本先出 1 条 demo → 人审 demo → demo 没问题再量产。
+```bash
+python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run      # demo 阶段：每个 brief 报 1 条
+python3 -I scripts/clipo_batch.py submit --config $C --run $R                # 每个脚本生成 1 条 demo
+python3 -I scripts/clipo_batch.py poll   --config $C --run $R --wait 1800    # 后台跑完渲染、审核
+python3 -I scripts/clipo_batch.py share  --config $C --run $R --partial      # 把 demo 发给人看
+python3 -I scripts/review_doc.py approve-demo --config $C --run $R --brief <id> --by <审核人> --note "<原话>"
+python3 -I scripts/clipo_batch.py submit --config $C --run $R --dry-run      # 量产条数（已出的 demo 算在里面）
+python3 -I scripts/clipo_batch.py submit --config $C --run $R                # 量产，接在同一个平台任务上
+```
+- demo 没人审过，`submit` 不会量产，`topup` 也不补；demo 审过以后改了文案，要重新审、重新出 demo
+- 人对 demo 提意见：改文案或改平台提示词，重新审脚本，再出一条 demo；改了平台提示词没改文案的，从 state 里删掉这个 brief 的任务再 `submit`，出新 demo
+- demo 也是正式视频：审核通过就算一条可交付，量产只补剩下的条数
 - **AI 建脚本**：`POST /video-script-generations` 把审过的文案逐字交给平台，平台按产品提示词配画面、配音、BGM、字幕、贴图、音效；建完按排期命名、每段开 AI 改写、把审过的备选说法写进这条脚本的改写要求（`vo_rewrite_prompt`），再读回核对每段一字不差，对不上就删掉不生成
 - 用户明确自行检查时，在run的state顶层或该brief记录 `content_review: {mode: "user", instruction: "用户原话", by: "用户"}`。`poll` 跳过内容AI审核并记录 `user_review_pending`；继续生成、渲染与本地交付，不另起逐条看图、配音或内容审核。脚本原有批准、生成对应关系、水印配置及下载完整性仍保留。
 - **批量生成**：`POST /video-cut-generations`；**批量渲染**：`poll` 给每条剪辑 `POST /render-jobs`；**批量审核**：`poll` 把渲染好的一批 `POST /video-cuts/review`
