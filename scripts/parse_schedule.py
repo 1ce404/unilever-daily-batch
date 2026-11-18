@@ -3,7 +3,9 @@
 
     python3 scripts/parse_schedule.py --config qingyang --run runs/20261030 --date 2026-10-30
 
-Reads  runs/<day>/sources/schedule.txt, or config.daily_quota for brands without a schedule doc (LUX)
+Reads  runs/<day>/sources/schedule.txt, or config.daily_quota for brands without a schedule doc (LUX).
+       config.schedule_format "weekly" (AHC, user 11-18): one `# MMDD-MMDD` block per week, rows 品类 × 结构 × 数量;
+       the block that contains --date is used, each row becomes briefs of that 结构 (config.structures says what it is)
 Writes runs/<day>/schedule-<brand>.json every row for that date (incl. 新增 tables) + section notes
        runs/<day>/briefs/<id>.json      one stub per brief; the agent fills segments (brief_card.py shows what to write)
 """
@@ -56,6 +58,30 @@ def rows_for(text, day):
     return found
 
 
+def weekly_rows(text, day, cfg):
+    """AHC schedule (user 11-18): `# 1116-1120` headings, each with one table 品类 | 结构 | 脚本 | 数量. Returns the
+    rows of the week that contains `day`; 品类 maps to a product through store_to_product, 结构 to config.structures."""
+    out = []
+    for m in re.finditer(r"^# (\d{2})(\d{2})-(\d{2})(\d{2})\s*$(.*?)(?=^# |\Z)", text, re.M | re.S):
+        a = date(day.year, int(m.group(1)), int(m.group(2)))
+        b = date(day.year, int(m.group(3)), int(m.group(4)))
+        if not a <= day <= b:
+            continue
+        for t in re.findall(r"<table>.*?</table>", m.group(5), re.S):
+            grid = parse_table(t)
+            head = [h.strip() for h in grid[0]]
+            for r in grid[1:]:
+                row = dict(zip(head, r))
+                q = re.search(r"\d+", row.get("数量", ""))
+                if not q or "总" in row.get("品类", "") or not row.get("结构"):
+                    continue
+                st = row["结构"].strip()
+                out.append({"store": row["品类"].strip(), "direction": st, "selling_point": "", "audience": "",
+                            "quantity": int(q[0]), "structure": st, "template": (cfg.get("structures") or {}).get(st, ""),
+                            "section": f"{m.group(1)}{m.group(2)}-{m.group(3)}{m.group(4)}", "section_notes": ""})
+    return out
+
+
 def split_direction(direction, cfg):
     """「品牌背书，成分种草（法国人头发发质蓬松溯源）」→ core + note. The bracket is a long-lived schedule label,
     not copy material; config.direction_notes says how the team actually wrote it."""
@@ -95,9 +121,14 @@ def main():
         raise SystemExit(f"{cfg['brand']} 没有排期表，config 的 daily_quota 也是空的：先问用户这次做哪些产品、各多少条，"
                          f"填进 config/{cfg['brand_key']}.json 的 daily_quota")
     else:
-        rows = rows_for((run / "sources" / "schedule.txt").read_text(), day)
+        src = run / "sources" / "schedule.txt"
+        if not src.exists():
+            raise SystemExit(f"{src} 不存在：先跑 fetch_sources.py --config {args.config} --run {args.run} 拉排期")
+        text = src.read_text()
+        rows = weekly_rows(text, day, cfg) if cfg.get("schedule_format") == "weekly" else rows_for(text, day)
     if not rows:
-        raise SystemExit(f"排期里找不到 {day.month}.{day.day} 的行：排期可能还没更新到这一天")
+        what = "这一周" if cfg.get("schedule_format") == "weekly" else f"{day.month}.{day.day}"
+        raise SystemExit(f"排期里找不到 {what} 的行：排期可能还没更新到这一天")
 
     (run / f"schedule-{cfg['brand_key']}.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2))
     bdir = run / "briefs"
@@ -124,6 +155,7 @@ def main():
                 "quantity": min(size, row["quantity"] - j * size),
                 "schedule_section": row["section"],
                 "schedule_notes": row["section_notes"],
+                **({"structure": row["structure"], "template": row["template"]} if row.get("structure") else {}),
                 "segments": [],
                 "status": "draft",
                 "review_notes": "",

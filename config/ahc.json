@@ -3,7 +3,7 @@
   "brand_key": "ahc",
   "_note": "2026-11-16 新接入（用户要做 AHC 超水光水乳）。依据：平台产品 6afaa2711e11d1a9bd53333d 的描述和四份提示词、脚本合集「AHC-千川」段（脚本撰写要求 + 0921~1010 交付稿）、QC 文档「定制化标准 · AHC」。每天条数、排期、命名还没定，见 open_questions",
   "sources": {
-    "schedule": null,
+    "schedule": "https://tezign.feishu.cn/wiki/WCeBwNL5uiydLdk0dj1cDgsUn6g",
     "recent_scripts": "https://tezign.feishu.cn/wiki/D1EOw4Y1Hi3CNUkmf51c1Kh5nFe",
     "history_scripts": "https://tezign.feishu.cn/wiki/JC0cwK32kilC3bkBVKOcYz2unlx",
     "qc": "https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb",
@@ -12,23 +12,15 @@
       "AHC"
     ]
   },
-  "daily_quota": [
-    {
-      "product": "shuiguang",
-      "store": "AHC",
-      "direction": "日常",
-      "quantity": 10,
-      "note": "占位：用户还没给 AHC 的排期和每天条数，开工前问"
-    }
-  ],
   "brief_prefix": "A",
-  "brief_size": 10,
+  "brief_size": 15,
   "generate_factor": 2,
   "generate_chunk": 15,
   "store_to_product": {
     "超水光": "shuiguang",
     "超水光水乳": "shuiguang",
-    "AHC超水光水乳": "shuiguang"
+    "黄金绷带面膜": "bandage",
+    "黄金绷带": "bandage"
   },
   "banned_words": {
     "error": [
@@ -138,15 +130,29 @@
   ],
   "_banned_footage_note": "QC · AIGC 标准：明星脸素材不能要；禁止仿真人使用产品、AI 仿真人第一人称表达感受（靠人审）",
   "open_questions": [
-    "AHC 每天做多少条、有没有排期表（现在 daily_quota 是 10 条占位）",
     "交付链接命名：先按 TZ-26-MMDD-AHC-超水光-brief1，客户有固定格式再改",
-    "机制：脚本合集 0921~1010 稿写的是「拍1套水乳正装 + 60ml 水乳套组 + 水光洁面，二百多」，现在还是不是这个、念不念",
     "字幕样式：QC 要「蓝底白字、白底黑字」，平台字幕样式里只有「白字_蓝底」，没有白底黑字（只有紫字_白底），平台提示词里还没写，要用户在平台改",
     "平台建脚本提示词写的贴图分类「彩带炸开」「戳直播间头像-箭头」，和清扬力士用的分类名不一样，preflight 时核对是否存在",
-    "「修护」在品牌禁用词里（沿用力士的卡审词），但 AHC 产品描述和团队稿都写「修护」：要不要放开"
+    "「修护」在品牌禁用词里（沿用力士的卡审词），但 AHC 产品描述和团队稿都写「修护」：要不要放开",
+    "交付链接按 15 条一个，还是拆成 10 条一个（其他品牌都是 10 条）"
   ],
   "review": {
     "doc_parent_token": null,
     "notify_chat_id": null
-  }
+  },
+  "schedule_format": "weekly",
+  "_schedule_note": "用户 11-18：AHC 排期按周，每周一张表「品类 × 结构 × 数量」（每个结构 15 条）；parse_schedule 取 --date 所在的那一周",
+  "_brief_size_note": "AHC 每个结构 15 条一个 brief（排期如此）；交付仍按 15 条一个链接",
+  "structures": {
+    "结构1": "AI剧情类：情节矛盾展开 + 产品植入（时长可相对延长，不超过 1 分半）",
+    "结构2": "AI片头 + 产品种草 + 成分功效 + 上脸过程 + 好皮肤素材 + 价格福利 + 直播间引流",
+    "结构3": "AI片头 + 产品价格福利吸引 + 产品展示 + 成分功效 + 上脸过程 + 好皮肤素材 + 直播间引流",
+    "结构4": "AI live图原生感 + 产品种草 + 质地展示 + 涂抹过程 + 好皮肤素材 + 价格福利 + 直播间引流",
+    "结构5": "AI live图原生感（洗手台 / 浴室 / 卧室 / 户外等场景），15 秒内，按 BGM 灵活调整",
+    "结构6": "AI机制类",
+    "结构7": "痛点 + 产品种草 + 成分功效 + 上脸过程 + 好皮肤素材 + 价格福利 + 直播间引流",
+    "结构8": "场景（换季）+ 人群 + 痛点 + 卖点 + 机制",
+    "结构9": "机制 + 产品介绍 + 功效成分 + 好肌肤素材 + 福利引导"
+  },
+  "_structures_note": "排期表附件 AHC AI Video Production Brief Template.xlsx 的「结构（素材顺序）」列。结构4 原文写「好发质素材」是笔误，护肤品按好皮肤素材。通用要求：时长 ≤30s（结构1 除外）、9:16、1080P；必带产品名和主要成分功效；人声可用真人原声 / 爆款原声 / 电子音，BGM 不要太下沉；AI 产品外观大小不变形、瓶身文字不能错；花字字幕符合调性"
 }

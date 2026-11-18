@@ -9,7 +9,6 @@ It does not write copy or call the platform. Per brief it shows:
   the product rules, footage, banned words, and the platform's own copy rules (video_script_create),
   the meme assigned to it in runs/<day>/hotspots.json, if any,
   team scripts of the same product and direction (gold, plus rows of the team script collection fetched at ①),
-  reviewer edits (learned/),
   and the openings already used today and in the last days (so this one's opening is new).
 """
 import argparse
@@ -66,15 +65,6 @@ def hotspot_for(run, brief):
     return next((h for h in json.loads(p.read_text()) if brief["brief_id"] in h.get("briefs", [])), None)
 
 
-def edits(cfg, brief, n=5):
-    log = SKILL_DIR / "learned" / f"{cfg['brand_key']}-edits.jsonl"
-    if not log.exists():
-        return []
-    rows = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
-    rows = [e for e in rows if e.get("product_key", brief["product_key"]) == brief["product_key"]]
-    return sorted(rows, key=lambda e: e.get("date") or "", reverse=True)[:n]
-
-
 def card(cfg, run, brief, today):
     prod = cfg["products"][brief["product_key"]]
     sp = prod["selling_points"].get(brief.get("selling_point") or "", {})
@@ -87,7 +77,8 @@ def card(cfg, run, brief, today):
     if brief.get("schedule_notes"):
         out.append(f"排期备注：{brief['schedule_notes']}")
     if brief.get("template"):
-        out.append(f"用户给的结构：{brief['template']}（照这个分段）")
+        label = f"排期结构 {brief['structure']}" if brief.get("structure") else "用户给的结构"
+        out.append(f"{label}：{brief['template']}（照这个顺序分段，下面的通用骨架只作参考）")
     out += ["",
             "骨架（团队写法，5~6 句，每句一个任务）：",
             f"  ① 开头：按「方向 + 人群」写，每条新写；同产品当天的几条轮换开头类型（反问 / 判断 / 金句 / 场景引子 / 香味 / 对话 / 热梗 / 直戳{concern}状态，"
@@ -128,10 +119,6 @@ def card(cfg, run, brief, today):
     if rows:
         out.append("团队交付过的同方向稿（脚本合集，「/」隔开的是同一句的几个说法）：")
         out += [f"  · {r[:900]}" for r in rows]
-    ed = edits(cfg, brief)
-    if ed:
-        out.append("审核人改过的句子（照这个方向）：")
-        out += [f"  「{e['before']}」→「{e['after']}」" for e in ed]
     seen = earlier_copy(run, brief, cfg) + [(o["brief_id"], o["segments"]) for o in today
                                             if o["brief_id"] != brief["brief_id"] and o.get("segments")]
     used = [(label, seg_text(voiced(segs)[0])) for label, segs in seen if voiced(segs) and not label.startswith("范本")]

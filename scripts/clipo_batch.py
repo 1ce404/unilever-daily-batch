@@ -121,6 +121,7 @@ def tag_counts(pid, segments=None):
 def cmd_preflight(cfg, run, args):
     out, bad = {}, False
     used = {b["product_key"] for b in load_briefs(run) if b.get("product_key")} or set(cfg["products"])
+    catalogs = None
     for key in sorted(used):
         prod = cfg["products"][key]
         pid = prod["clipo_product_id"]
@@ -130,13 +131,15 @@ def cmd_preflight(cfg, run, args):
             print(f"❌ {key} {prod['full_name']} ({pid}) 打不开：{e}")
             out[key], bad = {"error": str(e)}, True
             continue
-        segs = list_segments(pid)
-        counts = tag_counts(pid, segs)
-        total = counts["全部"]
-        risky = sum(s.get("review_result") == "reject" for s in segs)
+        # one call per product (GET /segment-tags, 0.3 s) instead of reading every clip (6 s): user 11-18
+        raw = api("GET", f"/products/{pid}/segment-tags")
+        raw = {x["tag"]: x["count"] for x in (raw if isinstance(raw, list) else raw.get("items", []))}
+        risky, all_clips = raw.get("风险", 0), raw.get("全部", 0)
+        counts = {t: n for t, n in raw.items() if t not in ("风险", "未分类", "< 2秒", "< 1秒", "> 10秒", "横屏")}
+        counts["全部"] = total = all_clips - risky  # tag counts still include risk clips; the total does not
         empty = [t for t in p["tags"] if counts.get(t, 0) == 0]
         thin = {t: counts[t] for t in p["tags"] if 0 < counts.get(t, 0) < 10}
-        print(f"{'✅' if total else '❌'} {key} {p['name']} ({pid}) 可用切片 {total}/{len(segs)}（风险 {risky}）")
+        print(f"{'✅' if total else '❌'} {key} {p['name']} ({pid}) 可用切片 {total}/{all_clips}（风险 {risky}）")
         print(f"   无可用切片的标签 {empty or '无'}；不足 10 条 {thin or '无'}")
         if risky:
             print(f"   ⚠️ 平台生成不会避开风险切片：带标签的风险切片仍可能被随机选中，建议在平台删除或去掉标签")
@@ -149,7 +152,9 @@ def cmd_preflight(cfg, run, args):
         create = prompts.get("video_script_create") or {}
         cats = re.findall(r"(?:贴图|音效)[:：][^“”\n]*“([^”]+)”", create.get("prompt") or "")
         if cats:
-            have = {c["catalog"] for kind in ("sticker", "sound-effect") for c in api("GET", f"/resource/{kind}/catalog")}
+            if catalogs is None:  # same for every product: fetch once
+                catalogs = {c["catalog"] for kind in ("sticker", "sound-effect") for c in api("GET", f"/resource/{kind}/catalog")}
+            have = catalogs
             gone = [c for c in dict.fromkeys(cats) if c not in have]
             if gone:
                 print(f"   ⚠️ 建脚本提示词里写的分类平台上没有：{'、'.join(gone)}（平台不报错、直接不配，告诉用户改提示词里的分类名）")

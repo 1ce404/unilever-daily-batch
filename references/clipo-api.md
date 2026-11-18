@@ -25,7 +25,7 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 建完 `submit` 再做三件事，`PUT` 回去后 `GET` 核对：
 
 - 标题按 config 的 `naming`（和排期一致，视频和分享页也用这个名字）
-- 每段 `content` 换成审过的文案、`ai_rewrite = true`（用户 11-05 定：每段都改写，CTA 也改）；画面、贴图、音效、全局配置原样保留
+- 每段 `content` 换成审过的文案、`ai_rewrite = true`；画面、贴图、音效、全局配置原样保留
 - 审过的备选说法（brief 每段的 `alt`）写进这条脚本的 `vo_rewrite_prompt`（「# 用户要求」一节，平台改写提示词 `video_script_rewrite` 会优先照做），改写时在这些说法范围内换措辞。不改产品共享提示词
 
 核对：段数一样、每段一字不差、每段都开了改写。对不上就 `DELETE` 掉这条脚本、不生成、报给用户。
@@ -36,14 +36,14 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 
 | 接口 | 用途 |
 |---|---|
-| `POST /video-cut-generations` | 提交生成。body：`script_id`、`quantity`（1~300）、`add_compliance_watermark`、`compliance_watermark_position`。skill 按 config 的 `watermark` 每次都带上：清扬、力士都是 `true` + `bottom_right`（右下角「AI生成」水印，用户 11-06 定） |
+| `POST /video-cut-generations` | 提交生成。body：`script_id`、`quantity`（1~300）、`add_compliance_watermark`、`compliance_watermark_position`。skill 按 config 的 `watermark` 每次都带上：所有品牌都是 `true` + `bottom_right` + `global`（整片右下角「AI生成」水印） |
 | `GET /video-cut-generations/{id}` | 轮询。`status`：`pending` / `running` / `success` / `failed`；`generated_count / quantity` 是进度；`success` 时 `cut_ids` 是这批剪辑 |
 | `POST /video-cut-generations/{id}/continue` | 往同一个任务追加 `quantity` 条（要等上一轮跑完；水印沿用任务的设置）。skill 的第二轮起和补生成都用它，平台上一个 brief 只有一条任务 |
 | `GET /video-cuts/{cut_id}` | 读一条剪辑：`draft`（整份时间轴，渲染要用）、`random_result.vo_rewrite`（这条改写后的口播）、`random_result.tts_speaker_id`（音色） |
 
 要点：
 
-- **一个 brief 在平台上只有一条生成任务**（用户 11-06：之前每轮单独提交，平台列表里一个脚本出现两行 10/10，看着奇怪）。第一轮 `POST`，后面的轮次和补生成都 `continue` 到这条任务上，`poll` 每落地一轮就接着提交下一轮
+- **一个 brief 在平台上只有一条生成任务**。第一轮 `POST`，后面的轮次和补生成都 `continue` 到这条任务上，`poll` 每落地一轮就接着提交下一轮
 - **每一轮全有全无**：一条没组装成，这一轮一条剪辑都不落，也不扣额度，之前几轮的产出照旧保留。一轮最多 `generate_chunk`（15）条，超过的分几轮 `continue`；某轮失败用 `submit --retry-failed` 在同一条任务上继续
 - **一次多生成**：每个 brief 生成 排期 × `generate_factor`（2）条，平台 AI 审核通过率约 40%，不够的用 `topup` 补
 - `poll` 读回每条的 `random_result.vo_rewrite`，用 lint 再查一遍，违规的记进 `copy_issues`，按驳回处理
@@ -102,8 +102,8 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 | `GET /products` 列表里有，但 `GET /products/{id}` 回 `product_not_found` | 产品已被删或迁移，体检会拦下，让用户给新 id |
 | 产品某个标签切片数为 0 | 平台提示词让某段用这个标签时画面会落空。体检会列出来，告诉用户补素材或改提示词 |
 | 改写后出现禁用词 / 丢产品名 | `poll` 记成「改写违规」。同类多了，告诉用户把词加进平台改写提示词 `video_script_rewrite`，同时补进 config 的 `banned_words` |
-| 成片音效乱（幽灵声、「队友脸面已永久掉线」） | 大分类里混着怪声，平台随机抽到（11.02 驳回过 3 条）。提示词里只用小分类 |
-| 成片没有音效 / 贴图 | 提示词里的分类名平台上没有（11.03，半角 / 和全角 ／ 也算不一样）。体检会查 |
+| 成片音效乱（幽灵声、「队友脸面已永久掉线」） | 大分类里混着怪声，平台随机抽到。提示词里只用小分类 |
+| 成片没有音效 / 贴图 | 提示词里的分类名平台上没有。体检会查 |
 | 风险切片仍被抽到 | 平台生成不避开风险切片，要在平台删除或去标签 |
 
 ## 平台上改素材、提示词（不在每日流程里）

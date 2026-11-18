@@ -1,4 +1,4 @@
-# 接入新品牌（力士 / 多芬 / HC / AHC …）
+# 接入新品牌 / 新产品
 
 品牌共用的放 `config/<brand>.json`（复制 `config/qingyang.json` 改），每个产品一份放 `config/<brand>/<product_key>.json`（复制 `config/qingyang/2x.json` 改；产品的 key 要和 `store_to_product` 里的一致）。逐项改：
 
@@ -15,7 +15,8 @@
 | `products.*.footage` | 看该产品平台素材（非风险切片）的描述，按段写下有哪些画面，任务卡（`brief_card.py`）会列出来 |
 | `products.*.collection_labels` | 脚本合集里这个产品那几行怎么称呼（如「控油蓬松洗发水」「小香瓶」），任务卡靠它找团队交付过的稿 |
 | `naming` | 品牌的命名规则 |
-| `daily_quota` / `brief_prefix` | 没有排期表的品牌：每天固定的产品和条数（例 `config/lux.json`），brief 编号前缀区分品牌（清扬 B、力士 L） |
+| `daily_quota` / `schedule_format` / `brief_prefix` | 没有排期表的品牌写每天固定的产品和条数（例 `config/lux.json`）；按周、按结构排期的写 `"schedule_format": "weekly"` 和 `structures`（例 `config/ahc.json`）；brief 编号前缀区分品牌 |
+| `demo_first` | 先出 demo 人审再量产的品牌写 `true` |
 
 **配音、字幕、BGM、画面、贴图、音效不在 skill 里配**：在平台给该产品写好提示词 `video_script_create`（QC 文档里的限制，如 AHC 只要女声、只要蓝底白字字幕，HC 要氛围感 BGM，都写进去）。这一步由用户在平台做。
 

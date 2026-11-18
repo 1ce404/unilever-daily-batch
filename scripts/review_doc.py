@@ -180,23 +180,10 @@ def sync(cfg, run, doc):
         print(f"{bid}: {b['status']:18} {verdict[:40]}")
     print(f"同步完成，{changed} 个分段被审核人改过（已以飞书为准）")
     if edits:
-        log_edits(cfg, run, edits)
-
-
-def log_edits(cfg, run, edits):
-    """Reviewer rewrites are the best signal of how the team wants copy to sound: keep them per run and
-    in a per-brand log that `brief_card.py` shows before the next day's writing."""
-    (run / "review_edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2))
-    log = SKILL_DIR / "learned" / f"{cfg['brand_key']}-edits.jsonl"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    seen = {(e["brief_id"], e["before"], e["after"]) for e in map(json.loads, log.read_text().splitlines())} if log.exists() else set()
-    with log.open("a") as f:
+        (run / "review_edits.json").write_text(json.dumps(edits, ensure_ascii=False, indent=2))
+        print(f"审核人改写 {len(edits)} 处 → {run / 'review_edits.json'}")
         for e in edits:
-            if (e["brief_id"], e["before"], e["after"]) not in seen:
-                f.write(json.dumps({**e, "logged_at": time.strftime("%Y-%m-%d")}, ensure_ascii=False) + "\n")
-    print(f"审核人改写 {len(edits)} 处 → {run / 'review_edits.json'}，并追加到 {log}")
-    for e in edits:
-        print(f"  {e['brief_id']} [{e['role']}]\n    - {e['before']}\n    + {e['after']}")
+            print(f"  {e['brief_id']} [{e['role']}]\n    - {e['before']}\n    + {e['after']}")
 
 
 def approve(cfg, run, ids, by, note):

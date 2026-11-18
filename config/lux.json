@@ -109,11 +109,6 @@
     "doc_parent_token": null,
     "notify_chat_id": null
   },
-  "campaign": {
-    "name": "双十一",
-    "until": "2026-11-11",
-    "_note": "节点期内每条 CTA 或机制句带上节点词（团队 10.19 后脚本约一半带双十一）"
-  },
   "_products_note": "每个产品一个文件：config/lux/<product_key>.json（jingyou 精油香氛洗发水 / mist 小香瓶）",
   "watermark": {
     "add": true,
