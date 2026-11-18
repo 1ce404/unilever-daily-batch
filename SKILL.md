@@ -7,10 +7,12 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 **文案 Agent 写，片子平台剪。** 平台只走一条路：AI 建脚本 → 批量生成 → 批量渲染 → 批量 AI 审核。画面、配音、BGM、字幕、贴图、音效由平台产品提示词决定；文案的事实只来自 `config/`。接口见 [references/clipo-api.md](references/clipo-api.md)。
 
+用户问「今天做哪些」「跑今天的排期」：先跑 ⓪ `overview.py`，报各品线今天 / 本周的条数，**只报内容，不接着写底稿**；用户说写再写。
+
 不知道做到哪了，先跑 `status`（离线），它给出下一步。
 
 ```
-① 拉资料 → ② 拆 brief → ③ 平台体检 → ④ 写底稿 → ⑤ lint → ⑥ 待审 ⏸ → ⑦ 记录审核
+⓪ 总排期 → ① 拉资料 → ② 拆 brief → ③ 平台体检 → ④ 写底稿 → ⑤ lint → ⑥ 待审 ⏸ → ⑦ 记录审核
   → ⑧ 生产（先 demo 的品牌多一轮 ⏸）→ ⑨ 交付：分享链接 + 本地文件夹
 ```
 
@@ -31,6 +33,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 | 文件 | 内容 |
 |---|---|
+| `config/lines.json` | 总排期的品线（clear、PC-lux、HC-MKT…）→ skill 的品牌和产品、每条品线的脚本文档、没切的素材网盘链接 |
 | `config/<品牌>.json` | 品牌共用：资料来源、条数、禁用词、命名、音色、水印、`structures`（AHC 结构） |
 | `config/<品牌>/<产品>.json` | 产品名、平台 id、卖点 `say`、机制、CTA、禁用词、串系列词、素材标签、写法要求 `rules` |
 | `gold/<品牌>.json` | 客户认可过的范本稿，任务卡按产品和方向列出，lint 拿来查开头撞车 |
@@ -41,6 +44,8 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 | [references/new-brand.md](references/new-brand.md) | 接入新品牌 / 新产品 |
 
 ## 流程
+
+**⓪ 总排期** `overview.py --run $R --date YYYY-MM-DD [--refetch]`：读联合利华总排期（`config/lines.json` 的 `master_schedule`），列出每条品线今天 / 本周多少条、对应哪个品牌、谁负责。按天的品线（clear、LUX）今天的条数照表；跨 5 天写的是整周总数，哪天做、做哪些产品看品线文档 `line_doc`。标 ⚠️ 的品线 skill 还没接，告诉用户。
 
 **① 拉资料** `fetch_sources.py --config $C --run $R`：排期、脚本合集、QC 文档。QC 有新卡审词、新机制，先改 config。
 

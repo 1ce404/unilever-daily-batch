@@ -1,0 +1,31 @@
+{
+  "_note": "联合利华总排期（用户 11-18）：每周一张表，每行一条品线（clear、LUX、PC-lux…），按天写条数，或用一个跨 5 天的格子写整周条数。overview.py 读这张表，按下面的 lines 把每条品线对到 skill 的品牌和产品。品线和产品依据：产品与素材总表 https://tezign.feishu.cn/wiki/MDiuwHukoimr3nkPgJJcQpaQnle",
+  "master_schedule": "https://tezign.feishu.cn/wiki/TNiqww1aqiJjagk39UscfXzWn1C",
+  "product_lines": "https://tezign.feishu.cn/wiki/MDiuwHukoimr3nkPgJJcQpaQnle",
+  "lines": {
+    "clear": {"brand": "qingyang", "products": ["2x", "huxi", "selenium"], "detail": "清扬自己的排期表按天写店铺、方向、卖点、人群"},
+    "LUX": {"brand": "lux", "products": ["jingyou", "spray", "mist"], "detail": "按 config/lux.json 的 daily_quota 分产品"},
+    "AHC-千川": {"brand": "ahc", "products": ["shuiguang", "bandage"], "detail": "AHC 排期表按周写品类 × 结构"},
+    "PC-lux": {"brand": "luxpc", "products": ["oil_bamboo", "oil_orchid", "oil_jasmine"], "line_doc": "https://tezign.feishu.cn/wiki/YYGEw1SO6i6wTGkSfRKchAH1nke", "detail": "PC-LUX 文档按周写产品 × 结构 × 条数（力士精油香氛沐浴露，LUX 2.0）"},
+    "lux-不走ddm合同": {"brand": "luxpc", "products": ["citrus_bergamot", "citrus_pomelo", "citrus_kumquat", "citrus_all"], "line_doc": "https://tezign.feishu.cn/wiki/I3eQwJVDmicm4KkD4cdc0AebnHP", "unconfirmed": "按产品总表推断是 LUX 3.0 柑橘香氛沐浴露，用户还没确认；LUX-视频混剪文档是表格，lark-cli 读不了", "detail": "LUX 3.0 柑橘香氛沐浴露"},
+    "PC-dove": {"brand": "dove", "products": ["scrub_sakura", "scrub_pomegranate", "scrub_clear", "dual_grape", "dual_strawberry", "seasalt", "bubble_milk", "bubble_sakura", "bubble_osmanthus"], "line_doc": "https://tezign.feishu.cn/wiki/PEtBw46XtiL80hk6PKPc4Vl1nXd", "detail": "【PC-DOVE】脚本按周写产品 × 结构 × 香型"},
+    "dove-hair-小金碗": {"brand": "dove", "products": ["mask_repair", "mask_hydra", "shampoo_repair"], "line_doc": "https://tezign.feishu.cn/wiki/Nb0iwagojirCD2kOZoYcy8WfnKj", "detail": "【Dove】排期表按周写品 × 结构 × 条数"},
+    "dove-hair-鎏金": {"brand": "dove", "products": ["golden"], "line_doc": "https://tezign.feishu.cn/wiki/MR9Mw5K2diDaRRkmv8Wc91JTnAV", "detail": "【Dove-hair】多芬鎏金千金瓶按批写结构 × 条数"},
+    "HC-MKT": {"brand": "hc", "products": ["cf_xiaoxiang_mumian", "cf_xiaoxiang_tanxiang"], "line_doc": "https://tezign.feishu.cn/wiki/Dteqw3diwisNFwkaS21cY88knWb", "detail": "【HC-MKT】脚本合集按周写产品 × 类型 × 方向 × 数量（金纺小香瓶）"},
+    "HC-逛逛": {"brand": "hc", "products": ["omo_jmcm", "omo_scjj", "omo_pods_eucalyptus", "omo_pods_lavender", "omo_pods_sakura", "omo_quick_white", "omo_quick_soft", "omo_5star_rose", "omo_5star_bergamot", "cf_xingse_freesia", "cf_xingse_lavender", "cf_xiangruan_freesia", "cf_xiangruan_sakura", "cf_xiangruan_lavender", "cf_5star_rose", "cf_pet", "cf_essence", "cf_pure", "cf_beads"], "line_doc": "https://tezign.feishu.cn/wiki/RxN6wVvLei4EK3kUhBFcDyFXnUh", "detail": "【HC】脚本合集"},
+    "HC-smm": {"brand": null, "detail": "skill 还没接：没有产品清单和脚本文档"},
+    "HC-直播间": {"brand": null, "detail": "skill 还没接：没有产品清单和脚本文档"},
+    "内衣洗": {"brand": null, "detail": "HC-MKT 的内衣洗：产品总表里没有这个产品，skill 还没接"}
+  },
+  "aliases": {"HC-mkt": "HC-MKT"},
+  "uncut_footage": {
+    "_note": "总排期「没切的素材」表（11-18 抄录）：素材不够时先看这里还有没有没切的；进度以文档为准",
+    "清扬": "https://pan.baidu.com/s/1K7p2cR8YZAoxjWYbqlETAA?pwd=u5cx、https://pan.baidu.com/s/10U3-j7je6QuCAAZTh6VxOQ（提取码 2sv4）、https://pan.baidu.com/s/1JSNQuBQD0yzjNs0ljEQj4w（提取码 gfuu）",
+    "清扬二硫化硒": "https://pan.baidu.com/s/1y_b9K8l_kPB36arSAYE6Mg?pwd=9LCV（打勾的是已切）",
+    "AHC": "https://pan.baidu.com/s/1J7Ymvn9Zlkabye5sHuBOYw（提取码 xbj4）",
+    "lux1.0": "https://pan.baidu.com/s/1isPsy00HZl5Ua599s8wTRw?pwd=8888（9 月力士发水素材）",
+    "HC-mkt": "https://pan.baidu.com/s/1SNsBxqq-t90wKxZ2BJiZgw（提取码 fjda）、https://pan.baidu.com/s/11QYyWcHN0kEiYlnSJeTg7A?pwd=pnra",
+    "PC-dove": "https://pan.baidu.com/s/1zWsZT2IEOhjtG85WwuR4jg?pwd=916B（只切了 8.13 之前的）；四条品线：MF Gel 果奶 https://pan.baidu.com/s/16ncPs1YOarqurS-PUgnF3Q?pwd=dqq2、Glow 透明肌 / dakota https://docs.qq.com/sheet/DVm55RmtQTFpyaExk、core https://pan.baidu.com/s/1yNtucAd87YSdUCbyX9qGXQ?pwd=NdjK",
+    "HC": "Ustudio 8 月、9 月 Delivery 纯净版，链接见总排期「没切的素材」"
+  }
+}

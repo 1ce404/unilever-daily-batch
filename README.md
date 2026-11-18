@@ -3,7 +3,7 @@
 Agent skill：联合利华千川 / 逛逛混剪视频批量生产（清扬、力士、AHC、HC、多芬、力士沐浴）。
 
 ```
-排期 → 每 10 条一个 brief → Agent 照团队写法写底稿 → 机器检查 → 人审 → Clipo Remix 建脚本
+总排期（今天各品线多少条）→ 品牌排期 → 每 10 条一个 brief → Agent 照团队写法写底稿 → 机器检查 → 人审 → Clipo Remix 建脚本
 → 批量生成、渲染、AI 审核 → 凑够条数 → 每 10 条一个分享链接 + 本地文件夹
 ```
 
@@ -41,10 +41,11 @@ git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/
 | 路径 | 内容 |
 |---|---|
 | `SKILL.md` | 入口：品牌、九步流程、铁律 |
+| `config/lines.json` | 总排期里的品线对到哪个品牌 / 产品、品线脚本文档、没切的素材 |
 | `config/<品牌>.json` | 品牌共用：资料来源、条数、禁用词、命名、音色 |
 | `config/<品牌>/<产品>.json` | 每个产品的卖点、机制、CTA、禁用词、素材标签、写法要求 |
 | `gold/<品牌>.json` | 范本稿 |
-| `scripts/` | 拉资料、拆排期、任务卡、lint、待审文档、Clipo 批量生产 / 分享 / 下载、AI 素材生成 |
+| `scripts/` | 看总排期、拉资料、拆排期、任务卡、lint、待审文档、Clipo 批量生产 / 分享 / 下载、AI 素材生成 |
 | `references/` | 写法、平台接口、QC、AIGC 素材标准、人物 AIGC 流程、接入新品牌 |
 | `tests/` | 单测：`python3 -I -m unittest discover -s tests` |
 

@@ -42,8 +42,9 @@ def cell_text(raw):
     return html.unescape(t).strip()
 
 
-def parse_table(table_html):
-    """Expand a Lark <table> (with rowspan/colspan) into a rectangular grid of plain-text cells."""
+def parse_table(table_html, spans=False):
+    """Expand a Lark <table> (with rowspan/colspan) into a rectangular grid of plain-text cells.
+    spans=True returns (text, colspan) per cell: the master schedule writes a weekly total as one colspan="5" cell."""
     rows = re.findall(r"<tr>(.*?)</tr>", table_html, re.S)
     grid, carry = [], {}  # carry[col] = [remaining_rows, text]
     for row in rows:
@@ -65,9 +66,9 @@ def parse_table(table_html):
             rs = int((re.search(r'rowspan="(\d+)"', attrs) or [0, 1])[1])
             cs = int((re.search(r'colspan="(\d+)"', attrs) or [0, 1])[1])
             for _ in range(cs):
-                out.append(text)
+                out.append((text, cs) if spans else text)
                 if rs > 1:
-                    carry[col] = [rs - 1, text]
+                    carry[col] = [rs - 1, (text, cs) if spans else text]
                 col += 1
         grid.append(out)
     return grid

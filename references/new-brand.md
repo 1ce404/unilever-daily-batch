@@ -26,4 +26,6 @@ QC 文档里只能靠人判断的定制要求（如「Dove-Hair 提到仿生氨�
 
 **加一个产品**（同品牌）：建 `config/<brand>/<key>.json`，在 `store_to_product` 加店铺映射，在 gold 里加几条该产品的范本，跑 `preflight` 确认平台有这个产品、有提示词、有切片。
 
-接完跑一遍：`fetch_sources` → `parse_schedule`（确认店铺都映射上）→ `preflight`（确认平台产品有提示词、有切片）→ `brief_card.py --brief <一个>` 写一条 → `lint_copy` → `submit --dry-run`。
+**总排期里的品线**：在 `config/lines.json` 的 `lines` 加一条（品线名照总排期第一列写），写 `brand`、`products`、`line_doc`（产品总表「相关文档」那一列）。`overview.py` 靠它把品线对到品牌。
+
+接完跑一遍：`overview`（确认品线对上了）→ `fetch_sources` → `parse_schedule`（确认店铺都映射上）→ `preflight`（确认平台产品有提示词、有切片）→ `brief_card.py --brief <一个>` 写一条 → `lint_copy` → `submit --dry-run`。
