@@ -45,7 +45,7 @@ git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/
 | `config/<品牌>/<产品>.json` | 每个产品的卖点、机制、CTA、禁用词、素材标签、写法要求 |
 | `gold/<品牌>.json` | 范本稿 |
 | `scripts/` | 拉资料、拆排期、任务卡、lint、待审文档、Clipo 批量生产 / 分享 / 下载、AI 素材生成 |
-| `references/` | 写法、平台接口、QC、人物 AIGC、接入新品牌 |
+| `references/` | 写法、平台接口、QC、AIGC 素材标准、人物 AIGC 流程、接入新品牌 |
 | `tests/` | 单测：`python3 -I -m unittest discover -s tests` |
 
 每天的运行数据写在 skill 目录外的 `runs/YYYYMMDD/`，不进仓库。

@@ -40,6 +40,7 @@ import tempfile
 import urllib.request
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -321,6 +322,13 @@ def check_plan(r):
         hit = [w for w in risky if w in s["prompt"]]
         if hit and not s["attempts"]:
             warns.append(f"{key} 提示词有容易被版权检查拦的词：{'、'.join(hit)}（只提醒，不会自动删）")
+    # 品牌禁用画面（config banned_footage_words）：提示词里出现且不是「不 / 没 / 无 / 禁止」否定的，提醒
+    banned = r.cfg.get("banned_footage_words") or []
+    for key, s_ in sorted(r.st["slots"].items()):
+        hit = [w for w in banned if re.search(rf"(?<!不)(?<!没)(?<!无)(?<!别)(?<!禁止){re.escape(w)}", s_["prompt"])
+               and not re.search(rf"(不|没有?|无|别|禁止)[^，。,;；]{{0,4}}{re.escape(w)}", s_["prompt"])]
+        if hit and not s_["attempts"]:
+            warns.append(f"{key} 提示词写了禁用画面：{'、'.join(hit)}（references/aigc-standards.md）")
     for sc in r.plan["scenes"]:
         if not sc.get("fallback_prompts"):
             warns.append(f"场景 {sc['id']} 没写 fallback_prompts：被版权检查拦了就只能报缺口，不会自动重试")

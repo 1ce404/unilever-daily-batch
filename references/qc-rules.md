@@ -40,7 +40,7 @@ QC 标准原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb（`f
 | 信息与机制准确 | 产品全名完整出现；机制数字只能是 `mechanism.allowed_numbers` |
 | 系列不可混淆 | `foreign_claims`：别的 SKU / 香型的卖点出现即报错 |
 | 文字规范 | 短句 > 12 提醒、> 20 报错；产品名不跨句；不带 emoji / `[#…]` |
-| AIGC 标准 | `banned_footage_words` 按素材描述拦：头屑、明星、白大褂、秃顶；其余靠人审 |
+| AIGC 标准 | 全文和各品牌要求在 [aigc-standards.md](aigc-standards.md)；`banned_footage_words` 按素材描述拦（头屑、明星、白大褂、秃顶、过敏…），`aigc_gen.py submit` 提醒提示词里的禁用画面；其余靠人审 |
 
 ## 驳回怎么处理
 

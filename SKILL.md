@@ -35,7 +35,8 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 | `config/<品牌>/<产品>.json` | 产品名、平台 id、卖点 `say`、机制、CTA、禁用词、串系列词、素材标签、写法要求 `rules` |
 | `gold/<品牌>.json` | 客户认可过的范本稿，任务卡按产品和方向列出，lint 拿来查开头撞车 |
 | [references/writing.md](references/writing.md) | 写底稿：骨架、开头、每句几个说法、硬性要求、热梗、素材池 |
-| [references/aigc-production.md](references/aigc-production.md) | 人物 AIGC：设定、逐条绑定、生成失败怎么办 |
+| [references/aigc-standards.md](references/aigc-standards.md) | **AIGC 素材标准，按品牌 / 产品分节**：QC 的 AIGC 规定、人设、禁用画面、提示词怎么写。生成前对照；AIGC 素材的新问题、新要求都更新在这里 |
+| [references/aigc-production.md](references/aigc-production.md) | 人物 AIGC 的生成流程：生成计划、逐条绑定、生成失败怎么办 |
 | [references/qc-rules.md](references/qc-rules.md) | QC 规则放 skill 还是放平台；驳回怎么处理 |
 | [references/new-brand.md](references/new-brand.md) | 接入新品牌 / 新产品 |
 
@@ -87,7 +88,7 @@ python3 -I scripts/clipo_batch.py share  --config $C --run $R --download     # �
 2. **提交前报条数**：新的生成、补生成先 dry-run 告诉用户条数；用户已授权的范围不重复问
 3. **事实只来自 config 和当天资料**：不编亲测、背书、数据；改写违规一律当驳回
 4. **不改共享的东西**：客户共享文档、平台上的产品 / 素材 / 分类 / 提示词，没有用户明确授权不改；授权了就改，改前备份、改后读回核对
-5. **学到的写回去**：卡审词、机制、写法要求进 config；用户认可的整条脚本进 `gold/`；不只留在聊天里
+5. **学到的写回去**：卡审词、机制、写法要求进 config；AIGC 素材的问题和要求进 `references/aigc-standards.md` 对应品牌那一节；用户认可的整条脚本进 `gold/`；不只留在聊天里
 6. **交付默认下载到本地**：全部保存后才说本地完成
 7. **默认不逐条看成片和素材**：只靠机器检查和少量抽查（每个 brief 最多 1 条）；用户说不用检查就连抽查也跳过
 8. **平台操作只用 skill 的命令，不自己写代码调接口**：建链接只用 `share`，下载只用 `download`，看进度只用 `status` / `poll`，AI 素材只用 `aigc_gen.py`。命令做不到的，先改 skill 再用

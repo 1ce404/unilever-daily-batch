@@ -120,7 +120,11 @@
     "皮屑",
     "明星",
     "白大褂",
-    "医生"
+    "医生",
+    "过敏",
+    "红疹",
+    "秃顶",
+    "脱发"
   ],
   "open_questions": [
     "每批做哪些产品、多少条（daily_quota 空）",
@@ -130,5 +134,6 @@
   "review": {
     "doc_parent_token": null,
     "notify_chat_id": null
-  }
+  },
+  "_banned_footage_note": "素材描述里有这些词的，成片不交付（poll 拦）。规则来源和各品牌的 AIGC 要求见 references/aigc-standards.md"
 }
