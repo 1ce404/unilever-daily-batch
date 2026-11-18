@@ -15,6 +15,10 @@ Plan file (written by the agent, reviewed by the user like a script):
                 {"id": "cat", "tag": "AI小猫", "prompts": ["版本1 …", "版本2 …", "版本3 …"]}]}
 Tags follow scripts/ai_tags.py (user 11-18): one AI tag per clip, named after the scene, starting with「AI」, no
 dates or brief ids. A scene's `tag` overrides the plan's.
+Before submit, check_plan stops prompts that break the brand's config `aigc` look rule (清扬 user 11-18: every
+character good-looking, never a stock / influencer face): people prompts must name a look word and a natural word,
+and must not ask for mask words.
+
 `prompts` gives one slot per prompt (different person / action each); `prompt` + `versions` submits the same prompt
 N times. Optional plan keys: model, resolution, ratio, generate_audio (default false), max_inflight.
 
@@ -391,6 +395,20 @@ def check_plan(r):
                and not re.search(rf"(不|没有?|无|别|禁止)[^，。,;；]{{0,4}}{re.escape(w)}", s_["prompt"])]
         if hit and not s_["attempts"]:
             warns.append(f"{key} 提示词写了禁用画面：{'、'.join(hit)}（references/aigc-standards.md）")
+    # 品牌外貌规则（config aigc.look_words / natural_words / mask_words，清扬用户 11-18：帅哥美女、不要脸谱）
+    look = r.cfg.get("aigc") or {}
+    if look.get("look_words"):
+        for key, s_ in sorted(r.st["slots"].items()):
+            if s_["attempts"] or not re.search(r"男|女|人|主角|配角|妈|邻居|同事", s_["prompt"]):
+                continue  # 已提交过、或纯空镜不查
+            p_ = s_["prompt"]
+            if not any(w in p_ for w in look["look_words"]):
+                errs.append(f"{key} 有人物但没写外貌：写「帅气 / 好看」等（{'、'.join(look['look_words'][:4])}）")
+            if not any(w in p_ for w in look.get("natural_words", [])):
+                errs.append(f"{key} 没写自然真实：加「自然、真实生活感」，避免脸谱化")
+            mask = [w for w in look.get("mask_words", []) if w in p_ and not re.search(rf"(不|没有?|无|别|禁止)[^，。,;；]{{0,4}}{re.escape(w)}", p_)]
+            if mask:
+                errs.append(f"{key} 写了脸谱化的词：{'、'.join(mask)}（references/aigc-standards.md 外貌规则）")
     for sc in r.plan["scenes"]:
         if not sc.get("fallback_prompts"):
             warns.append(f"场景 {sc['id']} 没写 fallback_prompts：被版权检查拦了就只能报缺口，不会自动重试")

@@ -47,5 +47,32 @@ class RetryRules(unittest.TestCase):
         self.assertEqual(self.r.ready("golf"), [])
 
 
+class LookRule(unittest.TestCase):
+    """清扬用户 11-18：AIGC 角色都要帅哥美女，但不要明显脸谱。"""
+    def errs(self, prompt):
+        r = run_with({"product": "2x", "tag": "AI双人演绎", "scenes": [{"id": "s", "prompt": prompt, "fallback_prompts": ["x"]}]})
+        r.cfg["aigc"] = {"look_words": ["帅气", "好看"], "natural_words": ["自然", "真实"], "mask_words": ["网红脸", "精致五官"]}
+        orig = ag.cb.api
+        ag.cb.api = lambda *a, **k: {"tags": ["AI双人演绎"]}
+        try:
+            return ag.check_plan(r)[0]
+        finally:
+            ag.cb.api = orig
+
+    def test_ok(self):
+        self.assertEqual(self.errs("28岁帅气男生在浴室抓头发，自然真实的生活感"), [])
+
+    def test_missing_look_and_natural(self):
+        e = self.errs("28岁男生在浴室抓头发")
+        self.assertTrue(any("外貌" in x for x in e) and any("自然真实" in x for x in e))
+
+    def test_mask_word_but_negation_ok(self):
+        self.assertTrue(any("脸谱" in x for x in self.errs("帅气男生，网红脸，自然光")))
+        self.assertEqual(self.errs("帅气男生，不要网红脸，自然光"), [])
+
+    def test_empty_shot_skipped(self):
+        self.assertEqual(self.errs("浴室台面上一瓶洗发水，晨光"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
