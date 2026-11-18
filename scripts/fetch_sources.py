@@ -3,7 +3,8 @@
 
     python3 scripts/fetch_sources.py --config qingyang --run runs/20261030
 
-Writes sources/{schedule,recent_scripts,qc}.txt (history_scripts only with --history, it is ~1.7MB).
+Writes sources/schedule-<brand>.txt (each brand its own: brands share a run dir) and
+sources/{recent_scripts,qc}.txt (history_scripts only with --history, it is ~1.7MB).
 """
 import argparse
 from pathlib import Path
@@ -29,7 +30,7 @@ def main():
             print(f"{key}: 这个品牌没有（{'用 config.daily_quota 固定条数' if key == 'schedule' else '跳过'}）")
             continue
         text = lark_fetch(cfg["sources"][key])
-        dest = out / f"{key}.txt"
+        dest = out / (f"schedule-{cfg['brand_key']}.txt" if key == "schedule" else f"{key}.txt")
         if dest.exists() and dest.read_text() != text and key != "schedule":
             dest = out / f"{key}-{cfg['brand_key']}.txt"  # two brands on the same day can point at different docs
         dest.write_text(text)

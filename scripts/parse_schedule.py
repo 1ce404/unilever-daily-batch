@@ -3,7 +3,7 @@
 
     python3 scripts/parse_schedule.py --config qingyang --run runs/20261030 --date 2026-10-30
 
-Reads  runs/<day>/sources/schedule.txt, or config.daily_quota for brands without a schedule doc (LUX).
+Reads  runs/<day>/sources/schedule-<brand>.txt (old runs: schedule.txt), or config.daily_quota for brands without a schedule doc (LUX).
        config.schedule_format "weekly" (AHC, user 11-18): one `# MMDD-MMDD` block per week, rows 品类 × 结构 × 数量;
        the block that contains --date is used, each row becomes briefs of that 结构 (config.structures says what it is)
 Writes runs/<day>/schedule-<brand>.json every row for that date (incl. 新增 tables) + section notes
@@ -101,6 +101,12 @@ def product_key(cfg, store):
     return None
 
 
+def schedule_file(run, cfg):
+    """每个品牌一份排期文件；旧的 run 只有共用的 schedule.txt。"""
+    own = run / "sources" / f"schedule-{cfg['brand_key']}.txt"
+    return own if own.exists() or not (run / "sources" / "schedule.txt").exists() else run / "sources" / "schedule.txt"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
@@ -117,11 +123,11 @@ def main():
         rows = [{"store": q.get("store", cfg["brand"]), "product_key": q["product"], "direction": q.get("direction", "日常"),
                  "selling_point": "", "audience": q.get("audience", ""), "quantity": q["quantity"],
                  "section": "daily_quota", "section_notes": q.get("note", "")} for q in cfg["daily_quota"]]
-    elif "daily_quota" in cfg and not (run / "sources" / "schedule.txt").exists():
+    elif "daily_quota" in cfg and not schedule_file(run, cfg).exists():
         raise SystemExit(f"{cfg['brand']} 没有排期表，config 的 daily_quota 也是空的：先问用户这次做哪些产品、各多少条，"
                          f"填进 config/{cfg['brand_key']}.json 的 daily_quota")
     else:
-        src = run / "sources" / "schedule.txt"
+        src = schedule_file(run, cfg)
         if not src.exists():
             raise SystemExit(f"{src} 不存在：先跑 fetch_sources.py --config {args.config} --run {args.run} 拉排期")
         text = src.read_text()
