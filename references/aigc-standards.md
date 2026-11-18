@@ -4,6 +4,15 @@
 
 **以后 AIGC 素材出了问题、用户提了新要求，都写进这里**：所有品牌都适用的写进「所有品牌」，只对某个品牌 / 产品的写进那一节。能按素材描述拦的词，同时加进 `config/<品牌>.json` 的 `banned_footage_words`（`poll` 会按它拦成片，`aigc_gen.py submit` 会提醒提示词里出现了这些词）。
 
+## 打标签（所有品牌，用户 11-18）
+
+- AI 素材只带一个标签：以「AI」开头、按场景起名，例：AI双人演绎、AI单人演绎、AI小猫、AI超市选购、AI追根溯源
+- 普通标签（使用后、头皮出油、男士使用…）只给真实素材；分段要 AI 画面就单选那个 AI 标签
+- 标签名不写日期、brief 号、分镜号（不再出现 AI-1111-B01-分镜1）
+- 平台每入库一条素材都会让 AI 从产品标签里自动挑标签，AI 素材也会被打成「使用后」。`aigc_gen.py` 生成和切段后把标签**整组换成**场景标签，之后再查一遍
+- `preflight` 报「普通标签里混了 AI 素材」时：`ai_tags.py check` 看全貌，`ai_tags.py fix --dry-run` 看怎么改，用户同意后去掉 `--dry-run`（改前自动备份，`restore` 可改回）
+- 真实素材带了 AI 标签的，`fix` 不改，问用户（可能是 AI 素材上传时没标 AI 生成）
+
 ## 所有品牌
 
 **QC 文档「AIGC 标准」**（原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb）

@@ -18,6 +18,7 @@ briefs a human approved (review_doc.py sync / approve, copy unchanged since) wit
 re-lints every rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
 """
 import argparse
+from collections import Counter
 import copy
 import json
 import math
@@ -143,6 +144,14 @@ def cmd_preflight(cfg, run, args):
         print(f"   无可用切片的标签 {empty or '无'}；不足 10 条 {thin or '无'}")
         if risky:
             print(f"   ⚠️ 平台生成不会避开风险切片：带标签的风险切片仍可能被随机选中，建议在平台删除或去掉标签")
+        # AI 素材打标规则（scripts/ai_tags.py，用户 11-18）：普通标签里混进 AI 素材，平台按标签配画面会配进 AI 人
+        real_tags = [t for t in p["tags"] if not t.startswith("AI")]
+        if real_tags:
+            hits = (api("POST", "/materials/segments/search", {"product_id": pid, "tags": real_tags, "limit": 200}) or {}).get("items", [])
+            mixed = Counter(t for h in hits if h["segment"].get("ai_generated") for t in h["segment"].get("tags") or [] if not t.startswith("AI"))
+            if mixed:
+                print(f"   ⚠️ 普通标签里混了 AI 素材（最新 200 条里）：{'、'.join(f'{t} {n}' for t, n in mixed.most_common())}。"
+                      f"按标签配画面会配进 AI 人：ai_tags.py fix --dry-run 看怎么改，用户同意后改")
         if not desc_ok(p):
             print("   ⚠️ 平台产品描述为空（AI 审核拿不到产品事实）")
         desc = p.get("description") or ""

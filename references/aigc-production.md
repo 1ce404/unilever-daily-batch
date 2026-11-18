@@ -17,7 +17,7 @@
 1. 在brief写 `within_folder_material_diversity_required: true`。先准备交付N条的N套人物、场景、动作方案和素材对应关系；已确认demo可保留1条，其余补N−1套，不把demo整套用于批量。
 2. `submit`生成平台剪辑后，`poll`将未绑定的人物剪辑置为`aigc_pending`，不先渲染重复默认画面。常规平台建脚本不自动制作独立AIGC源素材，按本节生成并登记。
 3. **生成用 `scripts/aigc_gen.py`，不自己写调接口的代码**。先写生成计划 `$R/aigc/<名字>.json`（格式见下），每套源视频一条提示词，一次生成三个不同动作、同人同服装，提示词里写清三个动作的时间（如 0–2 秒 / 2–4 秒 / 4–6 秒），计划里的 `shots` 写同样的起止秒。参考受阻时用完全原创文字人物在同次生成中安排三镜，不能默认以三段可能换脸的独立生成降级。计划和文案一样先给用户看。
-4. `submit --dry-run` 报条数（每条单独计费），用户同意后 `submit`，然后 `poll` 放后台跑（nohup），这一轮对话就结束，不在对话里等。`poll` 读任务状态、成功的打上计划里的 `tag`、被版权检查拦的按 `fallback_prompts` 换方案重试（最多 2 次）、写 `<计划>-report.md`（每个场景成功几条、缺几条）。随时 `report` 看进度，离线。
+4. `submit --dry-run` 报条数（每条单独计费），用户同意后 `submit`，然后 `poll` 放后台跑（nohup），这一轮对话就结束，不在对话里等。`poll` 读任务状态、把成功的素材标签整组换成场景标签（打标规则见 [aigc-standards.md](aigc-standards.md)「打标签」）、被版权检查拦的按 `fallback_prompts` 换方案重试（最多 2 次）、写 `<计划>-report.md`（每个场景成功几条、缺几条）。随时 `report` 看进度，离线。
 5. 平台剪辑出来以后（`clipo_batch.py submit`，待绑定的停在 `aigc_pending`），`aigc_gen.py sets --brief <id>` 把这个场景成功的每条源视频按 `shots` 切成三个不重叠片段、上传、登记为 AI 切片，写进 brief 的 `visual_sets`（一条视频一套独立源，带 cut_id）；不够的报缺几套，不拿别的视频或场景的素材顶。然后 `bind-aigc`。成功一批就绑一批，不等整批源素材全部成功。虚构仓库、工厂、实验室追溯画面标注“AI场景示意”。
 
 ```bash
@@ -37,7 +37,7 @@ python3 -I scripts/aigc_gen.py sets --config $C --run $R --plan $R/aigc/<名字>
              "fallback_prompts": ["被版权拦时用的重新设计的原创人物方案 …"]}]}
 ```
 
-`prompts` 一条一个版本（每版人和动作不同）；同一提示词出多版写 `"prompt": "…", "versions": N`。brief 写 `"aigc_scene": "golf"`，`sets` 就从这个场景取素材。可选：`model`、`resolution`、`ratio`、`generate_audio`（默认 false）、`max_inflight`（同时在跑的上限，默认 20）。只要素材池、不要逐条人物一致时，成功的素材已打标签，直接 `clipo_batch.py pool --tags <tag> --allow-risk`。
+`prompts` 一条一个版本（每版人和动作不同）；同一提示词出多版写 `"prompt": "…", "versions": N`。brief 写 `"aigc_scene": "golf"`，`sets` 就从这个场景取素材。场景可以写自己的 `tag`（不写用计划的 `tag`）。可选：`model`、`resolution`、`ratio`、`generate_audio`（默认 false）、`max_inflight`（同时在跑的上限，默认 20）。只要素材池、不要逐条人物一致时，成功的素材只带场景标签，直接 `clipo_batch.py pool --tags <tag> --allow-risk`。
 6. `bind-aigc`保留口播、声音、字幕、产品镜头和其他轨道，只替换1/2/4。PUT后GET现签完整draft再提交render。素材/渲染记录存run内；同一state不同时由两个写入任务操作。失败渲染修复后增加该组render_revision再提交，不能复用旧失败job。
 
 ```bash

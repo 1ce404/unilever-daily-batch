@@ -51,7 +51,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 **② 拆 brief** `parse_schedule.py --config $C --run $R --date YYYY-MM-DD`：每 `brief_size` 条一个 brief。清扬按天找排期行；AHC 找这一天所在的那一周，每个结构一个 brief，结构写进 brief 的 `template`；力士按 `daily_quota`；HC / 多芬 / 力士沐浴先问用户做哪些产品、各多少条。找不到当天的行就停，告诉用户排期没更新。
 
-**③ 平台体检** `clipo_batch.py preflight --config $C --run $R`：产品能不能打开、可用素材、风险素材、提示词是不是自定义、提示词里的分类平台上有没有、审核提示词的产品名。有 ❌ 告诉用户去平台改。
+**③ 平台体检** `clipo_batch.py preflight --config $C --run $R`：产品能不能打开、可用素材、风险素材、普通标签里有没有混进 AI 素材、提示词是不是自定义、提示词里的分类平台上有没有、审核提示词的产品名。有 ❌ 告诉用户去平台改。
 
 **④ 写底稿** `brief_card.py --config $C --run $R [--brief <id>]`：每个 brief 一张任务卡（方向、卖点、结构、产品要求、素材画面、禁用词、范本、团队交付过的稿、已用过的开头）。照卡写进 brief 的 `segments`（每段 `role` / `title` / `text`，`alt` 写 1~2 个别的说法）。写法见 [writing.md](references/writing.md)。某段要固定一类画面，用素材池：`clipo_batch.py pool`。
 
@@ -96,4 +96,4 @@ python3 -I scripts/clipo_batch.py share  --config $C --run $R --download     # �
 5. **学到的写回去**：卡审词、机制、写法要求进 config；AIGC 素材的问题和要求进 `references/aigc-standards.md` 对应品牌那一节；用户认可的整条脚本进 `gold/`；不只留在聊天里
 6. **交付默认下载到本地**：全部保存后才说本地完成
 7. **默认不逐条看成片和素材**：只靠机器检查和少量抽查（每个 brief 最多 1 条）；用户说不用检查就连抽查也跳过
-8. **平台操作只用 skill 的命令，不自己写代码调接口**：建链接只用 `share`，下载只用 `download`，看进度只用 `status` / `poll`，AI 素材只用 `aigc_gen.py`。命令做不到的，先改 skill 再用
+8. **平台操作只用 skill 的命令，不自己写代码调接口**：建链接只用 `share`，下载只用 `download`，看进度只用 `status` / `poll`，AI 素材只用 `aigc_gen.py`，改 AI 素材标签只用 `ai_tags.py`。命令做不到的，先改 skill 再用

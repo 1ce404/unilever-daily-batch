@@ -117,6 +117,6 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 
 ## 人物AIGC逐条绑定
 
-人物三镜一致、组内独立素材按[aigc-production.md](aigc-production.md)执行。素材生成使用POST /material-generations与GET /material-generations/{id}（`scripts/aigc_gen.py` 封装了提交、轮询、打标签、重试、切三镜登记），参数以当前OpenAPI为准：模型 doubao-seedance-2-5 / 2-0 / 2-0-fast / 2-0-mini，时长 4~10 秒，480p / 720p，一次最多 8 条，每条单独计费。成功源素材剪片后，通过POST /storage/upload-tokens上传、POST /products/{id}/segments登记；写入每条visual_sets，使用clipo_batch.py bind-aigc。
+人物三镜一致、组内独立素材按[aigc-production.md](aigc-production.md)执行。素材生成使用POST /material-generations与GET /material-generations/{id}（`scripts/aigc_gen.py` 封装了提交、轮询、打标签、重试、切三镜登记）。平台每入库一条素材都会跑一次理解，从产品标签里自动挑标签，AI 素材也不例外；打标规则和清理用 `scripts/ai_tags.py`，参数以当前OpenAPI为准：模型 doubao-seedance-2-5 / 2-0 / 2-0-fast / 2-0-mini，时长 4~10 秒，480p / 720p，一次最多 8 条，每条单独计费。成功源素材剪片后，通过POST /storage/upload-tokens上传、POST /products/{id}/segments登记；写入每条visual_sets，使用clipo_batch.py bind-aigc。
 
 bind-aigc只替换1/2/4主轨道人物窗口，PUT后GET完整现签draft提交render，不重新生成已成功的源素材。修改素材或修复失败渲染需新render_revision；同一素材组/修订的幂等键不重复提交。share会核对每条draft绑定及组内/跨脚本来源，不逐条看帧。用户自行检查模式可跳过内容AI审核，保留结构与下载确认。

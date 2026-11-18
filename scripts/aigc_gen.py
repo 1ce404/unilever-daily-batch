@@ -12,12 +12,16 @@ clips).
 Plan file (written by the agent, reviewed by the user like a script):
     {"product": "2x", "tag": "AI双人演绎", "duration": 6,
      "scenes": [{"id": "golf", "versions": 4, "prompt": "…", "fallback_prompts": ["…"]},
-                {"id": "dinner", "prompts": ["版本1 …", "版本2 …", "版本3 …"]}]}
+                {"id": "cat", "tag": "AI小猫", "prompts": ["版本1 …", "版本2 …", "版本3 …"]}]}
+Tags follow scripts/ai_tags.py (user 11-18): one AI tag per clip, named after the scene, starting with「AI」, no
+dates or brief ids. A scene's `tag` overrides the plan's.
 `prompts` gives one slot per prompt (different person / action each); `prompt` + `versions` submits the same prompt
 N times. Optional plan keys: model, resolution, ratio, generate_audio (default false), max_inflight.
 
-submit fills free slots up to max_inflight and exits; poll keeps going in the background: it reads each task, tags
-successful clips with the plan's tag (so `clipo_batch.py pool --tags <tag>` finds them), tops up the queue, and
+submit adds the tags to the product's tag list, fills free slots up to max_inflight and exits; poll keeps going in
+the background: it reads each task, REPLACES the tags of each successful clip with its scene tag (the platform's
+auto-understanding tags AI clips 使用后 / 头皮出油 too, which put AI people into real-footage segments), checks
+them again on later rounds (so `clipo_batch.py pool --tags <tag>` finds them), tops up the queue, and
 retries a failed slot at most twice. A slot blocked by the model's copyright / sensitive check is retried only with
 the scene's next `fallback_prompts` (a redesigned original character / wording the agent wrote, keeping the
 approved look, e.g. 年轻帅气 for 清扬 2X: references/aigc-production.md), never the same prompt again and never by
@@ -47,6 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clipo_batch as cb
+import ai_tags
 from common import load_config
 
 MODEL = "doubao-seedance-2-0-260128"
@@ -87,6 +92,13 @@ class Run:
 
     def scene(self, sid):
         return next(s for s in self.plan["scenes"] if s["id"] == sid)
+
+    def tag(self, sid):
+        """The one AI tag a scene's clips carry (scene tag, else the plan tag)."""
+        return self.scene(sid).get("tag") or self.plan.get("tag")
+
+    def tags(self):
+        return sorted({self.tag(sc["id"]) for sc in self.plan["scenes"]} - {None})
 
     @staticmethod
     def status(slot):
@@ -152,10 +164,10 @@ class Run:
         return sent
 
     def refresh(self):
-        """Read every in-flight task; tag successful clips. Returns how many changed."""
+        """Read every in-flight task; give successful clips exactly their scene tag. Returns how many changed."""
         changed, segs = 0, None
-        tag = self.plan.get("tag")
         for key, slot in sorted(self.st["slots"].items()):
+            tag = self.tag(slot["scene"])
             state = self.status(slot)
             if state not in ("inflight", "tagging"):
                 continue
@@ -174,24 +186,50 @@ class Run:
             seg = next((x for x in segs if object_key and object_key in (x.get("object_url") or "")), None)
             if not seg:
                 continue  # the platform lays the segment row a moment after success; next round
-            if tag and tag not in (seg.get("tags") or []):
-                cb.api("PATCH", f"/materials/segments/{seg['id']}", {"tags": sorted(set(seg.get("tags") or []) | {tag})})
+            if tag and (seg.get("tags") or []) != [tag]:
+                ai_tags.set_tags(seg["id"], [tag])
             slot.update(segment_id=seg["id"], object_key=object_key, duration_ms=seg["end_ms"] - seg["begin_ms"],
                         description=(seg.get("description") or "")[:200], review_result=seg.get("review_result"))
             changed += 1
+        changed += self.retag(segs)
         if changed:
             self.save()
         return changed
+
+    def retag(self, segs=None):
+        """The platform may still be writing its own tags after we set ours: check every clip this plan made (whole
+        clips and the cut shots) and set the scene tag again where it drifted. A clip counts as settled once its
+        understanding is done and its tags are right. Returns how many it fixed."""
+        mine = {}
+        for slot in self.st["slots"].values():
+            tag = self.tag(slot["scene"])
+            for sid in [slot.get("segment_id")] + [x.get("segment_id") for x in slot.get("shots") or []]:
+                if tag and sid and sid not in self.st.setdefault("tags_settled", []):
+                    mine[sid] = tag
+        if not mine:
+            return 0
+        segs = segs or product_segments(self.product["clipo_product_id"])
+        fixed = 0
+        for seg in segs:
+            tag = mine.get(seg["id"])
+            if not tag:
+                continue
+            if (seg.get("tags") or []) != [tag]:
+                ai_tags.set_tags(seg["id"], [tag])
+                fixed += 1
+            elif seg.get("describe_status") in ("success", "failed"):
+                self.st["tags_settled"].append(seg["id"])
+        return fixed
 
     def ready(self, scene):
         return [(k, s) for k, s in sorted(self.st["slots"].items())
                 if s["scene"] == scene and s.get("segment_id") and not banned(self.cfg, s)]
 
     def report(self):
-        tag = self.plan.get("tag") or ""
+        tag = "、".join(self.tags())
         words = self.cfg.get("banned_footage_words") or []
         lines = [f"# AI 素材生成 · {self.plan_path.stem} · {time.strftime('%Y-%m-%d %H:%M')}", "",
-                 f"产品 {self.plan['product']}，标签「{tag}」。生成成功的已打标签，可直接 `clipo_batch.py pool --tags {tag} --allow-risk` 做素材池。", ""]
+                 f"产品 {self.plan['product']}，标签「{tag}」。生成成功的只带场景标签，可直接 `clipo_batch.py pool --tags <标签> --allow-risk` 做素材池。", ""]
         lines += ["| 场景 | 要几条 | 成功 | 还在跑 | 放弃 | 被拦次数 |", "|---|---|---|---|---|---|"]
         total_ok = total = 0
         for sc in self.plan["scenes"]:
@@ -249,6 +287,8 @@ def cut_and_register(r, key, slot, spans, workdir):
         seg = cb.api("POST", f"/products/{pid}/segments", {"object_key": tok["object_key"], "ai_generated": True})
         rows.append({"segment": int(seg_no), "object_key": tok["object_key"], "source_interval": [a, b],
                      "duration": round(b - a, 3), "segment_id": seg.get("id")})
+        if r.tag(slot["scene"]) and seg.get("id"):
+            ai_tags.set_tags(seg["id"], [r.tag(slot["scene"])])  # understanding may overwrite it: settle_tags rechecks
     slot["shots"] = rows
     r.save()
     return rows
@@ -292,7 +332,25 @@ def cmd_sets(r, args):
             brief["within_folder_material_diversity_required"] = True
             bp.write_text(json.dumps(brief, ensure_ascii=False, indent=2))
             print(f"  {vkey} ← {skey}")
+    settle_tags(r)
     print("下一步：clipo_batch.py bind-aigc --brief " + args.brief)
+
+
+def settle_tags(r, wait=300):
+    """Cut shots are new clips: the platform's understanding runs after registration and writes its own tags.
+    Re-set the scene tag until every clip of this plan is understood and carries only it."""
+    deadline = time.time() + wait
+    while True:
+        fixed = r.retag()
+        r.save()
+        pending = [sid for s in r.st["slots"].values() for sid in [s.get("segment_id")] + [x.get("segment_id") for x in s.get("shots") or []]
+                   if sid and sid not in r.st.get("tags_settled", [])]
+        if not pending:
+            return
+        if time.time() >= deadline:
+            print(f"⚠️ {len(pending)} 条素材平台还没理解完，标签可能还会被改：稍后跑 aigc_gen.py poll 或 ai_tags.py check")
+            return
+        time.sleep(20)
 
 
 def product_segments(pid):
@@ -307,14 +365,18 @@ def product_segments(pid):
 
 
 def check_plan(r):
-    """Problems that should stop a submit: unknown tag, prompts too long, banned looks asked for."""
+    """Problems that should stop a submit: tag outside the AI tag rule, prompts too long, banned looks asked for."""
     errs, warns = [], []
-    tag = r.plan.get("tag")
-    if tag:
-        known = cb.api("GET", f"/products/{r.product['clipo_product_id']}/segment-tags")
-        known = {t["tag"] for t in (known if isinstance(known, list) else known.get("items", []))}
-        if tag not in known:
-            errs.append(f"标签「{tag}」不是这个产品的素材标签，先在平台产品下加上（有：{'、'.join(sorted(known))[:120]}）")
+    for sc in r.plan["scenes"]:
+        tag = r.tag(sc["id"])
+        if not tag:
+            errs.append(f"场景 {sc['id']} 没有标签：plan 写 tag，或场景写 tag（scripts/ai_tags.py 的规则）")
+        elif not ai_tags.is_ai_tag(tag) or re.search(r"\d{4}|[A-Z]\d{2}|分镜", tag):
+            errs.append(f"场景 {sc['id']} 的标签「{tag}」不合规：以「AI」开头、按场景起名，不写日期、brief 号、分镜号")
+    have = cb.api("GET", f"/products/{r.product['clipo_product_id']}")["tags"]
+    new = [t for t in r.tags() if t not in have]
+    if new:
+        warns.append(f"产品标签里还没有 {'、'.join(new)}：提交时会加进产品标签")
     risky = (r.cfg.get("aigc") or {}).get("risky_words", DEFAULT_RISKY)
     for key, s in sorted(r.st["slots"].items()):
         if len(s["prompt"]) > 500:
@@ -369,6 +431,9 @@ def main():
             print(f"\n(dry run) 共 {len(r.st['slots'])} 条，待提交 {len(todo)} 条（每条单独计费；被拦的每条最多再试 {MAX_RETRIES} 次，"
                   f"最多 {len(todo) * (MAX_RETRIES + 1)} 次）。这次先提交 {len(first)} 条，其余 poll 边跑边补。确认后去掉 --dry-run")
             return
+        added = ai_tags.add_product_tags(r.product["clipo_product_id"], r.tags())
+        if added:
+            print(f"产品标签新增：{'、'.join(added)}")
         sent = r.submit_free()
         print(f"已提交 {len(sent)} 条。接着在后台跑：\n  nohup python3 -I scripts/aigc_gen.py poll --config {args.config} "
               f"--run {args.run} --plan {args.plan} --wait 5400 > {Path(args.plan).with_suffix('.log')} 2>&1 &")
