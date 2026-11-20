@@ -45,7 +45,7 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 
 - **一个 brief 在平台上只有一条生成任务**。第一轮 `POST`，后面的轮次和补生成都 `continue` 到这条任务上，`poll` 每落地一轮就接着提交下一轮
 - **每一轮全有全无**：一条没组装成，这一轮一条剪辑都不落，也不扣额度，之前几轮的产出照旧保留。一轮最多 `generate_chunk`（15）条，超过的分几轮 `continue`；某轮失败用 `submit --retry-failed` 在同一条任务上继续
-- **一次多生成**：每个 brief 生成 排期 × `generate_factor`（2）条，平台 AI 审核通过率约 40%，不够的用 `topup` 补
+- **按需生成**：每个 brief 生成 排期条数（`generate_factor` = 1，用户 11-19：不双倍产），不够数的用 `topup` 按缺口补
 - `poll` 读回每条的 `random_result.vo_rewrite`，用 lint 再查一遍，违规的记进 `copy_issues`，按驳回处理
 - 失败原因：`voiceover_rewrite_failed`（平台改写模型 502/503，过一会儿 `submit --retry-failed`）、`timeout`（一轮组装超过 600 秒，减小每轮条数）
 
@@ -82,7 +82,27 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 | `GET /video-share-groups/{id}`、`PATCH /video-share-groups/{id}` | 读分组；改分组的分享清单（`video_share_ids` 整组替换） |
 | `DELETE /video-shares/{id}` | 撤回分享，旧链接从此 404，成片和剪辑不受影响 |
 
-补生成后某个 brief 挑的视频变了，`share` 会建新分享、在分组里替换掉旧的、再删掉旧分享。
+原批量 `clipo_batch.py share` 更新会删旧分享，旧链接因此失效。
+本次定点修订不用此更新路径。
+定点修订用 `delivery_share.py share`。
+交付清单固定新版输出对象；命令先检查渲染与产品。
+命令只新建修订分组与分享，保存收据后逐条回读。
+重跑复用收据。命令不删除或替换旧独立链接。
+
+## 断点恢复与画面返工
+
+`resume_batch.py shortfall` 只读核对 B01/B04/B09 的原任务缺口。
+`continue --dry-run --instruction "用户原话"` 先报追加条数。
+正式 `continue` 保持原脚本文案，追加同一个成功任务。
+写前保存收据。请求不确定时禁止自动重复提交。
+`wait-generations` 仅 GET 等待终态，并核对新增剪辑数量。
+`prepare-three` 在本地适配已目检人物窗口和纯质地源。
+人物源不足时拒绝计划，不延长视频或循环源片。
+`footage_qc.py repair` 才执行备份、画面写回和渲染。
+`resume_batch.py finish` 下载新版成片并提交新输出审核。
+`review-status` 仅 GET 渲染和审核结果，不补提交审核。
+自动权限拒绝后停止被拒写入；不修改权限或换入口绕过。
+本地计划、生成成功和 AI 通过是三个不同状态。
 
 ## 六、平台体检用到的（`preflight`）
 
