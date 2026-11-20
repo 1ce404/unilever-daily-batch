@@ -1,3 +1,11 @@
+# ---------- 文件契约 ----------
+# [INPUT]: 依赖 Python 标准库读取配置、解析表格与计算文案指纹。
+#          通过 lark-cli 读取飞书文档；读取品牌、产品配置与金标脚本。
+# [OUTPUT]: 提供配置合并、飞书读取、表格解析、分句与字幕宽度计算。
+#           提供 brief 筛选、文案与 demo 人审校验、品牌文件命名。
+# [POS]: scripts 的共享规则底座；排期、文案、人审与批量入口依赖它。
+#        人审凭据绑定文案指纹，防止改稿沿用旧批准。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Shared helpers: config loading, Feishu fetch via lark-cli, HTML-ish table parsing, clause splitting."""
 import html
 import json

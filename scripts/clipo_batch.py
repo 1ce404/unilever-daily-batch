@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# ---------- 文件契约 ----------
+# [INPUT]: 依赖 common 的品牌配置、人审凭据与 brief 读取。
+#          依赖 lint_copy 的文案规则、aigc_materials 的素材绑定检查。
+#          通过 urllib 调用 Clipo Remix REST，读取并保存批次状态。
+# [OUTPUT]: 提供预检、提交、轮询、补量、复审、报告与分享命令；提交与补量只按 1 倍，凭 dry-run 收据才发送。
+#           提供素材池、AIGC 绑定、成片下载与离线状态命令。
+# [POS]: scripts 的批量生产入口；文案与素材检查委托兄弟模块，交付闸门委托 qc。
+#        提交要求文案人审有效；启用 demo-first 时，批量前还须 demo 人审。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Run approved briefs through Clipo Remix: preflight → submit → poll (generate, render, AI review) → topup → report.
 
     python3 scripts/clipo_batch.py preflight --config qingyang --run runs/20261104
@@ -13,13 +22,14 @@
 This script only moves the flow along. Each brief is ONE platform generation task (later rounds and top-ups are
 added with /continue) and every generation carries the brand's compliance watermark (config `watermark`). The agent writes each brief's copy at step ④ and a human approves it;
 submit has the platform build the script from that copy verbatim (packaging from the product prompt
-video_script_create), turns on AI rewrite for every segment, verifies it, then generates quantity × generate_factor cuts in rounds of ≤ generate_chunk. Only
+video_script_create), turns on AI rewrite for every segment, verifies it, then generates exactly the scheduled quantity (user 11-19) in rounds of ≤ generate_chunk. Only
 briefs a human approved (review_doc.py sync / approve, copy unchanged since) with zero lint errors go out. poll
 re-lints every rewritten version. State lives in runs/<day>/clipo/state.json; every step is idempotent and safe to re-run.
 """
 import argparse
 from collections import Counter
 import copy
+import hashlib
 import json
 import math
 import re
@@ -40,7 +50,7 @@ BASE = None
 CFG = None
 
 
-def api(method, path, body=None, timeout=180, tries=3):
+def api(method, path, body=None, timeout=180, tries=5):
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode()
     for attempt in range(tries):
         req = urllib.request.Request(BASE + path, data=data, method=method,
@@ -50,7 +60,11 @@ def api(method, path, body=None, timeout=180, tries=3):
                 res = json.load(r)
             break
         except urllib.error.HTTPError as e:
-            res = json.loads(e.read().decode() or "{}")
+            raw = e.read().decode(errors="replace")
+            try:
+                res = json.loads(raw or "{}")
+            except ValueError:  # 11-19：网关 502/504 回的是 HTML 页面，不是 JSON；当服务端错误重试
+                res = {"code": f"http_{e.code}", "message": raw[:200]}
             if e.code < 500:
                 break
         except (urllib.error.URLError, TimeoutError):
@@ -68,19 +82,42 @@ class State:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.data = json.loads(self.path.read_text()) if self.path.exists() else {"videos": {}}
         self._seen = {key: set(self.data.get(key) or {}) for key in ("briefs", "videos")}
+        self._base = self._snap()
+
+    def _snap(self):
+        return {key: {k: json.dumps(v, sort_keys=True) for k, v in (self.data.get(key) or {}).items()}
+                for key in ("briefs", "videos")}
 
     def save(self):
         """11-11: a background poll and a submit share this file; a plain dump made the poll erase the 5 briefs
-        submit had just added. Briefs / videos on disk that this process never loaded are kept."""
-        if self.path.exists():
-            disk = json.loads(self.path.read_text())
-            for key in ("briefs", "videos"):
-                mine = self.data.setdefault(key, {})
-                for k, v in (disk.get(key) or {}).items():
-                    if k not in mine and k not in self._seen.get(key, set()):
-                        mine[k] = v
-        self.path.write_text(json.dumps(self.data, ensure_ascii=False, indent=2))
+        submit had just added. 11-19: two writers on one run also overwrote each other's field edits (a poll wiped
+        bad_voice flags another session had just set) and two concurrent writes left a corrupt file. Now: under a
+        file lock, entries this process did not change since it last loaded / saved are taken from disk; entries it
+        changed win; the file is replaced atomically."""
+        import fcntl
+        lock = open(self.path.with_suffix(".lock"), "w")
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if self.path.exists():
+                disk = json.loads(self.path.read_text())
+                for key in ("briefs", "videos"):
+                    mine = self.data.setdefault(key, {})
+                    base = self._base.get(key, {})
+                    for k, v in (disk.get(key) or {}).items():
+                        unchanged = k in mine and json.dumps(mine[k], sort_keys=True) == base.get(k)
+                        if (k not in mine and k not in self._seen.get(key, set())) or unchanged:
+                            mine[k] = v  # someone else's entry, or ours untouched here: keep what is on disk
+                for k, v in disk.items():
+                    if k not in ("briefs", "videos") and k not in self.data:
+                        self.data[k] = v
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2))
+            tmp.replace(self.path)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            lock.close()
         self._seen = {key: set(self.data.get(key) or {}) for key in ("briefs", "videos")}
+        self._base = self._snap()
 
     @property
     def videos(self):
@@ -147,7 +184,8 @@ def cmd_preflight(cfg, run, args):
         # AI 素材打标规则（scripts/ai_tags.py，用户 11-18）：普通标签里混进 AI 素材，平台按标签配画面会配进 AI 人
         real_tags = [t for t in p["tags"] if not t.startswith("AI")]
         if real_tags:
-            hits = (api("POST", "/materials/segments/search", {"product_id": pid, "tags": real_tags, "limit": 200}) or {}).get("items", [])
+            hits = [h for i in range(0, len(real_tags), 10)  # 检索接口一次最多 10 个标签（11-19 清扬呼吸瓶 11 个标签报 422）
+                    for h in (api("POST", "/materials/segments/search", {"product_id": pid, "tags": real_tags[i:i + 10], "limit": 200}) or {}).get("items", [])]
             mixed = Counter(t for h in hits if h["segment"].get("ai_generated") for t in h["segment"].get("tags") or [] if not t.startswith("AI"))
             if mixed:
                 print(f"   ⚠️ 普通标签里混了 AI 素材（最新 200 条里）：{'、'.join(f'{t} {n}' for t, n in mixed.most_common())}。"
@@ -224,6 +262,7 @@ def build_script(pid, brief, title):
         ps["ai_rewrite"] = True
         pin_visual(ps, sg, CFG["products"][brief["product_key"]])
     pin_voices(script, brief)
+    pin_bgm(script)
     script["segments"] = with_silent(script["segments"], brief["segments"], pid)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
@@ -288,6 +327,21 @@ def pin_voices(script, brief):
     tts["voices"] = [{"id": i, "platform": "volcengine", "voice_type": i, "config": {"resource_id": "seed-tts-2.0"}} for i in ids]
 
 
+def pin_bgm(script):
+    """User 11-19 清扬：BGM 要有节奏感、有激情。config `bgm_categories` 替换平台按提示词随机挑的分类。
+    User 11-19 力士：BGM 太小（平台默认 0.08）；config `bgm_volume` 给了就改音量。"""
+    cats, vol = CFG.get("bgm_categories"), CFG.get("bgm_volume")
+    if not cats and vol is None:
+        return
+    bgm = script.setdefault("config", {}).setdefault("bgm", {"mode": "category", "volume": 0.08})
+    if cats:
+        bgm["mode"] = "category"
+        bgm.setdefault("props", {})["categories"] = list(cats)
+        bgm["props"]["ids"] = []
+    if vol is not None:
+        bgm["volume"] = vol
+
+
 _SEGMENTS = {}
 
 
@@ -308,10 +362,32 @@ def footage_index(product_key):
     return _SEGMENTS[product_key]
 
 
+def ai_spans(product_key, draft):
+    """[(from, frames)] of the main-track shots cut from AI-generated footage, adjacent shots merged (user 11-19:
+    the KP client wants the 内容由AI生成 label only over AI footage, never over real footage)."""
+    idx, out = footage_index(product_key), []
+    for c in sorted([c for c in draft.get("clips", []) if c.get("trackId") == "main"], key=lambda c: c["from"]):
+        seg = idx.get(c["props"]["src"].split("?")[0].rsplit("/", 1)[-1]) or {}
+        if not seg.get("ai_generated"):
+            continue
+        if out and out[-1][0] + out[-1][1] >= c["from"]:
+            out[-1] = (out[-1][0], max(out[-1][0] + out[-1][1], c["from"] + c["durationInFrames"]) - out[-1][0])
+        else:
+            out.append((c["from"], c["durationInFrames"]))
+    return out
+
+
+def banned_words_for(product_key):
+    """Footage description words that rule a clip out: the brand's list (头屑、秃顶…) plus the product's own
+    (用户 11-20：2x / 呼吸瓶不能用女生形象，AIGC 不能慢动作)."""
+    prod = CFG["products"].get(product_key) or {}
+    return list(dict.fromkeys((CFG.get("banned_footage_words") or []) + (prod.get("banned_footage_words") or [])))
+
+
 def bad_footage(product_key, draft):
     """Shots in a cut that the user ruled out (user 11-10: no dandruff footage), found by segment description.
     The platform picks footage by tag, and dandruff shots often carry tags like 头皮出油 / 头发油."""
-    words = CFG.get("banned_footage_words") or []
+    words = banned_words_for(product_key)
     banned_files = CFG.get("banned_footage_files") or {}
     if not words and not banned_files:
         return []
@@ -336,7 +412,7 @@ def pinned_clips(brief, draft):
     platform segment ids follow the brief's segment order (with_silent renumbers them from 1)."""
     pinned = [str(k + 1) for k, sg in enumerate(brief["segments"]) if sg.get("silent") or sg.get("footage_pool") or sg.get("visual_query")]
     if not pinned:
-        return []
+        pinned = ["1"]  # 用户 11-19：开头镜头一定要错开（没点名素材池时，也按开头那段的素材分组轮流挑）
     idx, first = footage_index(brief["product_key"]), {}
     for c in sorted((c for c in draft.get("clips", []) if c.get("trackId") == "main"), key=lambda c: c["from"]):
         x = idx.get((c.get("props", {}).get("src") or "").split("?")[0].rsplit("/", 1)[-1])
@@ -476,13 +552,47 @@ def split_quantity(n, chunk):
 
 
 def gen_quantity(cfg, b, args):
-    """How many to generate up front so one round usually yields `quantity` deliverables."""
-    factor = args.factor if args.factor else cfg.get("generate_factor", 1)
+    """How many to generate: exactly the scheduled quantity (用户 11-19/11-20：不双倍产，缺几条 topup 补几条).
+    --factor above 1 only when the user asked for it in this turn; config generate_factor is ignored above 1."""
+    factor = args.factor if args.factor else 1
     return min(300, math.ceil(b["quantity"] * factor))
 
 
+DRY_RUN_TTL = 3600
+
+
+def dry_run_gate(run, cmd, plan, dry):
+    """用户 11-20：铁律 2 写进代码。dry-run 把 {brief: 条数} 写成收据并报给用户；真正提交时计划必须和
+    一小时内的收据完全一致，否则拒绝。Returns True when the real run may send."""
+    path = Path(run) / "clipo" / f"dryrun-{cmd}-{CFG['brand_key']}.json"
+    plan = {k: n for k, n in plan.items() if n}
+    if dry:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"at": time.time(), "plan": plan}, ensure_ascii=False))
+        return False
+    if not plan:
+        return True
+    rec = json.loads(path.read_text()) if path.exists() else None
+    if not rec or time.time() - rec["at"] > DRY_RUN_TTL or rec["plan"] != plan:
+        print(f"⛔ 没有匹配的 dry-run：先跑 {cmd} --dry-run 把条数报给用户（这次要发 {plan}，收据 {rec and rec['plan']}）")
+        return False
+    path.unlink()
+    return True
+
+
+def _submit_plan(cfg, run, probe):
+    import contextlib, io
+    with contextlib.redirect_stdout(io.StringIO()):
+        return cmd_submit(cfg, run, probe) or {}
+
+
 def cmd_submit(cfg, run, args):
+    if not args.dry_run and not args.scripts_only:  # 铁律 2：先算一遍要发多少，和 dry-run 收据对上才发
+        probe = argparse.Namespace(**{**vars(args), "dry_run": True, "_quiet": True})
+        if not dry_run_gate(run, "submit", _submit_plan(cfg, run, probe), False):
+            return
     st = State(run)
+    plan = {}
     submitted = skipped = total = 0
     all_briefs = load_briefs(run)
     cross = lint_day(all_briefs, cfg)
@@ -500,6 +610,13 @@ def cmd_submit(cfg, run, args):
             skipped += 1
             continue
         pid = cfg["products"][b["product_key"]]["clipo_product_id"]
+        # 用户 11-19：开头素材池比交付条数少，同一个链接里开头必然重复，提交前就说
+        opener = next((sg for sg in b["segments"] if not sg.get("silent")), b["segments"][0]).get("visual_tags")
+        if opener:
+            counts = tag_counts(pid)
+            have = sum(counts.get(t, 0) for t in opener)
+            if have < int(b["quantity"]):
+                print(f"⚠️  {b['brief_id']} 开头素材池 {opener} 只有 {have} 条可用，交付 {b['quantity']} 条开头会重复：先补素材")
         texts = [seg_text(sg) for sg in b["segments"]]
         title = video_title(cfg, b)
         job = st.data.setdefault("briefs", {}).setdefault(b["brief_id"], {})
@@ -511,6 +628,11 @@ def cmd_submit(cfg, run, args):
             if job.get("rounds") is not None and job.get("generation_id"):  # one task per brief: continue it
                 lost = gen_quantity(cfg, b, args) + sum(t.get("quantity", 0) for t in job.get("topped", [])) \
                     - job.get("landed", 0) - sum(job.get("rounds", []))
+                plan[b["brief_id"]] = max(lost, 0)
+                total += max(lost, 0)
+                if args.dry_run:  # 11-19：dry-run 曾在这里直接 continue 到平台，dry-run 只报数不发请求
+                    print(f"🧪 {b['brief_id']} 将在原任务上继续生产 {max(lost, 0)} 条")
+                    continue
                 job["rounds"] = ([lost] if lost > 0 else []) + job.get("rounds", [])
                 job.update(stage="generating")
                 job.pop("error", None)
@@ -550,6 +672,7 @@ def cmd_submit(cfg, run, args):
         if bulk_after_demo:
             n = max(0, gen_quantity(cfg, b, args) - job.get("landed", 0))
         total += 0 if args.scripts_only else n
+        plan[b["brief_id"]] = 0 if args.scripts_only else n
         if args.dry_run:
             what = "demo" if demo_first(cfg, b) and not job.get("generation_id") else ("量产" if bulk_after_demo else "")
             print(f"🧪 (dry run，未发送) {title} × {n}{'（' + what + '）' if what else ''}（排期 {b['quantity']}）")
@@ -589,7 +712,10 @@ def cmd_submit(cfg, run, args):
             else:
                 print(f"🚀 {b['brief_id']} 生成 {n} 条（排期 {b['quantity']}），平台上一个任务，分 {len(chunks)} 轮：{'+'.join(map(str, chunks))}")
     if args.dry_run:
-        print(f"\n(dry run) 将生成 {total} 条视频，跳过 {skipped} 个 brief。确认后去掉 --dry-run 提交")
+        if getattr(args, "_quiet", False):
+            return plan
+        dry_run_gate(run, "submit", plan, True)
+        print(f"\n(dry run) 将生成 {total} 条视频，跳过 {skipped} 个 brief。把这个条数报给用户，确认后去掉 --dry-run 提交（一小时内有效）")
         return
     if args.scripts_only:
         print(f"\n建好 {submitted} 个平台脚本，跳过 {skipped} 个，没有生成视频。生成前先 submit --dry-run 报条数")
@@ -639,16 +765,27 @@ def deliverable(v):
     (copy, voice, footage, watermark) still apply either way."""
     return ((v.get("ai_review") == "pass" or bool(v.get("review_waived"))) and not v.get("copy_issues") and not v.get("watermark_missing")
             and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift")
-            and not v.get("bad_footage"))
+            and not v.get("bad_footage") and not v.get("qc_issues"))
+
+
+def _topup_plan(cfg, run, probe):
+    import contextlib, io
+    with contextlib.redirect_stdout(io.StringIO()):
+        return cmd_topup(cfg, run, probe) or {}
 
 
 def cmd_topup(cfg, run, args):
     """Make sure every brief ends with `quantity` deliverable videos: regenerate more from the SAME
     approved video-script (no new copy, no new review) for whatever the AI review rejected.
-    Asks Clipo for (shortfall / pass rate so far) × margin, so one round usually covers it."""
+    Asks for exactly the shortfall (user 11-19: no over-generation); --margin M asks for shortfall / pass rate × M."""
+    if not args.dry_run:  # 铁律 2
+        probe = argparse.Namespace(**{**vars(args), "dry_run": True, "_quiet": True})
+        if not dry_run_gate(run, "topup", _topup_plan(cfg, run, probe), False):
+            return
     st = State(run)
     jobs = st.data.get("briefs", {})
     total = 0
+    plan = {}
     for b in load_briefs(run, args.brief):
         bid = b["brief_id"]
         job = jobs.get(bid)
@@ -675,9 +812,11 @@ def cmd_topup(cfg, run, args):
             print(f"✅ {bid} 可交付 {ok}/{b['quantity']}，够了")
             continue
         rate = max(ok / len(vids), 0.2) if vids else 0.5
-        want = min(args.max_per_brief, max(short, math.ceil(short / rate * args.margin)))
+        # 用户 11-19：缺几条就补几条，不按通过率放大；要多补时显式传 --margin
+        want = min(args.max_per_brief, short if args.margin is None else max(short, math.ceil(short / rate * args.margin)))
         offset = max((int(k.rsplit("V", 1)[1]) for k in st.videos if k.startswith(bid + "-V")), default=0)
         total += want
+        plan[bid] = want
         print(f"{'🧪' if args.dry_run else '🔁'} {bid} 可交付 {ok}/{b['quantity']}，差 {short}；"
               f"通过率 {ok}/{len(vids)}，补生成 {want} 条（V{offset+1:02d} 起）")
         if args.dry_run:
@@ -695,7 +834,10 @@ def cmd_topup(cfg, run, args):
                 offset += c
         st.save()
     if args.dry_run:
-        print(f"\n(dry run) 将补生成 {total} 条（消耗额度）。确认后去掉 --dry-run")
+        if getattr(args, "_quiet", False):
+            return plan
+        dry_run_gate(run, "topup", plan, True)
+        print(f"\n(dry run) 将补生成 {total} 条（消耗额度）。把条数报给用户，确认后去掉 --dry-run（一小时内有效）")
     elif total:
         print(f"\n已补生成 {total} 条。下一步：poll，跑完再 topup，直到每个 brief 都够数")
 
@@ -734,6 +876,9 @@ def pull_generation(st, cfg, b, job, gen):
                 v["pinned_clips"] = pinned_clips(b, cut["draft"])
                 if rr.get("tts_speaker_id") in ((CFG.get("tts") or {}).get("bad_voices") or []):
                     v["bad_voice"] = rr.get("tts_speaker_id")
+                allowed = stable_voices(b)  # 用户 11-20：2x / 呼吸瓶只用男声；不在本 brief 音色名单里的不交付
+                if allowed and rr.get("tts_speaker_id") and rr["tts_speaker_id"] not in allowed:
+                    v["bad_voice"] = rr["tts_speaker_id"]
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
                 v["duration_s"] = round(cut["draft"]["composition"]["durationInFrames"] / 30, 1)
                 if (CFG.get("watermark") or {}).get("add") and "水印" not in [t.get("name") for t in cut["draft"]["tracks"]]:
@@ -744,6 +889,27 @@ def pull_generation(st, cfg, b, job, gen):
                 if aigc_required(b) and not v.get("aigc_material_set"):
                     v["stage"] = "aigc_pending"
                     continue
+                styled = with_bgm_volume(cut["draft"])  # 用户 11-19：箭头盖满最后一句、音效音量、BGM 音量
+                if styled != cut["draft"]:
+                    api("PUT", f"/video-cuts/{cut_id}", {"script_id": cut["script_id"], "draft": styled})
+                    cut = api("GET", f"/video-cuts/{cut_id}")
+                if (CFG.get("watermark") or {}).get("add"):
+                    # 用户 11-18/11-19：「内容由AI生成」一律右下角。平台按 bottom_right 生成，实际渲到右上角（top 0.5），
+                    # 渲染前换成标准样式；config watermark.ai_only 时只盖 AI 镜头（KP 客户：非 AI 素材不加角标）
+                    from footage_qc import with_watermark, WATERMARK_PROPS
+                    spans = ai_spans(b["product_key"], cut["draft"]) if (CFG.get("watermark") or {}).get("ai_only") else None
+                    fixed = with_watermark(cut["draft"], spans)
+                    if fixed != cut["draft"]:
+                        api("PUT", f"/video-cuts/{cut_id}", {"script_id": cut["script_id"], "draft": fixed})
+                        cut = api("GET", f"/video-cuts/{cut_id}")
+                        wm = sorted([c for c in cut["draft"]["clips"] if c.get("trackId") == "watermark"], key=lambda c: c["from"])
+                        want = spans if spans is not None else [(0, cut["draft"]["composition"]["durationInFrames"])]
+                        if [(c["from"], c["durationInFrames"]) for c in wm] != want or any(c["props"] != WATERMARK_PROPS for c in wm):
+                            raise RuntimeError("右下角水印写回后读回不对，不渲染")
+                    v["ai_label_spans"] = spans
+                    v.pop("watermark_missing", None)
+                from qc import cut_checks  # 用户 11-20：交付闸门，渲染前按草稿查角标、BGM、禁用画面、画面标签、音色
+                v["qc_issues"] = cut_checks(b, cut["draft"], rr.get("tts_speaker_id"))
                 r = api("POST", "/render-jobs", {"spec": cut["draft"], "options": {"codec": "h264", "quality": "high", "scale": 1},
                                                 "cut_id": cut_id, "idempotency_key": f"udb-{cut_id}"})
                 v["render_job"], v["stage"] = r["job_id"], "rendering"
@@ -762,6 +928,8 @@ def pull_generation(st, cfg, b, job, gen):
 
 def next_round(job):
     """Add the brief's next round to its own platform task (POST /video-cut-generations/{id}/continue)."""
+    if not job.get("rounds"):  # 11-19：重试时算出来已经够数，没有要补的轮次
+        return
     c = job["rounds"][0]
     try:
         api("POST", f"/video-cut-generations/{job['generation_id']}/continue", {"quantity": c})
@@ -1006,6 +1174,11 @@ def cmd_report(cfg, run, args):
     write_delivery(st, briefs, run)
 
 
+def opener_clip(v):
+    """The footage segment id that opens this video (recorded by poll as pinned_clips[0])."""
+    return (v.get("pinned_clips") or [None])[0]
+
+
 def picks(st, bid, quantity):
     """(delivered, spares): `quantity` deliverable videos of a brief, and the rest. User 11-13: when a brief pins
     footage from a pool, take them round-robin by the clip each video landed on, so one delivery mixes the pool's
@@ -1013,8 +1186,8 @@ def picks(st, bid, quantity):
     good = sorted((k for k, v in st.videos.items() if v["brief_id"] == bid and deliverable(v)),
                   key=lambda k: int(k.rsplit("V", 1)[1]))
     by_clip = {}
-    for k in good:
-        by_clip.setdefault(tuple(st.videos[k].get("pinned_clips") or []), []).append(k)
+    for k in good:  # 用户 11-19：同一个链接里开头别重复，按开头镜头分组轮流挑
+        by_clip.setdefault(opener_clip(st.videos[k]), []).append(k)
     if len(by_clip) <= 1:
         return good[:quantity], good[quantity:]
     out, queues = [], list(by_clip.values())
@@ -1167,6 +1340,11 @@ def cmd_share(cfg, run, args):
         if len(pick) < b["quantity"] and not args.partial:
             print(f"⏸  {bid} 可交付 {len(pick)}/{b['quantity']}，不够数先不发（要先发加 --partial）")
             continue
+        from qc import brief_checks  # 用户 11-19：同一链接开头不能重复
+        dup = brief_checks(b, [(k, st.videos[k]) for k in pick])
+        if dup and not b.get("pack"):
+            print(f"⏸  {bid} 开头重复，先 spread-hooks 换开头：{dup[:3]}")
+            continue
         old = shares.get(bid)
         same_name = old and (old.get("title") or video_title(cfg, b)) == delivery_name(cfg, b, all_briefs)
         cuts = [st.videos[k]["cut_id"] for k in pick]  # a redo reuses V01.. numbers, so compare the actual cuts
@@ -1219,12 +1397,355 @@ def cmd_share(cfg, run, args):
         cmd_download(cfg, run, args)
 
 
+def cmd_rename_shares(cfg, run, args):
+    """User 11-18: a share group built by hand has wrong names (b01, b02…). The platform cannot rename a share,
+    so each one is rebuilt with the same videos under delivery_name() and put back into the group in brief
+    order; the group gets delivery_group_naming. Old shares are kept (their links still open) and a restore
+    record is written. The brief comes from the script title (1118-B09-…); the keyword from its first line."""
+    gid = args.group.rstrip("/").rsplit("/", 1)[-1]
+    g = api("GET", f"/video-share-groups/{gid}")
+    briefs = {b["brief_id"]: b for b in load_briefs(run)}
+    plan = []
+    for s in g["shares"]:
+        sh = api("GET", f"/video-shares/{s['id']}")
+        sc = api("GET", f"/video-scripts/{sh['script_id']}")
+        bid = (re.match(r"\d{4}-[A-Z]\d{2}", sc.get("title") or "") or [None])[0]
+        if bid not in briefs:
+            raise SystemExit(f"{s['title']}：脚本标题「{sc.get('title')}」对不上本地 brief")
+        b = dict(briefs[bid], segments=[{"text": (sc["segments"][0].get("content") or "").split("\n")[0]}])
+        plan.append((bid, sh, delivery_name(cfg, b, list(briefs.values()))))
+    plan.sort(key=lambda x: x[0])
+    day = Path(run).name
+    group_name = re.sub(r"--+", "-", cfg.get("delivery_group_naming", "{date}-{brand_tag}").format(
+        yy=day[2:4], yymmdd=day[2:8], date=day[4:8], brand_tag=cfg.get("brand_tag", cfg["brand"]), campaign=""))
+    print(f"分组：{g['name']} → {group_name}")
+    for bid, sh, name in plan:
+        print(f"  {bid} {sh['title']} → {name}（{len(sh['videos'])} 条）")
+    if args.dry_run:
+        print("\n(dry run) 确认后去掉 --dry-run；旧链接保留，不删")
+        return
+    key = lambda u: (re.search(r"\.aliyuncs\.com/([^?]+)", u or "") or [None, None])[1]
+    record = Path(run) / "clipo" / f"share-rename-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({"group": g, "old_shares": [sh for _, sh, _ in plan]}, ensure_ascii=False, indent=1))
+    new_ids = []
+    for bid, sh, name in plan:
+        vids = [{"video_object_key": key(v["video_url"]), "cover_object_key": key(v.get("cover_url")),
+                 "duration_seconds": float(v["duration_seconds"]), "width": int(v["width"]), "height": int(v["height"])}
+                for v in sh["videos"]]
+        new = api("POST", "/video-shares", {"script_id": sh["script_id"], "product_id": sh["product_id"],
+                                            "title": name, "video_name_prefix": name + "-", "videos": vids})
+        back = api("GET", f"/video-shares/{new['id']}")
+        if back["title"] != name or [key(v["video_url"]) for v in back["videos"]] != [x["video_object_key"] for x in vids]:
+            raise RuntimeError(f"{bid} 新分享读回不一致")
+        new_ids.append(new["id"])
+        print(f"🔗 {bid} {name} → {share_url(new['id'])}", flush=True)
+    api("PATCH", f"/video-share-groups/{gid}", {"name": group_name, "video_share_ids": new_ids})
+    g2 = api("GET", f"/video-share-groups/{gid}")
+    if g2["name"] != group_name or sorted(x["id"] for x in g2["shares"]) != sorted(new_ids):  # 平台按新到旧展示
+        raise RuntimeError("分组读回不一致")
+    data = json.loads(record.read_text()); data["new_share_ids"] = new_ids
+    record.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    print(f"\n分组已改名并换成新链接：{BASE.replace('/api/v1', '')}/share/group/{gid}\n恢复记录：{record}")
+
+
+def cmd_split_group(cfg, run, args):
+    """User 11-18: one delivery link per store (旗舰店 3 个 brief 一个、洗护号 6 个一个). The shares in a group are
+    sorted into new groups by the store of their brief, named delivery_group_naming + store. The old group is
+    left as it was (its link may already be with the client); a record of what was built is written."""
+    gid = args.group.rstrip("/").rsplit("/", 1)[-1]
+    g = api("GET", f"/video-share-groups/{gid}")
+    briefs = {b["brief_id"]: b for b in load_briefs(run)}
+    stores = {}
+    for s in g["shares"]:
+        bid = next((b for b in briefs if re.search(rf"brief{int(b[-2:])}(?!\d)", s["title"])
+                    and briefs[b]["product_key"] in {k for k, p in cfg["products"].items() if p["clipo_product_id"] == s["product_id"]}), None)
+        if not bid:
+            raise SystemExit(f"{s['title']}：对不上本地 brief")
+        stores.setdefault(briefs[bid]["store"].split("（")[0], []).append((bid, s["id"], s["title"]))
+    day = Path(run).name
+    base = re.sub(r"--+", "-", cfg.get("delivery_group_naming", "{date}-{brand_tag}").format(
+        yy=day[2:4], yymmdd=day[2:8], date=day[4:8], brand_tag=cfg.get("brand_tag", cfg["brand"]), campaign=""))
+    plan = [(f"{base}-{store.removeprefix(cfg.get('brand_tag', ''))}", sorted(rows)) for store, rows in stores.items()]
+    for name, rows in plan:
+        print(f"{name}：{len(rows)} 个链接\n" + "\n".join(f"  {bid} {t}" for bid, _, t in rows))
+    if args.dry_run:
+        print("\n(dry run) 原分组保留不动；确认后去掉 --dry-run")
+        return
+    out = []
+    for name, rows in plan:
+        ids = [sid for _, sid, _ in rows]
+        new = api("POST", "/video-share-groups", {"name": name, "workspace_id": g.get("workspace_id"), "video_share_ids": ids})
+        back = api("GET", f"/video-share-groups/{new['id']}")
+        if back["name"] != name or sorted(x["id"] for x in back["shares"]) != sorted(ids):
+            raise RuntimeError(f"{name} 分组读回不一致")
+        out.append({"name": name, "id": new["id"], "shares": ids})
+        print(f"🔗 {name}：{BASE.replace('/api/v1', '')}/share/group/{new['id']}", flush=True)
+    rec = Path(run) / "clipo" / f"share-split-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    rec.write_text(json.dumps({"from_group": gid, "groups": out}, ensure_ascii=False, indent=1))
+    print(f"记录：{rec}")
+
+
+def cmd_refresh_group(cfg, run, args):
+    """User 11-18: the cuts behind a group were re-rendered (watermark added), but a share keeps the old video
+    files. Each share is rebuilt with the same title, same cuts in the same order and their current renders,
+    then the group points at the new shares. Old shares are kept; a record is written."""
+    gid = args.group.rstrip("/").rsplit("/", 1)[-1]
+    g = api("GET", f"/video-share-groups/{gid}")
+    key = lambda u: (re.search(r"\.aliyuncs\.com/([^?]+)", u or "") or [None, None])[1]
+    cuts = {}
+    for p in cfg["products"].values():
+        skip = 0
+        while True:
+            r = api("GET", f"/video-cuts?product_id={p['clipo_product_id']}&has_output=true&skip={skip}&limit=100")
+            items = r if isinstance(r, list) else r.get("items", [])
+            cuts.update({c["id"]: c for c in items})
+            if len(items) < 100:
+                break
+            skip += 100
+    by_old = {}
+    if args.map:  # old output key → cut id, from the backups taken before re-rendering
+        for f in Path(args.map).glob("wm-backup-*.json"):
+            b = json.loads(f.read_text())
+            by_old[b["output_object_key"]] = b["id"]
+        for f in Path(args.map).glob("cut-backup-*.json"):  # footage_qc repair 的备份：{"plan", "before"}
+            b = json.loads(f.read_text())["before"]
+            by_old[b["output_object_key"]] = b["id"]
+    plan = []
+    for s in g["shares"]:
+        sh = api("GET", f"/video-shares/{s['id']}")
+        vids = []
+        for v in sh["videos"]:
+            cid = by_old.get(key(v["video_url"])) or next((c["id"] for c in cuts.values() if c["output_object_key"] == key(v["video_url"])), None)
+            c = cuts.get(cid) or (cid and api("GET", f"/video-cuts/{cid}"))  # 剪辑可能挂在别的产品下
+            if not c or c["output_status"] != "success":
+                raise SystemExit(f"{sh['title']}：有视频找不到对应的新成片")
+            vids.append(dict(share_video({"cut_id": cid, "object_key": c["output_object_key"]}), video_object_key=c["output_object_key"]))
+        plan.append((sh, vids, sum(1 for v, n in zip(sh["videos"], vids) if key(v["video_url"]) != n["video_object_key"])))
+    for sh, vids, changed in plan:
+        print(f"  {sh['title']}：{len(vids)} 条，换成新成片 {changed} 条")
+    if args.dry_run:
+        print("\n(dry run) 旧链接保留；确认后去掉 --dry-run")
+        return
+    rec = Path(run) / "clipo" / f"share-refresh-{gid}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    rec.write_text(json.dumps({"group": g, "old_shares": [sh for sh, _, _ in plan]}, ensure_ascii=False, indent=1))
+    new_ids = []
+    for sh, vids, _ in plan:
+        new = api("POST", "/video-shares", {"script_id": sh["script_id"], "product_id": sh["product_id"], "title": sh["title"],
+                                            "video_name_prefix": sh.get("video_name_prefix") or sh["title"] + "-", "videos": vids})
+        back = api("GET", f"/video-shares/{new['id']}")
+        if back["title"] != sh["title"] or [key(v["video_url"]) for v in back["videos"]] != [v["video_object_key"] for v in vids]:
+            raise RuntimeError(f"{sh['title']} 新分享读回不一致")
+        new_ids.append(new["id"])
+        print(f"🔗 {sh['title']} → {share_url(new['id'])}", flush=True)
+    api("PATCH", f"/video-share-groups/{gid}", {"video_share_ids": list(reversed(new_ids))})
+    g2 = api("GET", f"/video-share-groups/{gid}")
+    if sorted(x["id"] for x in g2["shares"]) != sorted(new_ids):
+        raise RuntimeError("分组读回不一致")
+    data = json.loads(rec.read_text()); data["new_share_ids"] = new_ids
+    rec.write_text(json.dumps(data, ensure_ascii=False, indent=1))
+    print(f"分组已换成新成片：{BASE.replace('/api/v1', '')}/share/group/{gid}\n记录：{rec}")
+
+
+def cmd_rerender(cfg, run, args):
+    """11-19: renders that failed on a transient load error (封面图 Error loading image, the file opens fine
+    afterwards). Re-render the same draft (fresh signed urls from GET) for failed videos of --brief or all
+    briefs; poll then reviews them as usual. Nothing in the draft changes; a new idempotency key per attempt."""
+    st = State(run)
+    todo = [(k, v) for k, v in sorted(st.videos.items()) if v.get("stage") == "failed" and "渲染失败" in (v.get("error") or "")
+            and (not args.brief or v["brief_id"] == args.brief)]
+    for k, v in todo:
+        print(f"{'🧪' if args.dry_run else '🔁'} {k} {v['error'][:60]}")
+        if args.dry_run:
+            continue
+        n = v.get("render_retries", 0) + 1
+        draft = api("GET", f"/video-cuts/{v['cut_id']}")["draft"]
+        job = api("POST", "/render-jobs", {"spec": draft, "options": {"codec": "h264", "quality": "high", "scale": 1},
+                                           "cut_id": v["cut_id"], "idempotency_key": f"udb-{v['cut_id']}-r{n}"})
+        v.update(render_job=job["job_id"], stage="rendering", render_retries=n, last_render_error=v.pop("error"))
+        st.save()
+    print(f"\n{'(dry run) ' if args.dry_run else ''}{len(todo)} 条渲染失败的重新渲染；接着跑 poll")
+
+
+def cmd_spread_hooks(cfg, run, args):
+    """User 11-19: every video of B17 opened on the same kitten. The platform picks the top-scored clip of a pool
+    almost every time, so a pool alone does not vary the opening. This gives each finished video of --brief its own
+    clip of segment 1's footage_pool (in pool order, kept ones first), swaps only that clip's src, PUTs, reads back
+    and re-renders; poll sends it to AI review again. Other tracks, copy and voices stay as they are."""
+    st = State(run)
+    for b in load_briefs(run, args.brief):
+        seg = (b.get("segments") or [{}])[0]
+        pool = [c["segment_id"] for c in (seg.get("footage_pool") or {}).get("clips", [])]
+        vids = [(k, v) for k, v in sorted(st.videos.items()) if v["brief_id"] == b["brief_id"] and v.get("stage") == "done"
+                and (args.all or v.get("ai_review") == "pass" or v.get("review_waived"))]
+        if not pool or not vids:
+            continue
+        if len(pool) < len(vids):
+            print(f"⚠️  {b['brief_id']} 池子 {len(pool)} 条，视频 {len(vids)} 条：会有重复，先补钩子素材")
+        r = api("POST", "/materials/segments/search", {"product_id": CFG["products"][b["product_key"]]["clipo_product_id"],
+                                                      "tags": (seg["footage_pool"].get("tags") or [])[:10], "limit": 200})
+        segs = {h["segment"]["id"]: h["segment"] for h in r.get("items", [])}
+        for i, (k, v) in enumerate(vids):
+            sid = pool[i % len(pool)]
+            x = segs.get(sid)
+            if not x:
+                raise RuntimeError(f"{k}：钩子素材 {sid} 查不到")
+            cut = api("GET", f"/video-cuts/{v['cut_id']}")
+            draft = copy.deepcopy(cut["draft"])
+            first = min((c for c in draft["clips"] if c.get("trackId") == "main"), key=lambda c: c["from"])
+            old = first["props"]["src"].split("?")[0].rsplit("/", 1)[-1]
+            if old == x["object_url"].split("?")[0].rsplit("/", 1)[-1]:
+                print(f"✅ {k} 开头已是 {sid[-6:]}")
+                continue
+            print(f"{'🧪' if args.dry_run else '🔁'} {k} 开头 {old[:10]}… → {sid[-6:]} {x.get('name', '')[:24]}")
+            if args.dry_run:
+                continue
+            first["props"].update(src=x["object_url"], startFrom=0)
+            api("PUT", f"/video-cuts/{v['cut_id']}", {"script_id": cut["script_id"], "draft": draft})
+            got = api("GET", f"/video-cuts/{v['cut_id']}")["draft"]
+            g1 = min((c for c in got["clips"] if c.get("trackId") == "main"), key=lambda c: c["from"])
+            if g1["props"]["src"].split("?")[0] != x["object_url"].split("?")[0]:
+                raise RuntimeError(f"{k} 读回开头不对，不渲染")
+            n = v.get("render_retries", 0) + 1
+            job = api("POST", "/render-jobs", {"spec": got, "options": {"codec": "h264", "quality": "high", "scale": 1},
+                                               "cut_id": v["cut_id"], "idempotency_key": f"udb-{v['cut_id']}-hook{n}"})
+            v.update(render_job=job["job_id"], stage="rendering", render_retries=n, hook_clip=sid, ai_review=None, ai_reason=None)
+            st.save()
+
+
+def intro_shots(brief, draft, cut_id):
+    """User 11-19: a line that names the product AND an ingredient / tech (「清扬控油蓬松洗发水，有SCA控油蓬松技术」)
+    shows the bottle while the name is read and the texture after it. The platform draws a segment's shots from its
+    tags in no order, so this rewrites the draft: in such a segment, the shots that start before the subtitle ending
+    the product name get product-appearance footage (config `intro_footage`, default 产品外观); at least one texture
+    shot stays. Returns (new_draft, changed shot ids)."""
+    prod = CFG["products"][brief["product_key"]]
+    names = [prod["full_name"]] + [n for n in prod.get("name_aliases") or [] if n != prod["full_name"]]
+    terms = prod.get("ingredient_terms") or []
+    tags = prod.get("intro_footage") or ["产品外观"]
+    idx = footage_index(brief["product_key"])
+    banned = banned_words_for(brief["product_key"])
+    pool = sorted((x for x in idx.values() if set(tags) & set(x.get("tags") or []) and x.get("review_result") != "reject"
+                   and not any(w in (x.get("description") or "") for w in banned)), key=lambda x: x["id"])
+    if not pool or not terms:
+        return draft, []
+    d = copy.deepcopy(draft)
+    fps = d["composition"].get("fps", 30)
+    main = sorted((c for c in d["clips"] if c.get("trackId") == "main"), key=lambda c: c["from"])
+    used = {(c["props"].get("src") or "").split("?")[0].rsplit("/", 1)[-1] for c in main}
+    seed = int(hashlib.sha1(cut_id.encode()).hexdigest(), 16)
+    changed = []
+    for seg in sorted({str(c["id"]).split("-")[0] for c in main}):
+        subs = sorted((c for c in d["clips"] if c.get("trackId") == "overlay" and str(c["id"]).startswith(f"s{seg}-")), key=lambda c: c["from"])
+        text = "".join(c["props"].get("text") or "" for c in subs)
+        name = next((n for n in names if n in text), None)
+        if not name or not any(t in text[text.index(name) + len(name):] for t in terms):
+            continue
+        end_char, pos, name_end = text.index(name) + len(name), 0, None
+        for c in subs:
+            pos += len(c["props"].get("text") or "")
+            if pos >= end_char:
+                name_end = c["from"] + c["durationInFrames"]
+                break
+        shots = [c for c in main if str(c["id"]).split("-")[0] == seg]
+        swap = [c for c in shots if c["from"] < name_end][:max(1, len(shots) - 1)]
+        for k, c in enumerate(swap):
+            need = c["durationInFrames"] / fps
+            cands = [x for x in pool if x["object_url"].split("?")[0].rsplit("/", 1)[-1] not in used
+                     and (x["end_ms"] - x["begin_ms"]) / 1000 - 1 / fps >= need * 0.6]
+            if not cands:
+                break
+            x = cands[(seed + k) % len(cands)]
+            used.add(x["object_url"].split("?")[0].rsplit("/", 1)[-1])
+            have = (x["end_ms"] - x["begin_ms"]) / 1000 - 1 / fps
+            c["props"].update(src=x["object_url"], startFrom=0, playbackRate=1.0 if have >= need else round(have / need - 0.0005, 3),
+                              alt=(x.get("description") or "")[:60])
+            c["props"].pop("loop", None)
+            changed.append(c["id"])
+    return d, changed
+
+
+def with_bgm_volume(draft):
+    """config `bgm_volume` on the BGM track of an existing draft (user 11-19: 0.08 is inaudible under the voice).
+    Also (user 11-19 客户反馈): the 戳直播间 arrow GIF lasts ~2 s and disappeared before the last line ended, so
+    every sticker GIF loops to the end of its clip; sound effects play at config `sfx_volume` (礼花声太大)."""
+    vol = CFG.get("bgm_volume")
+    sfx = CFG.get("sfx_volume")
+    d = copy.deepcopy(draft)
+    last = max((c["id"].split("-")[0] for c in d["clips"] if c.get("trackId") == "voiceover"
+                and str(c.get("id", "")).startswith("v")), key=lambda x: int(x[1:] or 0), default=None)
+    last = last[1:] if last else None
+    if CFG.get("no_confetti"):  # 用户 11-19：礼花不要每条都加，太吵；只留最后一句的戳直播间箭头
+        d["clips"] = [c for c in d["clips"] if not (c.get("trackId") in ("sticker", "sound_effects")
+                      and c.get("component") != "ImageClip" and str(c.get("id", "")).split("-")[0] != last)]
+    for c in d["clips"]:
+        if c.get("trackId") == "audio" and vol is not None:
+            c["props"]["volume"] = vol
+        elif c.get("trackId") == "sticker" and c.get("component") == "StickerClip":
+            c["props"]["loop"] = True
+        elif c.get("trackId") == "sound_effects" and sfx is not None:
+            c["props"]["volume"] = sfx
+    return d
+
+
+def cmd_restyle(cfg, run, args):
+    """Apply today's look rules (BGM volume, product-intro shots, bottom-right watermark) to videos already rendered,
+    then re-render and re-review them (user 11-19: the 30 旗舰店 videos). Copy, voice and other shots stay."""
+    from footage_qc import with_watermark, WATERMARK_PROPS
+    st = State(run)
+    briefs = {b["brief_id"]: b for b in load_briefs(run, args.brief)}
+    todo = [(k, v) for k, v in sorted(st.videos.items()) if v["brief_id"] in briefs and v.get("stage") == "done"]
+    backup = Path(run) / "clipo" / f"restyle-backup-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    saved, jobs = {}, {}
+    for k, v in todo:
+        cut = api("GET", f"/video-cuts/{v['cut_id']}")
+        d, changed = intro_shots(briefs[v["brief_id"]], cut["draft"], v["cut_id"])
+        d = with_bgm_volume(d)
+        if (CFG.get("watermark") or {}).get("add"):
+            d = with_watermark(d, ai_spans(briefs[v["brief_id"]]["product_key"], d) if (CFG.get("watermark") or {}).get("ai_only") else None)
+        if d == cut["draft"] and not v.get("restyle_pending"):
+            continue
+        print(f"{k}：产品亮相换外观 {len(changed)} 个镜头，BGM 音量 {CFG.get('bgm_volume')}")
+        if args.dry_run:
+            continue
+        saved[v["cut_id"]] = cut
+        backup.write_text(json.dumps(saved, ensure_ascii=False))
+        v["restyle_pending"] = True  # written but not yet rendered: a rerun renders it even though the draft is unchanged
+        st.save()
+        api("PUT", f"/video-cuts/{v['cut_id']}", {"script_id": cut["script_id"], "draft": d})
+        got = api("GET", f"/video-cuts/{v['cut_id']}")["draft"]
+        if [c["props"]["src"].split("?")[0] for c in got["clips"] if c.get("trackId") == "main"] != \
+           [c["props"]["src"].split("?")[0] for c in d["clips"] if c.get("trackId") == "main"]:
+            raise RuntimeError(f"{k} 读回画面不一致，不渲染")
+        r = api("POST", "/render-jobs", {"spec": got, "options": {"codec": "h264", "quality": "high", "scale": 1},
+                                        "cut_id": v["cut_id"], "idempotency_key": f"udb-rs-{v['cut_id']}-{backup.stem[-15:]}"})
+        jobs[k] = r["job_id"]
+        v.update(render_job=r["job_id"], stage="rendering", ai_review=None, ai_reason=None, bad_footage=bad_footage(briefs[v["brief_id"]]["product_key"], got))
+        v.pop("restyle_pending", None)
+        st.save()
+    print(f"\n{'(dry run) ' if args.dry_run else ''}{len(jobs) if not args.dry_run else ''} 条重渲；poll 会读回、送审")
+
+
 def remote_size(url):
     """Size of a signed OSS object. The share URLs are signed for GET only (HEAD gets 403), so ask for one byte."""
     req = urllib.request.Request(url, headers={"Range": "bytes=0-0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         cr = r.headers.get("Content-Range") or ""
         return int(cr.rsplit("/", 1)[1]) if "/" in cr else int(r.headers.get("Content-Length") or 0)
+
+
+def cmd_sync_visuals(cfg, run, args):
+    """User 11-19: L02's opening drew 爆款 clips with burned-in captions (two-line subtitle rejects). Re-pin a built
+    script's footage tags from the brief's `visual_tags`; copy, voice and approval stay as they are."""
+    st = State(run)
+    for b in load_briefs(run, args.brief):
+        job = st.data.get("briefs", {}).get(b["brief_id"]) or {}
+        if not job.get("script_id") or not any(sg.get("visual_tags") or sg.get("footage_pool") for sg in b["segments"]):
+            continue
+        if args.dry_run:
+            print(f"🧪 {b['brief_id']} 将按 brief 改画面标签：{[sg.get('visual_tags') for sg in b['segments']]}")
+            continue
+        print(f"🎯 {b['brief_id']} 画面标签已写入并读回：{sync_visuals(job['script_id'], b['segments'])}")
 
 
 def cmd_pool(cfg, run, args):
@@ -1240,10 +1761,13 @@ def cmd_pool(cfg, run, args):
     body = {"query": args.query, "product_id": pid, "tags": tags, "limit": 40}
     r = api("POST", "/materials/segments/search", body)
     hits = r["items"] if isinstance(r, dict) and "items" in r else r.get("hits", r)
-    words = CFG.get("banned_footage_words") or []
+    words = banned_words_for(pk)
     # AI scene clips are all risk-flagged by the platform's footage review ("纯讲话，无产品介入") by design;
     # --allow-risk takes them. Banned-footage words (头屑、秃顶…) always stop the pool.
-    usable = lambda x: (args.allow_risk or x["review_result"] != "reject") and not any(w in (x.get("description") or "") for w in words)
+    # 11-19：同一平台产品下混了别的 SKU（二硫化硒库里有绿瓶油脂调控），--exclude 写正则，描述命中的当作不能用，池子在它前面截断
+    excl = re.compile(args.exclude) if getattr(args, "exclude", None) else None
+    usable = lambda x: (args.allow_risk or x["review_result"] != "reject") and not any(w in (x.get("description") or "") for w in words) \
+        and not (excl and excl.search((x.get("description") or "") + (x.get("name") or "")))
     pool = []
     for i, h in enumerate(hits):
         if not usable(h["segment"]):
@@ -1364,13 +1888,15 @@ def cmd_download(cfg, run, args):
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "bind-aigc", "status"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "bind-aigc", "status", "rename-shares", "split-group", "refresh-group", "rerender", "sync-visuals", "spread-hooks", "restyle"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--partial", action="store_true", help="share: 不够数的 brief 也先发")
     ap.add_argument("--refresh", action="store_true", help="share: 已有分享也重建（换掉旧链接）")
+    ap.add_argument("--group", help="rename-shares / split-group / refresh-group: 分享分组链接或 id")
+    ap.add_argument("--map", help="refresh-group: footage_qc 返工的备份目录，按旧成片找到剪辑")
     ap.add_argument("--out", help="download / share --download: 本地交付目录，默认 <项目>/本地交付/YYYYMMDD-品牌/（项目 = runs 所在目录）")
     ap.add_argument("--download", action="store_true", help="share: 建完链接后把成片下载到本地（同 download）")
     ap.add_argument("--query", help="pool: 这类素材的共同点，例如「男士摸发根 头发油」")
@@ -1378,12 +1904,13 @@ def main():
     ap.add_argument("--product", help="pool: 产品 key，默认第一个")
     ap.add_argument("--size", type=int, default=5, help="pool: 池子要几条，默认 5")
     ap.add_argument("--seg", help="pool: 写进 brief 的哪一段（段 id），配 --brief")
+    ap.add_argument("--exclude", help="pool: 描述命中这个正则的素材不进池（例：绿色标|油脂调控|绿蓬蓬）")
     ap.add_argument("--allow-risk", action="store_true", help="pool: 平台标了风险的素材也进池（AI 真人场景素材都被标「无产品介入」）")
-    ap.add_argument("--all", action="store_true", help="rereview: 通过的也重新审")
+    ap.add_argument("--all", action="store_true", help="rereview: 通过的也重新审；spread-hooks: 没通过的也换开头")
     ap.add_argument("--scripts-only", action="store_true", help="submit: 只在平台建脚本并核对，不生成视频（不扣额度）")
     ap.add_argument("--retry-failed", action="store_true", help="submit: regenerate briefs whose generation failed")
-    ap.add_argument("--factor", type=float, help="submit: 一次生成排期条数的几倍，默认取 config.generate_factor")
-    ap.add_argument("--margin", type=float, default=1.3, help="topup: 按通过率估算后再多要的倍数")
+    ap.add_argument("--factor", type=float, help="submit: 一次生成排期条数的几倍，默认 1（用户 11-19 不双倍产）；大于 1 只在用户这次明确要求时用")
+    ap.add_argument("--margin", type=float, default=None, help="topup: 默认缺几条补几条；给了才按通过率 × 这个倍数多补")
     ap.add_argument("--max-per-brief", type=int, default=30, help="topup: 每个 brief 单次最多补几条")
     ap.add_argument("--wait", type=int, default=0, help="poll: keep polling up to N seconds")
     ap.add_argument("--interval", type=int, default=30)
@@ -1392,7 +1919,7 @@ def main():
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
     {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "rereview": cmd_rereview, "report": cmd_report, "share": cmd_share,
-     "download": cmd_download, "pool": cmd_pool, "bind-aigc": cmd_bind_aigc, "status": cmd_status}[args.cmd](cfg, args.run, args)
+     "download": cmd_download, "pool": cmd_pool, "bind-aigc": cmd_bind_aigc, "status": cmd_status, "rename-shares": cmd_rename_shares, "split-group": cmd_split_group, "refresh-group": cmd_refresh_group, "rerender": cmd_rerender, "sync-visuals": cmd_sync_visuals, "spread-hooks": cmd_spread_hooks, "restyle": cmd_restyle}[args.cmd](cfg, args.run, args)
 
 
 if __name__ == "__main__":

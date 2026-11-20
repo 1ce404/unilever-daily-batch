@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Measure how much each cut's voice drifts between segments (user 11-10: some videos sound like two speakers).
+"""
+[INPUT]: 依赖 NumPy、ffmpeg、clipo_batch；读取真实剪辑编号并只读查询分段配音。
+[OUTPUT]: 生成各段基频与段间音高比；可指定输出路径，不替代听审。
+[POS]: scripts 的音色差异门禁。仅 GET 查询，不提交审核或修改声音。
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
-    python3 scripts/voice_check.py <skill dir> <brand> <state.json> shared|all     # needs numpy + ffmpeg; run WITHOUT -I
-
-The platform voices each segment separately. For every cut, the median pitch of each segment's TTS mp3 is
-measured; spread = highest / lowest. ≥ 1.35 sounds like a different person. Prints one line per cut.
+用法：voice_check.py <skill目录> <品牌> <state.json> shared|all [输出路径]
+音高比达到 1.35 时拦截交付。
 """
 import json, sys, subprocess, urllib.request, numpy as np
 sys.path.insert(0, sys.argv[1] + "/scripts")
@@ -39,4 +41,7 @@ if __name__ == '__main__':
         spread = (max(good) / min(good)) if len(good) > 1 else 1
         res[vid] = {"speaker": c["random_result"].get("tts_speaker_id"), "f0": [round(p) if p else None for p in ps], "spread": round(spread, 2)}
         print(vid, res[vid]["speaker"][:34], res[vid]["f0"], res[vid]["spread"], flush=True)
-    json.dump(res, open(f"/tmp/udb-audio/{brand}-{which}.json", "w"), ensure_ascii=False, indent=1)
+    from pathlib import Path
+    output = Path(sys.argv[5]) if len(sys.argv) > 5 else Path(f'/tmp/udb-audio/{brand}-{which}.json')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(res, ensure_ascii=False, indent=1))

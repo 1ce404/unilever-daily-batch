@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Lint brief scripts against the QC doc rules that can be checked mechanically.
+"""
+[INPUT]: 依赖 common 的品牌事实、已审文案与句长工具。
+[OUTPUT]: 提供底稿与平台改写的合规检查；正面干净、干爽与时间顺序不算负面或极限词。
+[POS]: scripts 的机械文案门禁；clipo_batch 与断点恢复共用，不改输入文案。
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
+Lint brief scripts against the QC doc rules that can be checked mechanically.
 
     python3 scripts/lint_copy.py --config qingyang --run runs/20261030 [--brief 1030-B01]
 
@@ -46,6 +52,9 @@ def lint_text(text, cfg, product):
             issues.append(("error", f"这个产品不写数字 / 倍数「{m.group(0)}」（QC）"))
     for rx in bw.get("regex_error", []):
         for m in re.finditer(rx, scrubbed):
+            # ---------- 最先表达时间顺序，不是质量或价格极限 ----------
+            if m.group(0) == '最' and scrubbed[m.start():m.start() + 2] == '最先':
+                continue
             issues.append(("error", f"极限词/时间承诺「{m.group(0)}」"))
     for rx in bw.get("regex_warn", []):
         for m in re.finditer(rx, scrubbed):
@@ -88,6 +97,28 @@ def seg_text(seg):
     return seg.get("text", "")
 
 
+def lint_visual_plan(segs, product):
+    """User 11-19/11-20: the footage is planned while writing, not left to the platform. Every voiced segment pins
+    `visual_tags` (or a pool / visual_query); a line naming the product shows the bottle (intro_footage), so the
+    product name and an ingredient do not share one line; an ingredient line shows texture."""
+    out = []
+    names = product.get("name_aliases") or [product.get("full_name", "")]
+    terms = product.get("ingredient_terms") or []
+    look = set(product.get("intro_footage") or ["产品外观"])
+    for sg in segs:
+        sid, text = sg.get("id"), seg_text(sg)
+        tags = set(sg.get("visual_tags") or (sg.get("footage_pool") or {}).get("tags") or [])
+        if not tags and not sg.get("visual_query"):
+            out.append(("error", f"S{sid} 没写画面（visual_tags）：每段写稿时就定好配什么画面，不交给平台挑"))
+            continue
+        named = any(n and n in text for n in names)
+        if named and any(t in text for t in terms):
+            out.append(("error", f"S{sid} 产品名和成分写在一句：拆成两段，产品名那段配{'/'.join(sorted(look))}，成分那段配质地"))
+        elif named and tags and not tags & look and sg.get("role") != "cta":
+            out.append(("error", f"S{sid} 念到产品名，画面配的是 {sorted(tags)}：产品亮相配{'/'.join(sorted(look))}"))
+    return out
+
+
 def lint_brief(brief, cfg):
     issues = []
     pk = brief.get("product_key")
@@ -127,6 +158,7 @@ def lint_brief(brief, cfg):
         for t in sg.get("visual_tags") or []:
             if known and t not in known:
                 issues.append(("error", f"S{sg.get('id')} 画面标签「{t}」这个产品没有素材（有：{'、'.join(sorted(known))}）"))
+    issues += lint_visual_plan(segs, product)
     camp = cfg.get("campaign")
     if camp and brief.get("date", "") <= camp["until"] and not any(camp["name"] in t for t in texts):
         issues.append(("warn", f"{camp['name']}期间没提「{camp['name']}」（放进机制或 CTA 句）"))
@@ -269,10 +301,15 @@ def o_same_day(label, todays):
 OPENING_BANNED = re.compile(r"拍[一二三四五六七八九十\d]+发|到手|\d+(?:\.\d+)?\s*元|套组|瓶背|背面|成分表|配方表")
 
 
-MECH_OPENING_OK = ("爆款复刻",)  # user 11-11: 爆款复刻 copies viral videos that open with the deal
+MECH_OPENING_OK = ("爆款复刻", "价格优惠")  # user 11-11: 爆款复刻 copies viral videos that open with the deal; 11-20: 价格优惠 opens with the deal
 
 
 POOL_MIN = 3  # user 11-13: one pinned clip made every video of a brief look the same
+
+
+def k_open(segs, sg):
+    """True for the opening segment (the hook every video starts on)."""
+    return bool(segs) and sg is segs[0]
 
 
 def lint_pools(brief, segs):
@@ -291,6 +328,9 @@ def lint_pools(brief, segs):
                 out.append(("error", f"S{sg.get('id')} footage_pool 要有 query、tags、score（用 clipo_batch.py pool 生成）"))
             if n < POOL_MIN:
                 out.append(("error", f"S{sg.get('id')} 素材池只有 {n} 条，至少 {POOL_MIN} 条同类素材（一个 brief 的视频才不会全是同一条）"))
+            elif k_open(segs, sg) and brief.get("quantity") and n < brief["quantity"] and not brief.get("pack"):
+                out.append(("error", f"S{sg.get('id')} 开头素材池 {n} 条、交付 {brief['quantity']} 条：开头不能重复（用户 11-19），"
+                                     f"先补到 {brief['quantity']} 条再提交；生成后 spread-hooks 逐条换开"))
             elif brief.get("quantity") and -(-brief["quantity"] // n) > 4:
                 out.append(("warn", f"S{sg.get('id')} 池子 {n} 条、交付 {brief['quantity']} 条，每条素材要用 {-(-brief['quantity'] // n)} 次，再多找几条"))
         elif single and not brief.get("pack"):
@@ -348,7 +388,7 @@ def covered_by_variant(term, texts, segs):
                for t, sg in zip(texts, segs))
 
 
-AFTER_USE_BAD = re.compile(r"(下班|下午|晚上|回家|一天下来|过了一会|没多久|又)[^。！？]{0,8}(干|毛躁|乱|塌|油|打结|炸)")
+AFTER_USE_BAD = re.compile(r"(下班|下午|晚上|回家|一天下来|过了一会|没多久|又)[^。！？]{0,8}(干(?!净|爽)|毛躁|乱|塌|油|打结|炸)")
 def after_use_bad(t):
     """The first span saying the hair turns bad again, or None. 11-11: not 「细软又爱出油的男生」 (who the video
     is for: the span runs into 的) nor 「又轻盈，摸着不干」 (negated by 不 / 没)."""

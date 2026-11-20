@@ -1,3 +1,11 @@
+# ---------- 文件契约 ----------
+# [INPUT]: 依赖 Python 标准库解析源对象键、校验数值与生成指纹。
+#          接收 brief 素材组、视频选择、剪辑 draft 与用户复核指令。
+# [OUTPUT]: 提供素材组映射、源素材去重、draft 绑定检查与渲染键生成。
+#           提供用户自行复核标记；不检查画面、人脸、声音或内容。
+# [POS]: scripts 的 AIGC 结构校验边界，由 clipo_batch 调用。
+#        素材分镜绑定与交付去重不代替内容复核。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Structural AIGC binding checks; no frame, face, voice or content review."""
 import hashlib
 import json

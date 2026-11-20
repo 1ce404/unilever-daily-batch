@@ -58,7 +58,7 @@ import clipo_batch as cb
 import ai_tags
 from common import load_config
 
-MODEL = "doubao-seedance-2-0-260128"
+MODEL = "doubao-seedance-2-5-260628"  # 11-19 平台只收 2-5 / 2-5-flash（openapi enum）
 MAX_RETRIES = 2
 BLOCKED = ("SensitiveContent", "PolicyViolation", "copyright")
 # words that drew copyright / sensitive blocks on 11-12~13; only warned about, never removed (the user may want them)
@@ -101,8 +101,18 @@ class Run:
         """The one AI tag a scene's clips carry (scene tag, else the plan tag)."""
         return self.scene(sid).get("tag") or self.plan.get("tag")
 
+    def shot_tag(self, sid, i):
+        """User 11-19: a shared pool instead of one character set per video. A scene's `shot_tags` names the tag of
+        each cut shot (开头 / 动作 / 效果), so script segments 1 / 2 / 4 can pin their own pool by visual_tags."""
+        st = self.scene(sid).get("shot_tags")
+        return st[i] if st else self.tag(sid)
+
     def tags(self):
-        return sorted({self.tag(sc["id"]) for sc in self.plan["scenes"]} - {None})
+        # 抽帧不合格移出池子的标签也要在产品标签里，否则平台拒绝打这个标签（11-19 AI不合格-偏老 报 segment_tag_not_allowed）
+        out = {t for sc in self.plan["scenes"] for t in [self.tag(sc["id"])] + (sc.get("shot_tags") or [])}
+        for k in ("shelf_excluded", "excluded", "excluded_shots"):
+            out |= set((self.plan.get(k) or {}).values())
+        return sorted(out - {None})
 
     @staticmethod
     def status(slot):
@@ -119,11 +129,33 @@ class Run:
             return "tagging"
         return "retry"
 
-    def body(self, prompt):
-        p = self.plan
-        return {"product_id": self.product["clipo_product_id"], "model": p.get("model", MODEL), "prompt": prompt,
-                "resolution": p.get("resolution", "720p"), "ratio": p.get("ratio", "9:16"),
-                "duration": int(p.get("duration", 6)), "generate_audio": bool(p.get("generate_audio", False)), "quantity": 1}
+    def body(self, prompt, scene=None):
+        """A scene may carry `references` ([{object_key | file, kind}], user 11-19: a real bottle photo so an AI shelf
+        shows the right product); the prompt names them as @图片1… in that order. A local `file` is uploaded on submit."""
+        p, sc = self.plan, (self.scene(scene) if scene else {})
+        b = {"product_id": self.product["clipo_product_id"], "model": sc.get("model") or p.get("model", MODEL), "prompt": prompt,
+             "resolution": p.get("resolution", "720p"), "ratio": p.get("ratio", "9:16"),
+             "duration": int(sc.get("duration") or p.get("duration", 6)), "generate_audio": bool(p.get("generate_audio", False)), "quantity": 1}
+        if sc.get("references"):
+            b["references"] = [{"object_key": self.reference_key(r), "kind": r.get("kind", "image")} for r in sc["references"]]
+        return b
+
+    def reference_key(self, ref):
+        """A reference may be a local `file` (user 11-19: real Lux bottle stills): upload it once, keep the key in state."""
+        if ref.get("object_key"):
+            return ref["object_key"]
+        path = Path(ref["file"])
+        cache = self.st.setdefault("reference_keys", {})
+        if str(path) not in cache:
+            ctype = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+            tok = cb.api("POST", "/storage/upload-tokens", {"filename": path.name, "content_type": ctype,
+                                                            "content_length": path.stat().st_size, "purpose": "material"})
+            req = urllib.request.Request(tok["upload_url"], data=path.read_bytes(), method="PUT",
+                                         headers=dict(tok.get("headers") or {}, **{"Content-Type": ctype}))
+            urllib.request.urlopen(req, timeout=300).read()
+            cache[str(path)] = tok["object_key"]
+            self.save()
+        return cache[str(path)]
 
     def next_prompt(self, slot):
         """Prompt for a retry. Blocked by the copyright / sensitive check: the scene's next unused fallback prompt
@@ -158,7 +190,7 @@ class Run:
                 sent.append(key)
                 inflight += 1
                 continue
-            rows = cb.api("POST", "/material-generations", self.body(prompt))
+            rows = cb.api("POST", "/material-generations", self.body(prompt, slot["scene"]))
             g = rows[0] if isinstance(rows, list) else rows
             slot["attempts"].append({"generation_id": g["id"], "prompt": prompt, "status": g["status"],
                                      "at": time.strftime("%Y-%m-%d %H:%M")})
@@ -205,11 +237,14 @@ class Run:
         clips and the cut shots) and set the scene tag again where it drifted. A clip counts as settled once its
         understanding is done and its tags are right. Returns how many it fixed."""
         mine = {}
-        for slot in self.st["slots"].values():
-            tag = self.tag(slot["scene"])
-            for sid in [slot.get("segment_id")] + [x.get("segment_id") for x in slot.get("shots") or []]:
-                if tag and sid and sid not in self.st.setdefault("tags_settled", []):
-                    mine[sid] = tag
+        for key, slot in self.st["slots"].items():
+            tag = (self.plan.get("shelf_excluded") or self.plan.get("excluded") or {}).get(key) or self.tag(slot["scene"])  # 抽帧不合格的移出场景池
+            bad = self.plan.get("excluded_shots") or {}  # 抽帧不合格的单个镜头：「<slot>-<分镜>」→ 移出池子的标签
+            ids = [(slot.get("segment_id"), tag)] + [(x.get("segment_id"), bad.get(f"{key}-{x['segment']}") or self.shot_tag(slot["scene"], i))
+                                                       for i, x in enumerate(slot.get("shots") or [])]
+            for sid, t in ids:
+                if t and sid and sid not in self.st.setdefault("tags_settled", []):
+                    mine[sid] = t
         if not mine:
             return 0
         segs = segs or product_segments(self.product["clipo_product_id"])
@@ -227,11 +262,11 @@ class Run:
 
     def ready(self, scene):
         return [(k, s) for k, s in sorted(self.st["slots"].items())
-                if s["scene"] == scene and s.get("segment_id") and not banned(self.cfg, s)]
+                if s["scene"] == scene and s.get("segment_id") and not banned(self.cfg, s, self.product)]
 
     def report(self):
         tag = "、".join(self.tags())
-        words = self.cfg.get("banned_footage_words") or []
+        words = banned_words(self.cfg, self.product)
         lines = [f"# AI 素材生成 · {self.plan_path.stem} · {time.strftime('%Y-%m-%d %H:%M')}", "",
                  f"产品 {self.plan['product']}，标签「{tag}」。生成成功的只带场景标签，可直接 `clipo_batch.py pool --tags <标签> --allow-risk` 做素材池。", ""]
         lines += ["| 场景 | 要几条 | 成功 | 还在跑 | 放弃 | 被拦次数 |", "|---|---|---|---|---|---|"]
@@ -266,8 +301,13 @@ class Run:
         return out, total_ok, total
 
 
-def banned(cfg, slot):
-    return any(w in (slot.get("description") or "") for w in cfg.get("banned_footage_words") or [])
+def banned_words(cfg, product):
+    """Brand + product footage bans (用户 11-20：2x / 呼吸瓶不要女生形象、不要慢动作)."""
+    return list(dict.fromkeys((cfg.get("banned_footage_words") or []) + ((product or {}).get("banned_footage_words") or [])))
+
+
+def banned(cfg, slot, product=None):
+    return any(w in (slot.get("description") or "") for w in banned_words(cfg, product))
 
 
 def cut_and_register(r, key, slot, spans, workdir):
@@ -291,8 +331,8 @@ def cut_and_register(r, key, slot, spans, workdir):
         seg = cb.api("POST", f"/products/{pid}/segments", {"object_key": tok["object_key"], "ai_generated": True})
         rows.append({"segment": int(seg_no), "object_key": tok["object_key"], "source_interval": [a, b],
                      "duration": round(b - a, 3), "segment_id": seg.get("id")})
-        if r.tag(slot["scene"]) and seg.get("id"):
-            ai_tags.set_tags(seg["id"], [r.tag(slot["scene"])])  # understanding may overwrite it: settle_tags rechecks
+        if r.shot_tag(slot["scene"], len(rows) - 1) and seg.get("id"):
+            ai_tags.set_tags(seg["id"], [r.shot_tag(slot["scene"], len(rows) - 1)])  # settle_tags rechecks
     slot["shots"] = rows
     r.save()
     return rows
@@ -338,6 +378,28 @@ def cmd_sets(r, args):
             print(f"  {vkey} ← {skey}")
     settle_tags(r)
     print("下一步：clipo_batch.py bind-aigc --brief " + args.brief)
+
+
+def cmd_shots(r, args):
+    """Shared pools (user 11-19): cut every ready clip of the scenes that have `shot_tags` into the plan's shot spans
+    and register each shot under its own tag. No visual_sets, no per-video binding: brief segments pin the pools
+    with visual_tags and the platform draws from them."""
+    spans = r.plan.get("shots")
+    scenes = [sc for sc in r.plan["scenes"] if sc.get("shot_tags") and (not args.scene or sc["id"] == args.scene)]
+    if not spans or not scenes:
+        raise SystemExit("plan 要有 shots，场景要写 shot_tags（三个镜头各自的标签）")
+    ai_tags.add_product_tags(r.product["clipo_product_id"], r.tags())
+    with tempfile.TemporaryDirectory() as wd:
+        for sc in scenes:
+            ready = r.ready(sc["id"])
+            print(f"{sc['id']}：{len(ready)} 条源视频 → {' / '.join(sc['shot_tags'])}")
+            if args.dry_run:
+                continue
+            for key, slot in ready:
+                cut_and_register(r, key, slot, sc.get("shots") or spans, wd)
+                print(f"  {key} 已切 3 段")
+    if not args.dry_run:
+        settle_tags(r)
 
 
 def settle_tags(r, wait=300):
@@ -395,12 +457,29 @@ def check_plan(r):
                and not re.search(rf"(不|没有?|无|别|禁止)[^，。,;；]{{0,4}}{re.escape(w)}", s_["prompt"])]
         if hit and not s_["attempts"]:
             warns.append(f"{key} 提示词写了禁用画面：{'、'.join(hit)}（references/aigc-standards.md）")
+    # 产品规则（config 产品 aigc_rules，用户 11-20：2x / 呼吸瓶人物只能是男生，动作和语速正常、不慢放）
+    rules = r.product.get("aigc_rules") or {}
+    for key, s_ in sorted(r.st["slots"].items()):
+        if s_["attempts"]:
+            continue
+        p_ = s_["prompt"]
+        neg = lambda w: re.search(rf"(不|没有?|无|别|禁止|不要|不出现)[^，。,;；]{{0,6}}{re.escape(w)}", p_)
+        hit = [w for w in rules.get("forbid_words", []) if w in p_ and not neg(w)]
+        if hit:
+            errs.append(f"{key} 写了这个产品不能用的画面：{'、'.join(hit)}（产品 aigc_rules）")
+        human = re.search(r"人|男|主角|配角|同事|同学", p_) and not r.scene(s_["scene"]).get("no_human")
+        if human and rules.get("require_words") and not any(w in p_ for w in rules["require_words"]):
+            errs.append(f"{key} 人物要写明是{'/'.join(rules['require_words'])}生（产品 aigc_rules）")
+        if human and rules.get("pace_words") and not any(w in p_ for w in rules["pace_words"]):
+            errs.append(f"{key} 没写动作语速正常：加「{rules['pace_words'][0]}」，不要慢动作（产品 aigc_rules）")
     # 品牌外貌规则（config aigc.look_words / natural_words / mask_words，清扬用户 11-18：帅哥美女、不要脸谱）
     look = r.cfg.get("aigc") or {}
     if look.get("look_words"):
         for key, s_ in sorted(r.st["slots"].items()):
             if s_["attempts"] or not re.search(r"男|女|人|主角|配角|妈|邻居|同事", s_["prompt"]):
                 continue  # 已提交过、或纯空镜不查
+            if r.scene(s_["scene"]).get("no_human"):
+                continue  # 外星人、拟人猫这类非真人角色（用户 11-19）：真人外貌规则不适用，提示词仍写「不出现真人」
             p_ = s_["prompt"]
             if not any(w in p_ for w in look["look_words"]):
                 errs.append(f"{key} 有人物但没写外貌：写「帅气 / 好看」等（{'、'.join(look['look_words'][:4])}）")
@@ -417,7 +496,7 @@ def check_plan(r):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["submit", "poll", "report", "sets"])
+    ap.add_argument("cmd", choices=["submit", "poll", "report", "sets", "shots"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--plan", required=True, help="$R/aigc/<名字>.json")
@@ -432,6 +511,9 @@ def main():
     r = Run(cfg, args.plan)
     if args.cmd == "sets":
         cmd_sets(r, args)
+        return
+    if args.cmd == "shots":
+        cmd_shots(r, args)
         return
     if args.cmd == "report":
         out, ok, total = r.report()
@@ -456,6 +538,7 @@ def main():
         print(f"已提交 {len(sent)} 条。接着在后台跑：\n  nohup python3 -I scripts/aigc_gen.py poll --config {args.config} "
               f"--run {args.run} --plan {args.plan} --wait 5400 > {Path(args.plan).with_suffix('.log')} 2>&1 &")
         return
+    ai_tags.add_product_tags(r.product["clipo_product_id"], r.tags())  # 后来加的移出池子标签也先登记
     deadline = time.time() + args.wait
     while True:
         r.refresh()
