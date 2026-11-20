@@ -30,8 +30,8 @@
   ],
   "brief_prefix": "L",
   "brief_size": 10,
-  "generate_factor": 2,
-  "_generate_factor_note": "每个 brief 一次生成 排期条数 × 2（用户 11-05 定：3 倍太多）。平台 AI 审核通过率约 40%，2 倍时一次就够数的概率约四成，不够的用 topup 按实际通过率补",
+  "generate_factor": 1,
+  "_generate_factor_note": "用户 11-19：之后实际需要多少条就产多少条，不再双倍生成；不够数再用 topup 按缺口补",
   "generate_chunk": 15,
   "store_to_product": {
     "精油香氛": "jingyou",
@@ -115,7 +115,9 @@
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
     "mode": "global",
-    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）",
+    "ai_only": true,
+    "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒（11.03 B04 一次要 30 条超时，整轮 0 条落地），所以一轮最多这么多条。用户 11-06：一个 brief 在平台上只建一条生成任务，超过的轮次和补生成都 continue 到这条任务上",
   "delivery_naming": "TZ-{yy}-{date}-{brand_tag}-{product_short}-brief{n}",
@@ -167,5 +169,11 @@
     "脱发"
   ],
   "_banned_footage_note": "素材描述里有这些词的，成片不交付（poll 拦）。规则来源和各品牌的 AIGC 要求见 references/aigc-standards.md",
-  "_qc_1116_note": "QC 1116 Part1 LUX 1.0：黑色衣服头屑画面不要（banned_footage_words 已有头屑）；不写具体时间（坚持用七天、持久3天）可说「清爽感持续很久」；香味不提「国际大师调制」；结尾引导直播间；性价比 / 拉满 / 第一 / 最是联合利华卡审点（都已在禁用词里）"
+  "_qc_1116_note": "QC 1116 Part1 LUX 1.0：黑色衣服头屑画面不要（banned_footage_words 已有头屑）；不写具体时间（坚持用七天、持久3天）可说「清爽感持续很久」；香味不提「国际大师调制」；结尾引导直播间；性价比 / 拉满 / 第一 / 最是联合利华卡审点（都已在禁用词里）",
+  "bgm_volume": 0.2,
+  "_bgm_volume_note": "用户 11-19：力士 BGM 太小（平台默认 0.08，口播段峰值 0dB 时背景几乎听不到），提到 0.2",
+  "banned_footage_files": {
+    "ae192496cd3840d3a601150e45a2cd80.mp4": "用户 11-19 力士：质地镜头手心泛红有少量皮屑（平台审核却判通过），QC 不要头屑画面",
+    "6c37b012e9b64f3cb48b5896afe989d4.mp4": "用户 11-19 力士：平台审核判露脐暴露（厨房卷发美女展示身材），会被驳回"
+  }
 }

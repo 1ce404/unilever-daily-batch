@@ -14,7 +14,7 @@
   },
   "brief_prefix": "A",
   "brief_size": 15,
-  "generate_factor": 2,
+  "generate_factor": 1,
   "generate_chunk": 15,
   "store_to_product": {
     "超水光": "shuiguang",
@@ -97,7 +97,9 @@
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
     "mode": "global",
-    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）",
+    "ai_only": true,
+    "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "campaign": null,
   "tts": {
@@ -163,5 +165,6 @@
     "结构8": "场景（换季）+ 人群 + 痛点 + 卖点 + 机制",
     "结构9": "机制 + 产品介绍 + 功效成分 + 好肌肤素材 + 福利引导"
   },
-  "_structures_note": "排期表附件 AHC AI Video Production Brief Template.xlsx 的「结构（素材顺序）」列。结构4 原文写「好发质素材」是笔误，护肤品按好皮肤素材。通用要求：时长 ≤30s（结构1 除外）、9:16、1080P；必带产品名和主要成分功效；人声可用真人原声 / 爆款原声 / 电子音，BGM 不要太下沉；AI 产品外观大小不变形、瓶身文字不能错；花字字幕符合调性"
+  "_structures_note": "排期表附件 AHC AI Video Production Brief Template.xlsx 的「结构（素材顺序）」列。结构4 原文写「好发质素材」是笔误，护肤品按好皮肤素材。通用要求：时长 ≤30s（结构1 除外）、9:16、1080P；必带产品名和主要成分功效；人声可用真人原声 / 爆款原声 / 电子音，BGM 不要太下沉；AI 产品外观大小不变形、瓶身文字不能错；花字字幕符合调性",
+  "_generate_factor_note": "用户 11-19：之后实际需要多少条就产多少条，不再双倍生成；不够数再用 topup 按缺口补"
 }

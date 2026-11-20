@@ -13,8 +13,8 @@
     ]
   },
   "brief_size": 10,
-  "generate_factor": 2,
-  "_generate_factor_note": "每个 brief 一次生成 排期条数 × 2（用户 11-05 定：3 倍太多）。平台 AI 审核通过率约 40%，2 倍时一次就够数的概率约四成，不够的用 topup 按实际通过率补",
+  "generate_factor": 1,
+  "_generate_factor_note": "用户 11-19：之后实际需要多少条就产多少条，不再双倍生成；不够数再用 topup 按缺口补",
   "generate_chunk": 15,
   "_generate_chunk_note": "平台一轮生成全有全无且组装限时 600 秒（11.03 B04 一次要 30 条超时，整轮 0 条落地），所以一轮最多这么多条。用户 11-06：一个 brief 在平台上只建一条生成任务，超过的轮次和补生成都 continue 到这条任务上",
   "store_to_product": {
@@ -150,7 +150,9 @@
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
     "mode": "global",
-    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）",
+    "ai_only": true,
+    "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "delivery_naming": "TZ-{yymmdd}-tz-{naming_code}-AIGC视频-智能生产-{content_type}-{keyword}-特赞-brief{brief_no}-{direction}",
   "brand_tag": "清扬",
@@ -167,12 +169,50 @@
       "ICL_uranus_zh_female_chunchenvsheng_tob",
       "zh_female_meilinvyou_uranus_bigtts",
       "ICL_uranus_zh_female_meilinvyou_tob",
-      "zh_male_cixingjieshuonan_uranus_bigtts"
+      "zh_male_cixingjieshuonan_uranus_bigtts",
+      "zh_female_kailangjiejie_uranus_bigtts",
+      "zh_female_shuangkuaisisi_uranus_bigtts",
+      "zh_female_liuchangnv_uranus_bigtts",
+      "ICL_uranus_zh_female_zhixingwenwan_tob",
+      "ICL_uranus_zh_female_zhixinjiejie_tob",
+      "zh_female_qinqienv_uranus_bigtts",
+      "ICL_uranus_zh_female_tianmeihuopo_tob",
+      "ICL_uranus_zh_female_xingganyujie_tob",
+      "ICL_uranus_zh_male_cixingnansang_tob",
+      "zh_female_xingganyujie_uranus_bigtts",
+      "zh_female_zhixingwenwan_uranus_bigtts"
     ],
     "_note": "用户 11-09/11-10：配音像两个人。平台每段单独合成，部分音色段与段之间音高差很大（11.10 实测 80 条，最高一段比最低一段高 35%~51%）。voices 固定用实测稳定的音色（段间差 ≤1.25）；speech_rate 等全局设置原样保留。bad 列表是实测不稳或配不出来的，不用。",
     "voices_by_gender": {
       "男": [
-        "ICL_uranus_zh_male_cixingnansang_tob",
+        "zh_male_huolixiaoge_uranus_bigtts",
+        "ICL_uranus_zh_male_shuaizhenxiaohuo_tob",
+        "ICL_uranus_zh_male_huoposhuanglang_tob",
+        "ICL_uranus_zh_male_shuanglangxiaoyang_tob"
+      ],
+      "女": [
+        "zh_female_chunribu_uranus_bigtts",
+        "zh_female_gujie_uranus_bigtts",
+        "zh_female_tvbnv_uranus_bigtts",
+        "ICL_uranus_zh_female_kailangtingting_tob"
+      ],
+      "男女": [
+        "zh_male_huolixiaoge_uranus_bigtts",
+        "ICL_uranus_zh_male_shuaizhenxiaohuo_tob",
+        "ICL_uranus_zh_male_huoposhuanglang_tob",
+        "ICL_uranus_zh_male_shuanglangxiaoyang_tob",
+        "zh_female_gujie_uranus_bigtts",
+        "zh_female_tvbnv_uranus_bigtts",
+        "ICL_uranus_zh_female_kailangtingting_tob",
+        "zh_female_chunribu_uranus_bigtts"
+      ]
+    },
+    "_gender_note": "用户 11-10：清扬 2X、呼吸瓶配音男女声都要用，不能只有男声；二硫化硒女声",
+    "_bad_note": "11-10 实测：磁性解说男声 24 条平均段间差 1.25、5 条 ≥1.35，另外 3 个男声平均 1.09~1.15、0 条；移出",
+    "voices_by_gender_before_1119": {
+      "男": [
+        "zh_male_huolixiaoge_uranus_bigtts",
+        "ICL_uranus_zh_male_shuaizhenxiaohuo_tob",
         "ICL_uranus_zh_male_huoposhuanglang_tob",
         "ICL_uranus_zh_male_shuanglangxiaoyang_tob"
       ],
@@ -185,9 +225,20 @@
         "ICL_uranus_zh_female_xingganyujie_tob"
       ],
       "男女": [
-        "ICL_uranus_zh_male_cixingnansang_tob",
+        "zh_male_huolixiaoge_uranus_bigtts",
+        "ICL_uranus_zh_male_shuaizhenxiaohuo_tob",
         "ICL_uranus_zh_male_huoposhuanglang_tob",
         "ICL_uranus_zh_male_shuanglangxiaoyang_tob",
+        "zh_female_gujie_uranus_bigtts",
+        "zh_female_tvbnv_uranus_bigtts",
+        "ICL_uranus_zh_female_kailangtingting_tob",
+        "zh_female_chunribu_uranus_bigtts"
+      ]
+    },
+    "_net_note_1119": "用户 11-19：发音人不要温温柔柔，要有网感、有激情。2X / 呼吸瓶（男女）换成：活力小哥、率真小伙、活泼爽朗、爽朗小阳（男）+ 顾姐、TVB女声、开朗婷婷、春日部姐姐（女）。实测 10 段段间音高差 1.15~1.26（≤1.35 才用）。没过的：解说小明 1.33、快乐小东 1.29、阳光青年 1.31、活泼男友 1.35、开朗姐姐 1.40、爽快思思 1.34、流畅女声 1.38。二硫化硒（女）不变。旧列表留在 voices_by_gender_before_1119",
+    "_female_note_1119": "用户 11-19：清扬发音人不要温温柔柔，要有网感。二硫化硒女声 = 春日部姐姐、顾姐、TVB女声、开朗婷婷（11-19 十段音高测试 1.18~1.26，runs/20261119/voice-audition/result.json）。开朗姐姐 1.40、爽快思思 1.34、流畅女声 1.38 段间差太大，进 bad_voices",
+    "voices_removed_1119": {
+      "女": [
         "ICL_uranus_zh_female_zhixingwenwan_tob",
         "zh_female_chunribu_uranus_bigtts",
         "ICL_uranus_zh_female_tianmeihuopo_tob",
@@ -196,8 +247,8 @@
         "ICL_uranus_zh_female_xingganyujie_tob"
       ]
     },
-    "_gender_note": "用户 11-10：清扬 2X、呼吸瓶配音男女声都要用，不能只有男声；二硫化硒女声",
-    "_bad_note": "11-10 实测：磁性解说男声 24 条平均段间差 1.25、5 条 ≥1.35，另外 3 个男声平均 1.09~1.15、0 条；移出"
+    "_slow_note_1119": "用户 11-19 客户反馈：有女生讲话很慢、不符合。温柔慢速音色（知性温婉、知心姐姐、亲切女声、甜美活泼、性感御姐）和磁性男嗓进 bad_voices，已交付的换音色重配",
+    "_ban_note_1119b": "用户 11-19：林黛玉（性感御姐）、志林姐姐（知性温婉）这类慢声音 ban 掉"
   },
   "banned_footage_words": [
     "头皮屑",
@@ -335,5 +386,21 @@
       "AI脸",
       "标准美女"
     ]
-  }
+  },
+  "bgm_categories": [
+    "电商促销-快节奏",
+    "节奏感",
+    "节奏感3.0",
+    "卡点",
+    "动感",
+    "Exciting",
+    "清扬专属bgm"
+  ],
+  "_bgm_note": "用户 11-19：清扬 BGM 要有节奏感、有激情。submit 用这些分类替换平台提示词随机挑的（原来含治愈 / 清新 / 氛围感，偏柔）",
+  "bgm_volume": 0.25,
+  "_bgm_volume_note": "用户 11-19：清扬 BGM 0.08 听不到（比口播低约 14dB）。实测 0.25 时 BGM 约 -27dB、口播约 -23dB，节奏清楚不压口播",
+  "sfx_volume": 0.35,
+  "_sfx_volume_note": "用户 11-19 客户反馈：产品放礼花的特效声太大、突兀。平台音效默认 1.0，渲染前统一压到 0.35",
+  "no_confetti": true,
+  "_no_confetti_note": "用户 11-19：礼花（彩带炸开 + 礼炮音效）不要每条都加，太吵；渲染前去掉，只留最后一句的箭头"
 }

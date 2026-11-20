@@ -15,7 +15,7 @@
   "_daily_quota_note": "按周排产（QC 文档 Part2 总计数量），每批做哪些产品、多少条开工前问用户",
   "brief_prefix": "D",
   "brief_size": 10,
-  "generate_factor": 2,
+  "generate_factor": 1,
   "generate_chunk": 15,
   "store_to_product": {},
   "banned_words": {
@@ -94,7 +94,9 @@
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
     "mode": "global",
-    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）",
+    "ai_only": true,
+    "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "campaign": null,
   "tts": {
@@ -136,5 +138,6 @@
     "notify_chat_id": null
   },
   "_tts_note": "QC Dove-多啦 / DOVE-PW：湾湾小何、直率英子语速忽快忽慢，不要用",
-  "_banned_footage_note": "素材描述里有这些词的，成片不交付（poll 拦）。规则来源和各品牌的 AIGC 要求见 references/aigc-standards.md"
+  "_banned_footage_note": "素材描述里有这些词的，成片不交付（poll 拦）。规则来源和各品牌的 AIGC 要求见 references/aigc-standards.md",
+  "_generate_factor_note": "用户 11-19：之后实际需要多少条就产多少条，不再双倍生成；不够数再用 topup 按缺口补"
 }

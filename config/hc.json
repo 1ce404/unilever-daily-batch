@@ -17,7 +17,7 @@
   "_daily_quota_note": "还没定每天做哪些产品、多少条：团队稿是每批按「产品 × 视频类型 × 人群 × 痛点」排，每行 2~15 条；开工前问用户，按产品 key 填进来（或用 parse_schedule --product）",
   "brief_prefix": "H",
   "brief_size": 10,
-  "generate_factor": 2,
+  "generate_factor": 1,
   "generate_chunk": 15,
   "store_to_product": {},
   "banned_words": {
@@ -101,7 +101,9 @@
     "position": "bottom_right",
     "_note": "用户 11-06：清扬和力士的视频右下角都要加「AI生成」合规水印（平台生成参数 add_compliance_watermark / compliance_watermark_position）",
     "mode": "global",
-    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）"
+    "_mode_note": "11-09 平台新增 compliance_watermark_mode，默认 segments＝只给 AI 生成的切片打水印，我们的素材不是 AI 生成的，所以 11.9 力士 100 条全没水印。必须传 global（整片铺满）",
+    "ai_only": true,
+    "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "campaign": null,
   "tts": {
@@ -142,5 +144,6 @@
     "doc_parent_token": null,
     "notify_chat_id": null
   },
-  "_platform_note_1117": "11-17 平台 21 个产品已有素材（270~530 条可用）；建脚本 / 改写 / 审核提示词按 QC 写好（氛围感 BGM、逛逛结尾箭头左下角且放大、产品名不断句）。之前别人加在 9 个产品提示词末尾的「1120批次产品信息及卖点」原样保留"
+  "_platform_note_1117": "11-17 平台 21 个产品已有素材（270~530 条可用）；建脚本 / 改写 / 审核提示词按 QC 写好（氛围感 BGM、逛逛结尾箭头左下角且放大、产品名不断句）。之前别人加在 9 个产品提示词末尾的「1120批次产品信息及卖点」原样保留",
+  "_generate_factor_note": "用户 11-19：之后实际需要多少条就产多少条，不再双倍生成；不够数再用 topup 按缺口补"
 }
