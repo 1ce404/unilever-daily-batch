@@ -2,7 +2,7 @@
 # [INPUT]: 依赖 Python 标准库读取配置、解析表格与计算文案指纹。
 #          通过 lark-cli 读取飞书文档；读取品牌、产品配置与金标脚本。
 # [OUTPUT]: 提供配置合并、飞书读取、表格解析、分句与字幕宽度计算。
-#           提供 brief 筛选、文案与 demo 人审校验、品牌文件命名。
+#           提供 brief 筛选、文案、AIGC 素材与 demo 人审校验、品牌文件命名；demo 默认对所有品牌开启。
 # [POS]: scripts 的共享规则底座；排期、文案、人审与批量入口依赖它。
 #        人审凭据绑定文案指纹，防止改稿沿用旧批准。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -140,9 +140,31 @@ def approval_problem(brief):
 
 
 def demo_first(cfg, brief):
-    """User 11-17 (HC): script review → one demo per script → human review of the demo → then bulk. True when the
-    brand (config `demo_first`) or the brief says so."""
-    return bool(brief.get("demo_first", cfg.get("demo_first", False)))
+    """用户 11-22：所有品牌都走 脚本人审 →（AIGC 素材人审）→ 每个脚本 1 条 demo 人审 → 量产。
+    默认开启；只有 brief / config 显式写 false 才跳过（须是用户原话授权）。"""
+    return bool(brief.get("demo_first", cfg.get("demo_first", True)))
+
+
+def aigc_tags(brief):
+    """brief 画面计划里引用的 AI 素材标签（以「AI」开头）。"""
+    return sorted({t for sg in brief.get("segments") or []
+                   for t in (sg.get("visual_tags") or []) + ((sg.get("footage_pool") or {}).get("tags") or [])
+                   if t.startswith("AI")})
+
+
+def aigc_problem(brief):
+    """用户 11-22：脚本要用 AIGC 素材时，素材先给人审，通过后才出 demo。None = 可以提交。
+    审核凭据记住当时审过的标签；画面计划新增未审的 AI 标签要重新给人看。"""
+    tags = aigc_tags(brief)
+    if not tags:
+        return None
+    a = brief.get("aigc_approval") or {}
+    if not a.get("by"):
+        return f"AIGC 素材 {tags} 还没人审过（review_doc.py approve-aigc）"
+    missing = sorted(set(tags) - set(a.get("tags") or []))
+    if missing:
+        return f"{a['by']} 审过素材之后画面计划又加了 {missing}，要重新给人看"
+    return None
 
 
 def demo_problem(brief):

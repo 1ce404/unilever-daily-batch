@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# [INPUT]: 依赖 common 的文案指纹、人审与 AIGC 素材校验；依赖 lint_copy 的文案门禁；lark-cli 读飞书文档。
+# [OUTPUT]: 提供 render / sync / approve / approve-aigc / approve-demo 命令。
+# [POS]: scripts 的人审记录唯一入口。三道人审按顺序：脚本 → AIGC 素材（要用时）→ demo；前一道没过不记后一道。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Render the day's briefs for human review, and read reviewer edits back.
 
     # 1) build the review doc body (Lark XML) + a local markdown copy
@@ -11,6 +15,7 @@
 
     # or: the reviewer approved outside Feishu (said so in chat) — record who and their words
     python3 scripts/review_doc.py approve --config qingyang --run runs/20261030 --brief 1030-B01 --by 用户 --note "这几条通过"
+    # 用户 11-22 流程：脚本人审 →（用 AI 素材时）素材人审 approve-aigc → demo 人审 approve-demo → 量产
 
 The 文案 cell lists each segment as one line, 【S1 钩子】 followed by that segment's sentence; reviewers
 edit the sentence in place. The 审核 cell takes 通过 / 驳回 / 修改意见.
@@ -26,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import seg_alts, SKILL_DIR, copy_hash, day_briefs, lark_fetch, load_config, out_name, parse_table
 from lint_copy import lint_brief, lint_day, lint_variety, seg_text
-from common import voiced, approval_problem
+from common import voiced, approval_problem, aigc_problem, aigc_tags
 
 ROLE_CN = {"hook": "钩子", "pain": "痛点", "product": "产品", "selling": "卖点", "effect": "体感", "cta": "CTA"}
 HEAD = ["结构", "店铺 / 产品", "内容方向", "测试卖点", "测试人群", "文案", "和旧稿比", "QC 提醒", "审核"]
@@ -207,17 +212,34 @@ def approve_demo(cfg, run, ids, by, note):
     for bid in ids:
         p = run / "briefs" / f"{bid}.json"
         b = json.loads(p.read_text())
-        if approval_problem(b):
-            print(f"❌ {bid} 脚本本身还没审过（{approval_problem(b)}），不能记 demo 通过")
+        if approval_problem(b) or aigc_problem(b):
+            print(f"❌ {bid} 前一步还没审过（{approval_problem(b) or aigc_problem(b)}），不能记 demo 通过")
             continue
         b["demo_approval"] = {"by": by, "note": note, "at": time.strftime("%Y-%m-%d %H:%M"), "copy_hash": copy_hash(b)}
         p.write_text(json.dumps(b, ensure_ascii=False, indent=2))
         print(f"✅ {bid} demo 已记为 {by} 审核通过，下一步 clipo_batch.py submit 量产")
 
 
+def approve_aigc(cfg, run, ids, by, note):
+    """用户 11-22：AIGC 素材生成后先给人审，通过了才出 demo。记录审核人原话与当时画面计划里的 AI 标签。"""
+    for bid in ids:
+        p = run / "briefs" / f"{bid}.json"
+        b = json.loads(p.read_text())
+        if approval_problem(b):
+            print(f"❌ {bid} 脚本本身还没审过（{approval_problem(b)}），不能记素材通过")
+            continue
+        tags = aigc_tags(b)
+        if not tags:
+            print(f"⏭  {bid} 画面计划没有 AI 素材标签，不需要素材人审")
+            continue
+        b["aigc_approval"] = {"by": by, "note": note, "at": time.strftime("%Y-%m-%d %H:%M"), "tags": tags}
+        p.write_text(json.dumps(b, ensure_ascii=False, indent=2))
+        print(f"✅ {bid} AIGC 素材 {tags} 已记为 {by} 审核通过，下一步 clipo_batch.py submit 出 demo")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["render", "sync", "approve", "approve-demo"])
+    ap.add_argument("cmd", choices=["render", "sync", "approve", "approve-aigc", "approve-demo"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--doc")
@@ -233,7 +255,8 @@ def main():
     else:
         if not (args.brief and args.by and args.note):
             raise SystemExit(f"{args.cmd} 要写 --brief、--by（审核人）和 --note（审核人原话）")
-        (approve_demo if args.cmd == "approve-demo" else approve)(cfg, run, args.brief, args.by, args.note)
+        {"approve": approve, "approve-aigc": approve_aigc, "approve-demo": approve_demo}[args.cmd](
+            cfg, run, args.brief, args.by, args.note)
 
 
 if __name__ == "__main__":

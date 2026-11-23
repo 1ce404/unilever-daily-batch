@@ -16,7 +16,7 @@
 | `products.*.collection_labels` | 脚本合集里这个产品那几行怎么称呼（如「控油蓬松洗发水」「小香瓶」），任务卡靠它找团队交付过的稿 |
 | `naming` | 品牌的命名规则 |
 | `daily_quota` / `schedule_format` / `brief_prefix` | 没有排期表的品牌写每天固定的产品和条数（例 `config/lux.json`）；按周、按结构排期的写 `"schedule_format": "weekly"` 和 `structures`（例 `config/ahc.json`）；brief 编号前缀区分品牌 |
-| `demo_first` | 先出 demo 人审再量产的品牌写 `true` |
+| `demo_first` | 默认 `true`（所有品牌先出 demo）；只有用户明说不用 demo 时写 `false` |
 
 **配音、字幕、BGM、画面、贴图、音效不在 skill 里配**：在平台给该产品写好提示词 `video_script_create`（QC 文档里的限制，如 AHC 只要女声、只要蓝底白字字幕，HC 要氛围感 BGM，都写进去）。这一步由用户在平台做。
 

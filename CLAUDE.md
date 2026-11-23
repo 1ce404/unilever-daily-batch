@@ -2,7 +2,8 @@
 Python 3 + Clipo Remix REST + lark-cli + ffmpeg + NumPy
 
 本 skill 按品牌配置拆排期、出审核文档并生成成片。
-文案先经人审，平台逐字建脚本并逐段启用改写。
+流程三道人审：脚本 →（AIGC 素材）→ 1 条 demo，通过后量产。
+平台逐字建脚本并逐段启用改写。
 批次输入、状态与交付写入调用方指定的 run 目录。
 
 <directory>
@@ -11,10 +12,11 @@ references/ - 文案、QC、接口与 AIGC 规则；见 references/CLAUDE.md
 config/ - 品牌共用配置、产品配置与品线映射；见 config/CLAUDE.md
 gold/ - 按品牌保存的团队金标脚本
 tests/ - 离线状态、标签与返工安全回归；见 tests/CLAUDE.md
+templates/ - 帧驱动透明特效源码与参数；见 templates/CLAUDE.md
 </directory>
 
 <config>
-SKILL.md - 业务流程与执行边界入口
+SKILL.md - 主流程、提速要点与铁律入口；返工命令在 references/rework.md
 README.md - skill 使用说明入口
 .gitignore - Git 文件排除规则
 CLAUDE.md - 本 skill 的目录地图与职责边界
