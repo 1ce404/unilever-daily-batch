@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 依赖 clipo_batch 的配置、素材索引与 AI 镜头时段；读取剪辑草稿与审核状态。
-[OUTPUT]: 提供 cut_checks（单条机器检查）与 brief_checks（同一链接开头重复）；命令 qc 输出交付闸门报告。
+[OUTPUT]: 提供 cut_checks 与 brief_checks；开头去重尊重用户原话授权，并优先使用换后钩子。
 [POS]: scripts 的交付闸门。poll 渲染前写入单条结论，share 前按 brief 复核；不改草稿、不调写接口。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
@@ -16,8 +16,17 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import clipo_batch as cb
+# clipo_batch 以脚本运行时模块名是 __main__；再 import clipo_batch 会得到第二份、CFG 为 None 的副本
+# （11-20 poll 在这里崩：cfg["products"] on None）。被 clipo_batch 调用时用正在跑的那一份
+_main = sys.modules.get("__main__")
+if getattr(_main, "cmd_poll", None):
+    cb = _main
+else:
+    import clipo_batch as _cb
 from common import load_config
+
+# clipo_batch 当脚本跑时是 __main__，它的 CFG/BASE 不在另一份 import 的 clipo_batch 里（11-20 poll 因 CFG=None 崩）
+cb = sys.modules.get("__main__") if getattr(sys.modules.get("__main__"), "CFG", None) else _cb
 
 
 def _name(clip):
@@ -43,7 +52,10 @@ def cut_checks(brief, draft, voice=None):
         if [(c["from"], c["durationInFrames"]) for c in wm] != want:
             out.append("角标时段和 AI 镜头不一致（实拍不加、AI 镜头要加）")
     # ---------- BGM 音量 ----------
-    vol = cfg.get("bgm_volume")
+    vol, voice_vol = cb.mix_volumes(pk)
+    if voice_vol is not None and any(abs((c["props"].get("volume") or 0) - voice_vol) > 1e-6
+                                     for c in clips if c.get("trackId") == "voiceover"):
+        out.append(f"口播音量不是 {voice_vol}")
     if vol is not None:
         bgm = [c for c in clips if c.get("trackId") == "audio"]
         if not bgm:
@@ -69,9 +81,11 @@ def cut_checks(brief, draft, voice=None):
 
 def brief_checks(brief, videos):
     """Problems across the videos picked for one link: openers must all differ (用户 11-19)."""
+    if brief.get("hook_repeat_ok"):
+        return []
     seen, out = {}, []
     for k, v in videos:
-        first = (v.get("pinned_clips") or [None])[0] or v.get("hook_clip")
+        first = cb.opener_clip(v)
         if first and first in seen:
             out.append(f"{k} 开头和 {seen[first]} 是同一条素材")
         elif first:

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 依赖 clipo_batch 的 API 与分享视频契约；读取用户指定的新渲染交付清单。
-[OUTPUT]: 提供 share、batch、collect 与 replace；收组或替换时保留原分享链接。
-[POS]: scripts 的新分享交付入口；batch 写前记意图，写后存收据，逐组逐分享回读。
+[OUTPUT]: 提供 share、batch、pack、collect 与 replace；收组或替换时保留原分享链接。
+[POS]: scripts 的新分享交付入口；写前记意图，写后存收据并完整回读。
+       pack 合并同产品十条新版，不创建分组；复用 batch_video 的产品与对象门禁。
+       默认要求平台审核通过；用户明确自行检查时，只跳过内容审核，不伪造通过。
        不修改脚本或审核；不删除或更新旧分享。
+       剪辑产品元数据为空时，仍以必读脚本核对产品归属。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import argparse
@@ -150,15 +153,21 @@ def validate_batch(cfg, plan):
 
 def batch_video(entry, video):
     cid, expected = video['cut_id'], video['expected_output_object_key']
+    policy = entry.get('content_review')
+    manual = 'content_review' in entry
+    if manual and (not isinstance(policy, dict) or policy.get('mode') != 'user'
+                   or policy.get('by') != '用户' or not isinstance(policy.get('instruction'), str)
+                   or not policy['instruction'].strip()):
+        raise RuntimeError('用户自行检查须有明确原话与检查者，不能伪造审核通过')
 
     def check_cut(cut):
         if cut.get('script_id') != entry['script_id']:
             raise RuntimeError(f'{cid} 脚本不匹配')
-        if 'product_id' in cut and cut['product_id'] != entry['product_id']:
+        if cut.get('product_id') is not None and cut['product_id'] != entry['product_id']:
             raise RuntimeError(f'{cid} 产品不匹配')
         if cut.get('output_status') != 'success' or cut.get('output_object_key') != expected:
             raise RuntimeError(f'{cid} 指定输出未成功或已变化')
-        if cut.get('ai_review_status') != 'success' or cut.get('ai_review_result') != 'pass':
+        if not manual and (cut.get('ai_review_status') != 'success' or cut.get('ai_review_result') != 'pass'):
             raise RuntimeError(f'{cid} 最新审核未通过')
 
     check_cut(cb.api('GET', f'/video-cuts/{cid}'))
@@ -327,6 +336,42 @@ def batch(cfg, args):
         run_batch(plan, root)
 
 
+def pack(cfg, args):
+    """将同产品十条新版合成独立分享；默认须审核通过，用户可明确自行检查。"""
+    plan = load(args.plan)
+    entries = plan.get('entries') or []
+    if not plan.get('instruction') or not plan.get('title') or len(entries) != 10:
+        raise RuntimeError('合并交付须有授权、名称与精确十条视频')
+    ids = [entry['cut_id'] for entry in entries]
+    products = {entry['product_key'] for entry in entries}
+    if len(set(ids)) != 10 or len(products) != 1:
+        raise RuntimeError('十条剪辑须唯一且属于同一个产品')
+    pid = cfg['products'][next(iter(products))]['clipo_product_id']
+    payload = {'title': plan['title'], 'product_id': pid, 'video_name_prefix': plan['title'] + '-',
+               'videos': [batch_video({'script_id': entry['script_id'], 'product_id': pid,
+                                       **({'content_review': plan['content_review']} if 'content_review' in plan else {})}, entry)
+                          for entry in entries]}
+    print('仅新建或复用一个十条新版分享；不创建分组，不删除旧链接', flush=True)
+    if args.dry_run:
+        return
+    root = Path(args.out)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / 'pack-links.json'
+    journal = load(path) if path.exists() else {'plan': plan, 'operations': {}}
+    if journal['plan'] != plan:
+        raise RuntimeError('已有收据属于另一份合并交付清单')
+    created = batch_post(path, journal, 'pack-share', '/video-shares', payload)
+    current = cb.api('GET', '/video-shares/' + created['id'])
+    verify_share(current, payload)
+    if current.get('product_id') != pid:
+        raise RuntimeError('合并分享读回的产品不一致')
+    save(root / 'pack-readback.json', current)
+    journal.update(verified=True, url=cb.share_url(created['id']),
+                   content_review=plan.get('content_review') or {'mode': 'platform'})
+    save_journal(path, journal)
+    print('DELIVERY_LINK', journal['url'], '视频数', len(current['videos']), flush=True)
+
+
 def collect(cfg, args):
     """仅把用户指定的既有分享收进新组，保留原分享和其他分组。"""
     plan = load(args.plan)
@@ -431,7 +476,7 @@ def replace(cfg, args):
 
 def main():
     ap = argparse.ArgumentParser(description='指定新渲染的交付分享；不删旧链接')
-    ap.add_argument('cmd', choices=['share', 'batch', 'collect', 'replace'])
+    ap.add_argument('cmd', choices=['share', 'batch', 'pack', 'collect', 'replace'])
     ap.add_argument('--config', required=True)
     ap.add_argument('--plan', required=True)
     ap.add_argument('--out', required=True)
@@ -439,7 +484,7 @@ def main():
     args = ap.parse_args()
     cfg = load_config(args.config)
     cb.BASE, cb.CFG = cfg['clipo']['base_url'].rstrip('/') + '/api/v1', cfg
-    {'share': share, 'batch': batch, 'collect': collect, 'replace': replace}[args.cmd](cfg, args)
+    {'share': share, 'batch': batch, 'pack': pack, 'collect': collect, 'replace': replace}[args.cmd](cfg, args)
 
 
 if __name__ == '__main__':

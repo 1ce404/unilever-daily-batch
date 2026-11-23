@@ -1,14 +1,17 @@
 """
 [INPUT]: 依赖 clipo_batch 的 dry_run_gate、gen_quantity；依赖 qc 的 brief_checks；依赖 lint_copy 的 lint_visual_plan。
-[OUTPUT]: 验证不双倍产、无 dry-run 收据不提交、开头重复拦截、产品名与成分同句报错、每段必须写画面。
+[OUTPUT]: 验证提交门禁、单条合格素材固定、分享范围、必填剪辑编号与审核版本固定、画面计划与钩子授权；去花字保留转场，禁用画面只换原速足长源片；状态合并保持条目引用，复审拒绝旧输出与跳过受理；分享替换写前备份，保留旧链接并逐条回读新版对象。
 [POS]: tests 的交付闸门与提交门禁回归；不调用平台接口。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import sys
+import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import clipo_batch as cb
@@ -25,6 +28,93 @@ class GateTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
+    def test_state_save_keeps_batch_entry_references(self):
+        st = cb.State(self.tmp.name)
+        st.videos.update({"a": {"stage": "done"}, "b": {"stage": "done"}})
+        st.save()
+        batch = list(st.videos.values())
+        batch[0]["stage"] = "rendering"
+        st.save()
+        self.assertIs(batch[1], st.videos["b"])
+        batch[1]["stage"] = "rendering"
+        st.save()
+        disk = json.loads(st.path.read_text())
+        self.assertEqual([v["stage"] for v in disk["videos"].values()], ["rendering", "rendering"])
+
+    def test_rereview_binds_latest_output_and_checks_receipt(self):
+        for queued in (1, 0):
+            with self.subTest(queued=queued), tempfile.TemporaryDirectory() as root:
+                cb.CFG = {"brand_key": "qingyang", "products": {"p": {}}}
+                st = cb.State(root)
+                st.videos["V1"] = {"brief_id": "B1", "cut_id": "cut", "stage": "done",
+                                   "object_key": "old.mp4", "render_job": "old-job",
+                                   "ai_review": "pass", "bad_footage": ["旧禁用源片"]}
+                st.save()
+                brief = {"brief_id": "B1", "product_key": "p", "segments": [], "disable_effects": True}
+                cut = {"output_status": "success", "output_object_key": "new.mp4",
+                       "ai_review_result": None, "ai_review_reason": "", "draft": {"clips": []}}
+                def api(method, path, body=None, **kwargs):
+                    if method == "GET":
+                        return cut
+                    self.assertEqual(body, {"cut_ids": ["cut"]})
+                    self.assertEqual(kwargs["tries"], 1)
+                    return {"queued": queued, "skipped": 1 - queued}
+                args = SimpleNamespace(brief=None, all=True, dry_run=False)
+                with patch.object(cb, "api", side_effect=api), patch.object(cb, "load_briefs", return_value=[brief]), \
+                     patch.object(cb, "lint_script", return_value=[]), patch.object(cb, "bad_footage", return_value=[]), \
+                     patch("qc.cut_checks", return_value=[]):
+                    if queued:
+                        cb.cmd_rereview(cb.CFG, root, args)
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            cb.cmd_rereview(cb.CFG, root, args)
+                video = cb.State(root).videos["V1"]
+                self.assertEqual(video["object_key"], "new.mp4")
+                self.assertEqual(video["previous_object_key"], "old.mp4")
+                self.assertEqual(video["bad_footage"], [])
+                self.assertNotIn("render_job", video)
+                self.assertIsNone(video["ai_review"])
+                self.assertEqual(video["stage"], "reviewing" if queued else "done")
+
+    def test_remove_effects_preserves_other_tracks(self):
+        draft = {"composition": {"fps": 30}, "tracks": [{"id": "effect"}], "clips": [
+            {"id": "e1", "trackId": "effect", "props": {"text": "错误花字"}},
+            {"id": "1-1", "trackId": "main", "props": {"transition": "whiteFlash"}},
+            {"id": "s1", "trackId": "overlay", "props": {"text": "口播字幕"}},
+            {"id": "a1", "trackId": "audio", "props": {"volume": 0.2}}]}
+        original = copy.deepcopy(draft)
+        out = cb.without_effects(draft)
+        self.assertEqual(draft, original)
+        self.assertEqual(out["clips"], draft["clips"][1:])
+        self.assertEqual(out["tracks"], draft["tracks"])
+        self.assertEqual(cb.without_effects(out), out)
+
+    def test_banned_replacement_measures_source_and_keeps_timing(self):
+        cb.CFG = {"products": {"p": {}}, "banned_footage_files": {"bad.mp4": "皮屑"}}
+        brief = {"product_key": "p", "segments": [{"visual_tags": ["产品质地"]}]}
+        draft = {"composition": {"fps": 30}, "clips": [
+            {"id": "1-1", "trackId": "main", "from": 3, "durationInFrames": 60,
+             "props": {"src": "https://x/bad.mp4", "transition": "whiteFlash", "loop": True}},
+            {"id": "s1", "trackId": "overlay", "props": {"text": "原字"}}]}
+        idx = {"bad.mp4": {"description": "皮屑"}, "good.mp4": {
+            "id": "a", "object_url": "https://x/good.mp4", "review_result": "pass",
+            "tags": ["产品质地"], "begin_ms": 0, "end_ms": 5000}}
+        def fetch(url, dest):
+            Path(dest).write_bytes(b"test")
+        with patch.object(cb, "footage_index", return_value=idx), patch.object(cb, "fetch_file", side_effect=fetch), \
+             patch("footage_qc.probe", return_value={"format": {"duration": "3.0"}}):
+            out, changes = cb.replace_banned_shots(brief, draft, "cut", self.tmp.name)
+        self.assertEqual(out["clips"][0]["from"], 3)
+        self.assertEqual(out["clips"][0]["durationInFrames"], 60)
+        self.assertEqual(out["clips"][0]["props"]["playbackRate"], 1.0)
+        self.assertEqual(out["clips"][0]["props"]["transition"], "whiteFlash")
+        self.assertEqual(out["clips"][1], draft["clips"][1])
+        self.assertEqual(len(changes), 1)
+        with patch.object(cb, "footage_index", return_value=idx), \
+             patch("footage_qc.probe", return_value={"format": {"duration": "1.0"}}):
+            with self.assertRaises(RuntimeError):
+                cb.replace_banned_shots(brief, draft, "cut", self.tmp.name)
+
     def test_never_doubles_from_config(self):
         self.assertEqual(cb.gen_quantity(cb.CFG, {'quantity': 10}, SimpleNamespace(factor=None)), 10)
 
@@ -40,6 +130,138 @@ class GateTest(unittest.TestCase):
     def test_repeated_openers_blocked(self):
         vids = [('V1', {'pinned_clips': ['a']}), ('V2', {'pinned_clips': ['a']}), ('V3', {'pinned_clips': ['b']})]
         self.assertEqual(len(brief_checks({}, vids)), 1)
+
+    def test_hook_assignment_keeps_existing_distinct_sources(self):
+        videos = [("kept1", {"hook_clip": "b"}), ("new", {"pinned_clips": ["b"]}),
+                  ("kept2", {"pinned_clips": ["c"]})]
+        self.assertEqual(cb.hook_assignments(["a", "b", "c"], videos),
+                         {"kept1": "b", "kept2": "c", "new": "a"})
+
+    def test_one_approved_source_can_pin_a_pain_segment(self):
+        cb.CFG = {"products": {"selenium": {"clipo_product_id": "pid"}}}
+        hit = {"score": 0.95, "segment": {"id": "oil", "name": "拨油塌发根",
+               "description": "油头实拍", "review_result": "pass", "begin_ms": 0, "end_ms": 10060}}
+        args = SimpleNamespace(product="selenium", tags="1016-洗头", query="拨油塌发根",
+                               allow_risk=False, size=1, brief=None, seg=None)
+        with patch.object(cb, "api", return_value={"items": [hit]}), \
+             patch.object(cb, "banned_words_for", return_value=[]):
+            cb.cmd_pool(cb.CFG, self.tmp.name, args)
+
+    def test_share_replacement_backs_up_and_keeps_old_link(self):
+        cases = [{"video_object_key": "outputs/new.mp4"},
+                 {"video_url": "https://bucket.aliyuncs.com/outputs/new.mp4?signature=test"},
+                 {"video_object_key": "outputs/wrong.mp4"}]
+        for returned in cases:
+            with self.subTest(returned=returned), tempfile.TemporaryDirectory() as root:
+                cfg = {"brand_key": "qingyang", "products": {"p": {"clipo_product_id": "product"}}}
+                cb.CFG = cfg
+                st = cb.State(root)
+                st.data.update(share_group={"id": "group"}, briefs={"B1": {"script_id": "script"}},
+                               shares={"B1": {"id": "old", "title": "标题", "videos": ["old-video"]}})
+                st.videos["V1"] = {"cut_id": "cut", "object_key": "outputs/new.mp4"}
+                st.save()
+                brief = {"brief_id": "B1", "product_key": "p", "quantity": 1}
+                args = SimpleNamespace(brief=None, partial=False, refresh=False, dry_run=False, download=False)
+                requests = []
+                def api(method, path, body=None, **kwargs):
+                    requests.append((method, path, body))
+                    if (method, path) == ("GET", "/video-shares/old"):
+                        return {"id": "old", "videos": []}
+                    if (method, path) == ("GET", "/video-share-groups/group"):
+                        return {"id": "group", "shares": [{"id": "old"}, {"id": "new"}]}
+                    if (method, path) == ("POST", "/video-shares"):
+                        backups = list((Path(root) / "clipo").glob("share-replace-*.json"))
+                        self.assertEqual(len(backups), 1)
+                        self.assertEqual(json.loads(backups[0].read_text())["old_share"]["id"], "old")
+                        self.assertEqual(kwargs["tries"], 1)
+                        return {"id": "new"}
+                    if (method, path) == ("GET", "/video-shares/new"):
+                        return {"title": "标题", "videos": [returned]}
+                    if (method, path) == ("PATCH", "/video-share-groups/group"):
+                        self.assertEqual(body, {"video_share_ids": ["new"]})
+                        return {}
+                    self.fail(f"禁止未声明的平台请求：{method} {path}")
+                valid = returned.get("video_object_key") != "outputs/wrong.mp4"
+                with patch.object(cb, "BASE", "https://offline.invalid/api/v1"), \
+                     patch.object(cb, "api", side_effect=api), patch.object(cb, "load_briefs", return_value=[brief]), \
+                     patch.object(cb, "validate_selection"), patch.object(cb, "picks", return_value=(["V1"], [])), \
+                     patch.object(cb, "delivery_name", return_value="标题"), patch("qc.brief_checks", return_value=[]), \
+                     patch.object(cb, "share_video", return_value={"cut_id": "cut", "video_object_key": "outputs/new.mp4"}), \
+                     patch.object(cb, "write_delivery"):
+                    if valid:
+                        cb.cmd_share(cfg, root, args)
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            cb.cmd_share(cfg, root, args)
+                self.assertFalse(any(method == "DELETE" for method, _, _ in requests))
+                self.assertEqual(cb.State(root).data["shares"]["B1"]["id"], "new" if valid else "old")
+                if not valid:
+                    self.assertFalse(any(method == "PATCH" for method, _, _ in requests))
+
+    def test_delivery_does_not_count_user_release_as_ai_pass(self):
+        st = cb.State(self.tmp.name)
+        st.videos["B1-V1"] = {"brief_id": "B1", "title": "成片", "cut_id": "cut",
+                              "stage": "done", "ai_review": None, "review_waived": "直接交付"}
+        brief = {"brief_id": "B1", "quantity": 1, "direction": "日常"}
+        with patch.object(cb, "BASE", "https://offline.invalid/api/v1"):
+            cb.write_delivery(st, {"B1": brief}, self.tmp.name)
+        text = (Path(self.tmp.name) / cb.out_name(cb.CFG, "delivery.md")).read_text()
+        self.assertIn("交付 1 / 1 条", text)
+        self.assertIn("AI 审核通过 0 条", text)
+        self.assertIn("由用户检查 1 条；不记作 AI 审核通过", text)
+
+    def test_share_video_includes_required_cut_id(self):
+        cut = {"output_object_key": "outputs/latest.mp4", "draft": {
+            "composition": {"durationInFrames": 810, "fps": 30, "width": 1080, "height": 1920},
+            "cover_url": "https://bucket.aliyuncs.com/cover.jpg?signature=test"}}
+        with patch.object(cb, "api", return_value=cut) as api:
+            payload = cb.share_video({"cut_id": "cut-123", "object_key": "outputs/old.mp4"})
+        api.assert_called_once_with("GET", "/video-cuts/cut-123")
+        self.assertEqual(payload["cut_id"], "cut-123")
+        self.assertEqual(payload["video_object_key"], "outputs/old.mp4")
+        self.assertEqual(payload["cover_object_key"], "cover.jpg")
+        self.assertEqual(payload["duration_seconds"], 27.0)
+        with patch.object(cb, "api", return_value=cut):
+            fallback = cb.share_video({"cut_id": "cut-123"})
+        self.assertEqual(fallback["video_object_key"], "outputs/latest.mp4")
+
+    def test_share_scope_isolates_one_delivery_family(self):
+        def brief(bid, product, store, pack):
+            return {"brief_id": bid, "product_key": product, "store": store,
+                    "date": "2026-11-20", "pack": pack}
+        bs = [brief("star", "selenium", "Cyber", False),
+              brief("ai1", "selenium", "Cyber", True),
+              brief("ai2", "selenium", "Cyber", True),
+              brief("other-product", "2x", "Cyber", True),
+              brief("other-store", "selenium", "旗舰店", True)]
+        self.assertEqual(set(cb.share_scope(bs, "star")), {"star"})
+        self.assertEqual(set(cb.share_scope(bs, "ai1")), {"ai1", "ai2"})
+        self.assertEqual(set(cb.share_scope(bs, "missing")), set())
+        self.assertEqual(len(cb.share_scope(bs)), 5)
+
+    def test_poll_only_touches_selected_brief(self):
+        state = SimpleNamespace(data={"briefs": {"chosen": {"stage": "generating"},
+                                               "other": {"stage": "generating"}}, "videos": {}},
+                                videos={}, save=lambda: None)
+        args = SimpleNamespace(brief="chosen", wait=0, interval=0)
+        brief = {"brief_id": "chosen"}
+        with patch.object(cb, "State", return_value=state), \
+             patch.object(cb, "load_briefs", return_value=[brief]), \
+             patch.object(cb, "pull_generation") as pull:
+            with self.assertRaises(SystemExit):
+                cb.cmd_poll({}, self.tmp.name, args)
+        self.assertEqual(pull.call_count, 1)
+        self.assertEqual(pull.call_args.args[2]["brief_id"], "chosen")
+
+    def test_user_can_authorize_repeated_star_openers(self):
+        vids = [("V1", {"pinned_clips": ["a"]}), ("V2", {"pinned_clips": ["a"]})]
+        self.assertEqual(brief_checks({"hook_repeat_ok": "可以重复（用户 11-20）"}, vids), [])
+
+    def test_replaced_hook_takes_priority(self):
+        vids = [("V1", {"pinned_clips": ["a"], "hook_clip": "b"}),
+                ("V2", {"pinned_clips": ["a"], "hook_clip": "c"})]
+        self.assertEqual(brief_checks({}, vids), [])
+        self.assertEqual(cb.opener_clip(vids[0][1]), "b")
 
     def test_name_and_ingredient_split(self):
         segs = [{'id': '1', 'role': 'product', 'text': '清扬控油蓬松洗发水，有SCA技术。', 'visual_tags': ['产品外观']}]

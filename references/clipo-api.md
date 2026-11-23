@@ -10,6 +10,25 @@ AI 建脚本 → 脚本批量生成混剪 → 批量渲染 → 批量 AI 审核 
 
 片子怎么剪（视频规格、配音、BGM、字幕、每段画面标签、贴图、音效、改写规则）都写在平台的产品提示词里，接口只负责把这条路跑通。文案由 Agent 写、人审，不让平台写。全部调用在 `scripts/clipo_batch.py`（`brief_card.py` 只读产品提示词）。
 
+## 六、透明自定义特效（`effects.py`）
+
+模板库与成片草稿是两层。只上传模板不改变旧成片。
+- `GET /resource/remotion-effect-folder`：返回已有目录及模板数。
+- `POST /resource/remotion-effect-template`：必填 `folderId/name/code`。可带 `params/width/height/fps/durationInFrames`。只能用已有目录。
+- `GET /resource/remotion-effect-template/{id}`：按返回 ID 回读源码、参数与规格。名称不唯一，不按名称重试创建。
+- 源码上限 200000 字符。保存不编译，上传成功不等于云端可运行。
+- 已验证入口为 `export const Composition`；依赖只用 React 与 Remotion。动画由帧时钟驱动。
+- 脚本段引用是 `effect.template_id/params`。旧成片执行 `RemotionClip.props.code/params`，应用时必须写入实际源码。
+- 模板兼容顶层 props 与嵌套 params，后者优先。默认参数无营销文案。
+- 写前保存意图与固定哈希。非幂等 POST 使用 `tries=1`；结果不确定就停止。
+- 草稿只允许 effect 变化，PUT 后完整回读。不一致不提交渲染。
+- 素材、封面与字体地址按原对象比较；只续签，不换对象。`inspect` 只读输出草稿差异。
+- 同一特效批次命令持有排他锁。上传与应用都要求一小时内匹配的 dry-run 收据。
+- 保存审核受理回执；未明确入队或未观察到新审核执行，不接收旧终态。
+- 单条云渲染、原平台审核与非默认参数验证全通过后才能批量。
+
+[PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
 ## 一、AI 建脚本（`submit`）
 
 文案是 Agent 照团队写法写、人审过的。`submit` 把它逐字交给平台建脚本，平台按产品提示词 `video_script_create` 配画面、配音、BGM、字幕、贴图、音效。

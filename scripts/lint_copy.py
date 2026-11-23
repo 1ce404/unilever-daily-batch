@@ -112,7 +112,10 @@ def lint_visual_plan(segs, product):
             out.append(("error", f"S{sid} 没写画面（visual_tags）：每段写稿时就定好配什么画面，不交给平台挑"))
             continue
         named = any(n and n in text for n in names)
-        if named and any(t in text for t in terms):
+        bare = text
+        for n in names:  # 11-20：「二硫化硒」本身在产品名「清扬二硫化硒蓝C瓶」里，去掉产品名再看有没有成分
+            bare = bare.replace(n, "") if n else bare
+        if named and any(t in bare for t in terms):
             out.append(("error", f"S{sid} 产品名和成分写在一句：拆成两段，产品名那段配{'/'.join(sorted(look))}，成分那段配质地"))
         elif named and tags and not tags & look and sg.get("role") != "cta":
             out.append(("error", f"S{sid} 念到产品名，画面配的是 {sorted(tags)}：产品亮相配{'/'.join(sorted(look))}"))
@@ -328,12 +331,14 @@ def lint_pools(brief, segs):
                 out.append(("error", f"S{sg.get('id')} footage_pool 要有 query、tags、score（用 clipo_batch.py pool 生成）"))
             if n < POOL_MIN:
                 out.append(("error", f"S{sg.get('id')} 素材池只有 {n} 条，至少 {POOL_MIN} 条同类素材（一个 brief 的视频才不会全是同一条）"))
-            elif k_open(segs, sg) and brief.get("quantity") and n < brief["quantity"] and not brief.get("pack"):
+            elif k_open(segs, sg) and brief.get("quantity") and n < brief["quantity"] and not brief.get("pack") \
+                    and not brief.get("hook_repeat_ok"):  # 用户点名同意开头重复时写原话（11-20 穆祉丞只有 5 条：「可以重复」）
                 out.append(("error", f"S{sg.get('id')} 开头素材池 {n} 条、交付 {brief['quantity']} 条：开头不能重复（用户 11-19），"
                                      f"先补到 {brief['quantity']} 条再提交；生成后 spread-hooks 逐条换开"))
             elif brief.get("quantity") and -(-brief["quantity"] // n) > 4:
                 out.append(("warn", f"S{sg.get('id')} 池子 {n} 条、交付 {brief['quantity']} 条，每条素材要用 {-(-brief['quantity'] // n)} 次，再多找几条"))
-        elif single and not brief.get("pack"):
+        elif single and not brief.get("pack") and not ((k_open(segs, sg) or sg.get("silent")) and brief.get("fixed_opener")):
+            # fixed_opener（用户原话）：爆款裂变要求每条都保留同一个原片开头（用户 11-20），开头重复是有意的
             out.append(("error", f"S{sg.get('id')} 只钉了一条素材，这个 brief 的视频画面会全一样：用 clipo_batch.py pool 做 {POOL_MIN} 条以上的素材池，"
                                  "或按素材拆小 brief 再 pack 合并交付"))
     return out
@@ -347,8 +352,8 @@ def lint_silent(segs):
         if not sg.get("silent"):
             continue
         f = sg.get("footage") or {}
-        if k != 0:
-            out.append(("error", f"S{sg.get('id')} 无口播原片段只能放第一段（开头）"))
+        if any(not x.get("silent") for x in segs[:k]):  # 11-20：原片开头超过 10 秒要拆成连续几段无口播，都在最前面
+            out.append(("error", f"S{sg.get('id')} 无口播原片段只能放在最前面（开头）"))
         if not sg.get("footage_pool") and not (f.get("segment_id") and f.get("query")):
             out.append(("error", f"S{sg.get('id')} 无口播原片段要写 footage_pool（clipo_batch.py pool 生成），或 footage.segment_id + footage.query"))
         if seg_text(sg).strip() or seg_alts(sg):

@@ -1,0 +1,37 @@
+{
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "durationInFrames": 42,
+  "templates": {
+    "sweep": {
+      "name": "力士｜香槟金扫光",
+      "source": "ChampagneSweep.tsx",
+      "params": {
+        "accent": "#E7C78B",
+        "intensity": 0.32,
+        "durationFrames": 42
+      }
+    },
+    "particles": {
+      "name": "力士｜香氛粒子",
+      "source": "FragranceParticles.tsx",
+      "params": {
+        "accent": "#E7C78B",
+        "intensity": 0.65,
+        "count": 16,
+        "seed": 7,
+        "durationFrames": 42
+      }
+    },
+    "glow": {
+      "name": "力士｜柔光弧线",
+      "source": "SilkGlow.tsx",
+      "params": {
+        "accent": "#EEC5D6",
+        "intensity": 0.48,
+        "durationFrames": 42
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 delivery_share 的单条交付、九十条批次与写入收据。
-[OUTPUT]: 验证配额、审核门禁、对象顺序、完整成员与不确定写入阻断。
+[OUTPUT]: 验证配额、审核门禁、对象顺序、完整成员与不确定写入阻断；用户检查仅豁免内容审核，十条合并只写独立分享。
 [POS]: tests 的交付安全回归；平台 API 全部使用离线桩，保留单条兼容测试。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -51,6 +51,57 @@ class DeliveryShareTest(unittest.TestCase):
         ds.verify_share({'title': '新版', 'videos': [{'video_url': 'https://host/outputs/new.mp4?sign=1'}]}, payload)
         with self.assertRaises(RuntimeError):
             ds.verify_share({'title': '新版', 'videos': [{'video_object_key': 'outputs/old.mp4'}]}, payload)
+
+
+class PackDeliveryTest(unittest.TestCase):
+    def test_ten_revised_outputs_create_one_share_and_preserve_old_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = {'instruction': '交付定点新版', 'title': '油头修订十条', 'entries': [
+                {'cut_id': f'c{i}', 'script_id': f's{i % 3}', 'product_key': 'product',
+                 'expected_output_object_key': f'outputs/new{i}.mp4'} for i in range(10)]}
+            path = ds.save(root / 'plan.json', plan)
+            args = SimpleNamespace(plan=path, out=str(root / 'out'), dry_run=True)
+            created = {}
+            def video(entry, item):
+                self.assertEqual(entry['product_id'], 'pid')
+                return {'cut_id': item['cut_id'], 'video_object_key': item['expected_output_object_key']}
+            def api(method, endpoint, body=None, **kwargs):
+                if method == 'POST':
+                    self.assertEqual(endpoint, '/video-shares')
+                    self.assertEqual(kwargs['tries'], 1)
+                    intent = ds.load(Path(args.out) / 'pack-links.json')['operations']['pack-share']
+                    self.assertEqual(intent['state'], 'intent')
+                    created.update(body, id='new-share')
+                    return {'id': 'new-share'}
+                self.assertEqual((method, endpoint), ('GET', '/video-shares/new-share'))
+                return copy.deepcopy(created)
+            with patch.object(ds, 'batch_video', side_effect=video), patch.object(ds.cb, 'BASE', 'https://offline.invalid/api/v1'), patch.object(ds.cb, 'api', side_effect=api) as mocked:
+                ds.pack({'products': {'product': {'clipo_product_id': 'pid'}}}, args)
+                mocked.assert_not_called()
+                args.dry_run = False
+                ds.pack({'products': {'product': {'clipo_product_id': 'pid'}}}, args)
+                ds.pack({'products': {'product': {'clipo_product_id': 'pid'}}}, args)
+                self.assertEqual(sum(c.args[0] == 'POST' for c in mocked.call_args_list), 1)
+            self.assertEqual(len(created['videos']), 10)
+            self.assertNotIn('group_id', created)
+            self.assertNotIn('script_id', created)
+            self.assertTrue(ds.load(Path(args.out) / 'pack-links.json')['verified'])
+
+    def test_pack_quantity_and_duplicate_gates_precede_platform_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = {'instruction': '交付新版', 'title': '十条', 'entries': [
+                {'cut_id': 'same', 'product_key': 'product'} for _ in range(10)]}
+            path = ds.save(Path(directory) / 'plan.json', plan)
+            args = SimpleNamespace(plan=path, out=directory, dry_run=False)
+            with patch.object(ds, 'batch_video') as mocked:
+                with self.assertRaises(RuntimeError):
+                    ds.pack({}, args)
+                plan['entries'].pop()
+                ds.save(path, plan)
+                with self.assertRaises(RuntimeError):
+                    ds.pack({}, args)
+                mocked.assert_not_called()
 
 
 def batch_plan():
@@ -144,6 +195,92 @@ class OfflinePlatform:
     @property
     def posts(self):
         return [call for call in self.calls if call[0] == 'POST']
+
+
+class UserContentReviewTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.platform = OfflinePlatform(batch_plan(), Path(self.temp.name))
+        self.entry = copy.deepcopy(batch_plan()['groups'][0]['entries'][0])
+        self.video = self.entry['videos'][0]
+        self.cid = self.video['cut_id']
+        self.platform.cuts[self.cid]['ai_review_result'] = 'reject'
+        self.policy = {'mode': 'user', 'instruction': '我来检查', 'by': '用户'}
+        self.addCleanup(patch.stopall)
+        patch.object(ds.cb, 'api', side_effect=self.platform.api).start()
+
+    def test_explicit_user_review_preserves_platform_rejection(self):
+        with self.assertRaisesRegex(RuntimeError, '最新审核'):
+            ds.batch_video(self.entry, self.video)
+        self.entry['content_review'] = self.policy
+        result = ds.batch_video(self.entry, self.video)
+        self.assertEqual(result['video_object_key'], self.video['expected_output_object_key'])
+        self.assertEqual(self.platform.cuts[self.cid]['ai_review_result'], 'reject')
+        self.assertEqual(self.platform.posts, [])
+
+    def test_invalid_user_policy_rejected_before_platform_reads(self):
+        for policy in (None, {}, 'user', dict(self.policy, mode='platform'),
+                       dict(self.policy, by='Agent'), dict(self.policy, instruction=' ')):
+            with self.subTest(policy=policy):
+                self.entry['content_review'] = policy
+                with self.assertRaisesRegex(RuntimeError, '用户自行检查'):
+                    ds.batch_video(self.entry, self.video)
+        self.assertEqual(self.platform.calls, [])
+
+    def test_user_review_keeps_output_product_and_script_gates(self):
+        self.entry['content_review'] = self.policy
+        original = copy.deepcopy(self.platform.cuts[self.cid])
+        for field, value in [('output_status', 'failed'), ('output_object_key', 'outputs/old.mp4'),
+                             ('script_id', 'wrong'), ('product_id', 'wrong')]:
+            with self.subTest(field=field):
+                self.platform.cuts[self.cid] = dict(original, **{field: value})
+                with self.assertRaises(RuntimeError):
+                    ds.batch_video(self.entry, self.video)
+        self.platform.cuts[self.cid] = original
+        self.platform.scripts[self.entry['script_id']]['product_id'] = 'wrong'
+        with self.assertRaisesRegex(RuntimeError, '脚本所属产品'):
+            ds.batch_video(self.entry, self.video)
+        self.assertEqual(self.platform.posts, [])
+
+    def test_null_cut_product_requires_matching_script_product(self):
+        self.platform.cuts[self.cid].update(product_id=None, ai_review_result='pass')
+        result = ds.batch_video(self.entry, self.video)
+        self.assertEqual(result['video_object_key'], self.video['expected_output_object_key'])
+        self.platform.scripts[self.entry['script_id']]['product_id'] = 'wrong'
+        with self.assertRaisesRegex(RuntimeError, '脚本所属产品'):
+            ds.batch_video(self.entry, self.video)
+        self.assertEqual(self.platform.posts, [])
+
+    def test_user_review_rechecks_concurrent_output(self):
+        self.entry['content_review'] = self.policy
+        reads = 0
+        def change_output(resource, ident, result):
+            nonlocal reads
+            if resource == 'video-cuts':
+                reads += 1
+                if reads == 3:
+                    result['output_object_key'] = 'outputs/other.mp4'
+        self.platform.after_get = change_output
+        with self.assertRaisesRegex(RuntimeError, '已变化'):
+            ds.batch_video(self.entry, self.video)
+        self.assertEqual(self.platform.posts, [])
+
+    def test_pack_passes_user_policy_to_each_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = {'instruction': '允许创建分享', 'title': '用户检查十条',
+                    'content_review': self.policy, 'entries': [
+                        {'cut_id': f'c{i}', 'script_id': 's', 'product_key': 'p',
+                         'expected_output_object_key': f'outputs/new{i}.mp4'} for i in range(10)]}
+            path = ds.save(Path(directory) / 'plan.json', plan)
+            def video(entry, item):
+                self.assertEqual(entry['content_review'], self.policy)
+                return {'video_object_key': item['expected_output_object_key']}
+            with patch.object(ds, 'batch_video', side_effect=video) as mocked:
+                ds.pack({'products': {'p': {'clipo_product_id': 'pid'}}},
+                        SimpleNamespace(plan=path, out=directory, dry_run=True))
+                self.assertEqual(mocked.call_count, 10)
+        self.assertEqual(self.platform.calls, [])
 
 
 class BatchDeliveryTest(unittest.TestCase):
