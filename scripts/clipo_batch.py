@@ -1253,7 +1253,14 @@ def reject_kind(r):
 
 
 def cmd_status(cfg, run, args):
-    """One screen: where every brief and video of the day stands, and what to do next. No network."""
+    """One screen: where every brief and video of the day stands, and what to do next. No network.
+    用户 11-24：改由 scripts/progress.py 出（数、原因、下一条命令）；旧实现保留在 cmd_status_legacy。"""
+    import progress
+    print(progress.render(progress.day_progress(cfg, run, getattr(args, "brief", None))))
+
+
+def cmd_status_legacy(cfg, run, args):
+    """11-22 前的 status（只给阶段名）。"""
     briefs = load_briefs(run)
     if not briefs:
         print(f"{run} 还没有 brief：从 ① fetch_sources / ② parse_schedule 开始")
