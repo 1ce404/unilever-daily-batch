@@ -6,7 +6,8 @@
 It does not write copy or call the platform. Per brief it shows:
   the task (direction / selling point / audience) and which part of the script should change because of it,
   the fixed lines (selling-point say, mechanism + CTA) that team scripts reuse,
-  the product rules, footage, banned words, and the platform's own copy rules (video_script_create),
+  the product rules, footage, banned words, a one-line pointer to the product's review-block library (if any),
+  and the platform's own copy rules (video_script_create, required: the card stops when it cannot read them),
   the meme assigned to it in runs/<day>/hotspots.json, if any,
   team scripts of the same product and direction (gold, plus rows of the team script collection fetched at ①),
   and the openings already used today and in the last days (so this one's opening is new).
@@ -20,7 +21,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import SKILL_DIR, day_briefs, load_config, load_gold, voiced
+from common import SKILL_DIR, day_briefs, load_config, load_gold, review_blocks, voiced
 from lint_copy import earlier_copy, seg_text
 
 
@@ -101,10 +102,13 @@ def card(cfg, run, brief, today):
         out += [f"  - {k}：{v}" for k, v in prod["footage"].items() if not k.startswith("_") and v != "同 hook"]
     banned = [w for w in cfg["banned_words"]["error"] + prod.get("warn_words", []) if w not in prod.get("allow_words", [])]
     out.append(f"不能写：{'、'.join(dict.fromkeys(banned))}、具体时长（几小时 / 几天）")
+    if prod.get("review_blocks"):  # 用户 11-24：库只给机器查，卡片只放一行，不把三百条词塞给写稿的 agent
+        top = sorted({(b["id"], b["name"]) for b in review_blocks(prod, "copy") if b["risk"] == "high"})
+        out.append(f"卡审库（{prod['review_blocks']}，lint 会逐词拦）：高风险 {len(top)} 类——"
+                   + "、".join(n for _, n in top) + "。写法见 references/review-blocks/" + prod["review_blocks"] + "-guide.md")
     plat = prod.get("_platform_copy_rules")
-    if plat:
-        out.append("平台提示词里的文案规则（video_script_create）：")
-        out += [f"  - {r}" for r in plat]
+    out.append("平台建脚本提示词 video_script_create 的文案规则（终稿必须照做）：")
+    out += [f"  - {r}" for r in plat] if plat else ["  - ⚠️ 没读到：先修好平台连接再写稿，不凭记忆写"]
     gold = load_gold(cfg, brief["product_key"])
     near = [g for g in gold if same_direction(g, brief)] or [g for g in gold if g.get("status") == "confirmed"] or gold
     out.append(f"\n团队稿（同产品{'、同方向' if any(same_direction(g, brief) for g in gold) else ''}，学骨架和口吻，开头不要照抄）：")
@@ -139,8 +143,8 @@ def platform_rules(cfg, keys):
             i = p.find("### 分段文案")
             if i >= 0:
                 cfg["products"][k]["_platform_copy_rules"] = [l.lstrip("- ").strip() for l in p[i:].splitlines()[1:] if l.strip().startswith("-")]
-    except Exception as e:  # offline: the card still works, just without the platform's rules
-        print(f"（读不到平台提示词：{str(e)[:80]}）\n")
+    except Exception as e:  # 用户 11-24：终稿必须参考平台提示词；读不到就停，不出没有平台规则的卡片
+        raise SystemExit(f"❌ 读不到平台提示词 video_script_create：{str(e)[:120]}\n   终稿要按平台提示词写；修好连接再跑")
 
 
 def main():

@@ -7,14 +7,16 @@ clips).
     python3 -I scripts/aigc_gen.py submit --config qingyang --run $R --plan $R/aigc/golf.json             # after the user says yes
     nohup python3 -I scripts/aigc_gen.py poll --config qingyang --run $R --plan $R/aigc/golf.json --wait 5400 > $R/aigc/golf.log 2>&1 &
     python3 -I scripts/aigc_gen.py report --config qingyang --run $R --plan $R/aigc/golf.json             # any time, offline
+    python3 -I scripts/aigc_gen.py reject --config qingyang --run $R --plan $R/aigc/golf.json [--dry-run]  # 删不合格的，换 redo 提示词
     python3 -I scripts/aigc_gen.py sets   --config qingyang --run $R --plan $R/aigc/golf.json --brief 1116-B01 [--dry-run]
 
 Plan file (written by the agent, reviewed by the user like a script):
-    {"product": "2x", "tag": "AI双人演绎", "duration": 6,
+    {"product": "2x", "tag": "AI-1124-双人演绎", "duration": 6,
      "scenes": [{"id": "golf", "versions": 4, "prompt": "…", "fallback_prompts": ["…"]},
-                {"id": "cat", "tag": "AI小猫", "prompts": ["版本1 …", "版本2 …", "版本3 …"]}]}
-Tags follow scripts/ai_tags.py (user 11-18): one AI tag per clip, named after the scene, starting with「AI」, no
-dates or brief ids. A scene's `tag` overrides the plan's.
+                {"id": "cat", "tag": "AI-1124-小猫", "prompts": ["版本1 …", "版本2 …", "版本3 …"]}]}
+Tags follow scripts/ai_tags.py: one AI tag per clip (user 11-18), named「AI-MMDD-素材方向」for every product
+(user 11-24), no brief / shot / version numbers. A scene's `tag` overrides the plan's. Plans already submitted
+before 11-24 keep their old tags.
 Before submit, check_plan stops prompts that break the brand's config `aigc` look rule (清扬 user 11-18: every
 character good-looking, never a stock / influencer face): people prompts must name a look word and a natural word,
 and must not ask for mask words.
@@ -56,7 +58,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clipo_batch as cb
 import ai_tags
-from common import load_config
+from common import load_config, review_blocks
 
 MODEL = "doubao-seedance-2-5-260628"  # 11-19 平台只收 2-5 / 2-5-flash（openapi enum）
 MAX_RETRIES = 2
@@ -85,6 +87,7 @@ class Run:
             prompts = sc.get("prompts") or [sc["prompt"]] * int(sc.get("versions", 1))
             for i, p in enumerate(prompts, 1):
                 key = f"{sc['id']}-{i:02d}"
+                p = (self.plan.get("redo") or {}).get(key, {}).get("prompt") or p  # 抽帧不合格重做的槽位用新提示词
                 slot = self.st["slots"].setdefault(key, {"scene": sc["id"], "prompt": p, "attempts": []})
                 if not slot["attempts"]:
                     slot["prompt"] = p  # plan edited before anything was sent: take the new prompt
@@ -261,8 +264,11 @@ class Run:
         return fixed
 
     def ready(self, scene):
+        allow_f = self.scene(scene).get("allow_female")
+        prod = dict(self.product, banned_footage_words=[w for w in self.product.get("banned_footage_words") or []
+                                                         if not (allow_f and ("女" in w or w in ("美女", "少女")))])
         return [(k, s) for k, s in sorted(self.st["slots"].items())
-                if s["scene"] == scene and s.get("segment_id") and not banned(self.cfg, s, self.product)]
+                if s["scene"] == scene and s.get("segment_id") and not banned(self.cfg, s, prod)]
 
     def report(self):
         tag = "、".join(self.tags())
@@ -380,6 +386,29 @@ def cmd_sets(r, args):
     print("下一步：clipo_batch.py bind-aigc --brief " + args.brief)
 
 
+def cmd_reject(r, args):
+    """用户 11-23：不合格的 AI 素材删掉并补新的。plan `redo` 写 {槽位: {reason, prompt}}：
+    先把旧槽位存进 state `rejected`，再删平台切片（DELETE /materials/segments/{id}），槽位换成新提示词清空重来，
+    之后 submit 补生成。每轮每个槽位只重做一次（`redone` 记轮次，redo 写 `round`），重跑不会删掉新生成的素材。"""
+    redo = r.plan.get("redo") or {}
+    rnd = lambda k: int(redo[k].get("round", 1))  # 第二轮还不合格：redo 里把 round 加 1、换提示词
+    todo = [(k, r.st["slots"][k]) for k in sorted(redo) if k in r.st["slots"] and int(r.st["slots"][k].get("redone") or 0) < rnd(k)]
+    for key, slot in todo:
+        print(f"{key}：{redo[key].get('reason', '')}；删切片 {slot.get('segment_id') or '（无）'}")
+    if args.dry_run or not todo:
+        print(f"(dry run) 删 {len(todo)} 条，补生成 {len(todo)} 条" if args.dry_run else "没有要重做的槽位")
+        return
+    for key, slot in todo:
+        r.st.setdefault("rejected", {}).setdefault(key, []).append(dict(slot, reason=redo[key].get("reason")))
+        r.save()  # 先存旧槽位再删，删一半中断也能对上
+        for sid in [slot.get("segment_id")] + [x.get("segment_id") for x in slot.get("shots") or []]:
+            if sid:
+                cb.api("DELETE", f"/materials/segments/{sid}")
+        r.st["slots"][key] = {"scene": slot["scene"], "prompt": redo[key]["prompt"], "attempts": [], "redone": rnd(key)}
+        r.save()
+    print(f"已删 {len(todo)} 条，接着 submit 补生成")
+
+
 def cmd_shots(r, args):
     """Shared pools (user 11-19): cut every ready clip of the scenes that have `shot_tags` into the plan's shot spans
     and register each shot under its own tag. No visual_sets, no per-video binding: brief segments pin the pools
@@ -433,12 +462,16 @@ def product_segments(pid):
 def check_plan(r):
     """Problems that should stop a submit: tag outside the AI tag rule, prompts too long, banned looks asked for."""
     errs, warns = [], []
+    started = any(s["attempts"] for s in r.st["slots"].values())  # 11-24 前已提交的计划沿用旧标签
     for sc in r.plan["scenes"]:
         tag = r.tag(sc["id"])
         if not tag:
             errs.append(f"场景 {sc['id']} 没有标签：plan 写 tag，或场景写 tag（scripts/ai_tags.py 的规则）")
-        elif not ai_tags.is_ai_tag(tag) or re.search(r"\d{4}|[A-Z]\d{2}|分镜", tag):
-            errs.append(f"场景 {sc['id']} 的标签「{tag}」不合规：以「AI」开头、按场景起名，不写日期、brief 号、分镜号")
+            continue
+        for t in [tag] + list(sc.get("shot_tags") or []):
+            bad = ai_tags.name_problem(t)
+            if bad:
+                (warns if started else errs).append(f"场景 {sc['id']}：{bad}（用户 11-24 统一命名，scripts/ai_tags.py）")
     have = cb.api("GET", f"/products/{r.product['clipo_product_id']}")["tags"]
     new = [t for t in r.tags() if t not in have]
     if new:
@@ -457,6 +490,13 @@ def check_plan(r):
                and not re.search(rf"(不|没有?|无|别|禁止)[^，。,;；]{{0,4}}{re.escape(w)}", s_["prompt"])]
         if hit and not s_["attempts"]:
             warns.append(f"{key} 提示词写了禁用画面：{'、'.join(hit)}（references/aigc-standards.md）")
+    # 卡审库画面条目（用户 11-24，产品 review_blocks）：提示词里出现且没被否定的，提醒
+    vis = [b["phrase"] for b in review_blocks(r.product, "visual")]
+    for key, s_ in sorted(r.st["slots"].items()):
+        hit = [w for w in vis if w in s_["prompt"]
+               and not re.search(rf"(不|没有?|无|别|禁止|不要|不出现)[^，。,;；]{{0,6}}{re.escape(w)}", s_["prompt"])]
+        if hit and not s_["attempts"]:
+            warns.append(f"{key} 提示词有卡审画面：{'、'.join(dict.fromkeys(hit))}（references/review-blocks/）")
     # 产品规则（config 产品 aigc_rules，用户 11-20：2x / 呼吸瓶人物只能是男生，动作和语速正常、不慢放）
     rules = r.product.get("aigc_rules") or {}
     for key, s_ in sorted(r.st["slots"].items()):
@@ -464,7 +504,9 @@ def check_plan(r):
             continue
         p_ = s_["prompt"]
         neg = lambda w: re.search(rf"(不|没有?|无|别|禁止|不要|不出现)[^，。,;；]{{0,6}}{re.escape(w)}", p_)
-        hit = [w for w in rules.get("forbid_words", []) if w in p_ and not neg(w)]
+        female = ("女生", "女性", "女孩", "女主", "美女", "少女", "女士", "长发女")
+        allow_f = r.scene(s_["scene"]).get("allow_female")  # 用户 11-23：夫妻对话这一批破例，妻子可以出镜；只对写了这个开关的场景
+        hit = [w for w in rules.get("forbid_words", []) if w in p_ and not neg(w) and not (allow_f and w in female)]
         if hit:
             errs.append(f"{key} 写了这个产品不能用的画面：{'、'.join(hit)}（产品 aigc_rules）")
         human = re.search(r"人|男|主角|配角|同事|同学", p_) and not r.scene(s_["scene"]).get("no_human")
@@ -496,7 +538,7 @@ def check_plan(r):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["submit", "poll", "report", "sets", "shots"])
+    ap.add_argument("cmd", choices=["submit", "poll", "report", "sets", "shots", "reject"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--plan", required=True, help="$R/aigc/<名字>.json")
@@ -511,6 +553,9 @@ def main():
     r = Run(cfg, args.plan)
     if args.cmd == "sets":
         cmd_sets(r, args)
+        return
+    if args.cmd == "reject":
+        cmd_reject(r, args)
         return
     if args.cmd == "shots":
         cmd_shots(r, args)

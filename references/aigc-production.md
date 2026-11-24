@@ -24,6 +24,7 @@
 python3 -I scripts/aigc_gen.py submit --config $C --run $R --plan $R/aigc/<名字>.json --dry-run
 python3 -I scripts/aigc_gen.py submit --config $C --run $R --plan $R/aigc/<名字>.json
 nohup python3 -I scripts/aigc_gen.py poll --config $C --run $R --plan $R/aigc/<名字>.json --wait 5400 > $R/aigc/<名字>.log 2>&1 &
+python3 -I scripts/aigc_gen.py reject --config $C --run $R --plan $R/aigc/<名字>.json [--dry-run]   # 抽帧/听审不合格：删平台切片，按 plan redo 换提示词，再 submit 补齐
 python3 -I scripts/aigc_gen.py report --config $C --run $R --plan $R/aigc/<名字>.json
 python3 -I scripts/aigc_gen.py sets --config $C --run $R --plan $R/aigc/<名字>.json --brief <id> [--dry-run]
 ```
@@ -31,7 +32,7 @@ python3 -I scripts/aigc_gen.py sets --config $C --run $R --plan $R/aigc/<名字>
 生成计划：
 
 ```json
-{"product": "2x", "tag": "AI双人演绎", "duration": 6, "shots": [[0, 2], [2, 4], [4, 6]],
+{"product": "2x", "tag": "AI-1124-双人演绎", "duration": 6, "shots": [[0, 2], [2, 4], [4, 6]],
  "scenes": [{"id": "golf", "actions": ["摘帽摸发根", "和同伴说话", "清爽甩发"],
              "prompts": ["版本1：人物、服装、场景、0–2秒…、2–4秒…、4–6秒…", "版本2 …"],
              "fallback_prompts": ["被版权拦时用的重新设计的原创人物方案 …"]}]}

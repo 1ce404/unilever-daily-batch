@@ -17,5 +17,7 @@ JSON 保持标准语法，不加入可执行代码。
 - luxpc.json、luxpc/: 力士沐浴品牌与产品配置。
 
 清扬技术句限定质地；二硫化硒油头句限定油头状态。
+产品 rules 只放写稿规则（任务卡打印）；AIGC 画面规则放 aigc_notes，不进任务卡。
+selenium 启用卡审库 review_blocks（references/review-blocks/）。
 文案事实与已审核脚本文字保持原样。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

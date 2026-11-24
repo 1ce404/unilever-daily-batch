@@ -7,7 +7,9 @@ python3 -I scripts/brief_card.py --config $C --run $R              # 当天每�
 python3 -I scripts/brief_card.py --config $C --run $R --brief <id> # 只看一个
 ```
 
-任务卡列出写这一条要的全部东西：排期这一行、骨架或结构、卖点和机制的说法、产品要求、素材画面、禁用词、平台提示词里的文案规则、范本和团队交付过的稿、已经用过的开头。照卡写，写完填进 brief 的 `segments`。
+任务卡列出写这一条要的全部东西：排期这一行、骨架或结构、卖点和机制的说法、产品要求、素材画面、禁用词、卡审库指引、平台提示词里的文案规则、范本和团队交付过的稿、已经用过的开头。照卡写，写完填进 brief 的 `segments`。
+
+**终稿必须照平台建脚本提示词 `video_script_create` 的文案规则写**（每段字数、禁用词、只写正向描述）。任务卡每次现读平台，读不到就停，不凭记忆写。产品配了卡审库（Cyber）时，lint 逐词拦，高风险词报错；写法看 `references/review-blocks/<库>-guide.md`。
 
 ## 1. 排期这一行就是任务
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-[INPUT]: 依赖 common 的品牌事实、已审文案与句长工具。
-[OUTPUT]: 提供底稿与平台改写的合规检查；正面干净、干爽与时间顺序不算负面或极限词。
+[INPUT]: 依赖 common 的品牌事实、已审文案、卡审库与句长工具。
+[OUTPUT]: 提供底稿与平台改写的合规检查；产品配了 review_blocks 时按卡审库拦文案（high 报错，mid/low 提醒）；
+          正面干净、干爽与时间顺序不算负面或极限词。
 [POS]: scripts 的机械文案门禁；clipo_batch 与断点恢复共用，不改输入文案。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
@@ -25,7 +26,7 @@ from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import seg_alts, voiced, day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len
+from common import seg_alts, voiced, day_briefs, display_len, out_name, load_config, load_gold, normalize_copy, split_clauses, visible_len, review_blocks
 
 PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*元|拍[一二三四五六七八九十\d]+发[一二三四五六七八九十\d]+|\d+\s*[gG克]")
 
@@ -47,6 +48,10 @@ def lint_text(text, cfg, product):
     for w in bw["warn"] + product.get("warn_words", []):
         if w in scrubbed and w not in allowed:
             issues.append(("warn", f"卡审风险词「{w}」"))
+    for b in review_blocks(product, "copy"):  # 用户 11-24：Cyber 卡审库（references/review-blocks/）
+        if b["phrase"] in scrubbed:
+            level = "error" if b["risk"] == "high" and b["phrase"] not in product.get("review_warn_only", []) else "warn"
+            issues.append((level, f"卡审 {b['id']} {b['name']}：「{b['phrase']}」→ {b['fix']}"))
     for rx in product.get("regex_error", []):  # per-product patterns (11-17 Dove-PC / Lux-PC: no numbers at all)
         for m in re.finditer(rx, scrubbed):
             issues.append(("error", f"这个产品不写数字 / 倍数「{m.group(0)}」（QC）"))

@@ -5,7 +5,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 # 联合利华批量混剪
 
-**文案由 Agent 写，成片由平台剪。** 文案里的事实只来自 `config/`。在技能目录下运行 `python3 -I scripts/<x>.py`。`$R` = `runs/YYYYMMDD`，`$C` = 品牌 key（`qingyang` `lux` `ahc` `hc` `dove` `luxpc`）。不知道做到哪步，先跑 `clipo_batch.py status`（离线），它会给出下一步。
+**文案由 Agent 写，成片由平台剪。** 文案里的事实只来自 `config/`。在技能目录下运行 `python3 -I scripts/<x>.py`。`$R` = `runs/YYYYMMDD`，`$C` = 品牌 key（`qingyang` `lux` `ahc` `hc` `dove` `luxpc`）。**查进度只用 `progress.py --config $C --run $R [--brief <id>]`**（离线，0.2 秒）：每个 brief 的合格 / 目标、在途、驳回原因、后台 poll 在不在跑，以及下一条可直接执行的命令。照它做；不另写代码读 state 或调接口查进度。
 
 品牌速查：清扬 `MMDD-Bxx`（2x / huxi / selenium，飞书日排期）· 力士 `Lxx`（jingyou / spray / mist，`daily_quota`）· AHC `Axx`（周排期，每结构 15 条）· HC `Hxx` / 多芬 `Dxx` / 力士沐浴 `Pxx`（每批问用户）。产品配置在 `config/<品牌>/<key>.json`；开工前先看 `open_questions`。
 
@@ -21,7 +21,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 - HC、多芬、力士沐浴的产品和条数，先问用户。
 
 **② 写脚本**
-- 先跑 `brief_card.py --config $C --run $R`，照任务卡写 brief 的 `segments`：`role` / `title` / `text` / `alt` / `visual_tags`。写法见 [writing.md](references/writing.md)。
+- 先跑 `brief_card.py --config $C --run $R`，照任务卡写 brief 的 `segments`：`role` / `title` / `text` / `alt` / `visual_tags`。任务卡现读平台提示词 `video_script_create`，终稿照它写。写法见 [writing.md](references/writing.md)。
 - 每段都写 `visual_tags`。产品名单独一句，配产品外观；成分另起一段，配质地。
 - 热梗写进 `keep_terms`，否则 AI 改写会改掉。
 - 写完跑 `lint_copy.py --config $C --run $R`，错误清零。
@@ -31,7 +31,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 - 用户通过后，跑 `review_doc.py approve --brief <id> --by 用户 --note "<原话>"`；飞书审完的，跑 `review_doc.py sync --doc <链接>`。
 
 **④ AIGC 素材**（`visual_tags` 有「AI」开头标签时才做）
-1. 写生成计划。
+1. 写生成计划；标签统一「AI-MMDD-素材方向」（如 AI-1124-夫妻对话）。
 2. 跑 `aigc_gen.py submit --dry-run` 报条数。
 3. 跑 `aigc_gen.py submit`，再在后台跑 `aigc_gen.py poll`。
 4. 抽帧给用户看 ⏸。
@@ -70,6 +70,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 - 只剩 ≤5 条渲染 / 审核时 10 秒轮询一次，其余 30 秒。
 - demo 算在总数里，量产只补其余条数；只按 1 倍生成，缺几条补几条。
 - 用户一次授权的范围不重复问；默认不逐条看成片，只看 `qc.py` 的结论。
+- 后台 poll 在跑时不在对话里等：`progress.py` 报完数就结束本轮。回复只写数字、阻塞点和下一步。
 
 ## 铁律
 
@@ -79,6 +80,6 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 4. **不改共享配置和素材**：平台产品、素材、提示词与客户文档，未经授权不改；授权后，改前备份，改后回读。
 5. **平台操作只用 skill 命令**：命令做不到时，先改 skill 再操作。不手改 `state.json`。
 6. **一个品牌一天只由一个会话写入**。
-7. **学到的规则写回去**：卡审词、写法规则写进 config；AIGC 规则写进 aigc-standards；客户认可的整条脚本写进 `gold/`。
+7. **学到的规则写回去，只写一处**：卡审词进卡审库 `references/review-blocks/` 或 config，写法规则进 config，AIGC 规则进 aigc-standards，客户认可的整条脚本进 `gold/`。SKILL.md 只放流程和铁律，不放规则正文。
 
 规则细节在 config，机器门禁在 `lint_copy.py` 与 `qc.py`，接口见 [clipo-api.md](references/clipo-api.md)，新品牌接入见 [new-brand.md](references/new-brand.md)。

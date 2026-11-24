@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 依赖 clipo_batch.api（平台接口）、common.load_config（品牌与产品 id）
-[OUTPUT]: 对外提供 is_ai_tag / problem / set_tags / add_product_tags，以及 check / fix / restore 三个命令
+[OUTPUT]: 对外提供 is_ai_tag / new_tag / name_problem / problem / set_tags / add_product_tags，以及 check / fix / restore 三个命令
 [POS]: scripts 里 AI 素材打标规则的唯一出处。aigc_gen 生成后按它改标签，clipo_batch preflight 按它报警。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 AI 素材打标规则（用户 11-18）：
   1. AI 素材（ai_generated=true）只带一个标签，标签名以「AI」开头，按场景起名（AI双人演绎、AI小猫）
   2. 普通标签（使用后、头皮出油…）只给真实素材；AI 标签不打在真实素材上
-  3. 标签名只写场景，不写日期、brief 号（不再出现 AI-1111-B01-分镜1）
+  3. 新生成的标签统一命名「AI-MMDD-素材方向」（用户 11-24：日期 + 素材方向，所有产品同一规则），
+     例：AI-1124-夫妻对话。不写 brief 号、分镜号、版本号（不再出现 AI-1111-B01-分镜1）。
+     11-24 之前的旧标签（AI双人演绎、AI小猫…）保留不改，素材池照旧可用。
 
 为什么要改：平台每入库一条素材都跑一次「智能理解」，从产品标签里挑标签打上去，AI 素材也会被打成
 「使用后」「头皮出油」。11-18 清扬控油蓬松「使用后」346 条里 303 条是 AI 素材，平台提示词按标签配
@@ -26,6 +28,7 @@ AI 素材上传时没标 ai_generated，要用户确认）。
 """
 import argparse
 import json
+import re
 import sys
 import time
 from collections import Counter, defaultdict
@@ -36,10 +39,35 @@ import clipo_batch as cb
 from common import load_config
 
 PREFIX = "AI"
+NAME_RE = re.compile(r"^AI-(\d{4})-([^\d\-][^\-]*)$")  # AI-MMDD-素材方向
 
 
 def is_ai_tag(tag):
     return tag.startswith(PREFIX)
+
+
+def new_tag(date, direction):
+    """「AI-MMDD-素材方向」。date 可以是 MMDD、YYYYMMDD 或 YYYY-MM-DD；方向去掉开头的 AI 与空白。"""
+    mmdd = re.sub(r"\D", "", str(date))[-4:]
+    direction = re.sub(r"\s+", "", str(direction)).removeprefix("AI").strip("-")
+    tag = f"{PREFIX}-{mmdd}-{direction}"
+    err = name_problem(tag)
+    if err:
+        raise ValueError(err)
+    return tag
+
+
+def name_problem(tag):
+    """新生成素材的标签名是否合规：None 合规，否则返回原因。"""
+    m = NAME_RE.match(tag or "")
+    if not m:
+        return f"标签「{tag}」不合规：写成「AI-MMDD-素材方向」，如 AI-1124-夫妻对话"
+    mm, dd = int(m.group(1)[:2]), int(m.group(1)[2:])
+    if not (1 <= mm <= 12 and 1 <= dd <= 31):
+        return f"标签「{tag}」日期不对：MMDD"
+    if re.search(r"[A-Z]\d{2}|分镜|brief|版本|V\d", m.group(2), re.I):
+        return f"标签「{tag}」不写 brief 号、分镜号、版本号，只写素材方向"
+    return None
 
 
 def problem(seg):

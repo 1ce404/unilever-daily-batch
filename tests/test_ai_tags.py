@@ -33,5 +33,38 @@ class SceneTag(unittest.TestCase):
         self.assertEqual(r.tags(), ["AI双人演绎", "AI小猫"])
 
 
+
+class NamingRule(unittest.TestCase):
+    """用户 11-24：所有产品新生成的 AI 素材标签都是「AI-MMDD-素材方向」。"""
+    def test_new_tag(self):
+        self.assertEqual(ai_tags.new_tag("2026-11-24", "夫妻对话"), "AI-1124-夫妻对话")
+        self.assertEqual(ai_tags.new_tag("20261124", "AI单人口播"), "AI-1124-单人口播")
+        self.assertEqual(ai_tags.new_tag("1120", " 超市 货架 "), "AI-1120-超市货架")
+
+    def test_name_problem(self):
+        self.assertIsNone(ai_tags.name_problem("AI-1124-夫妻对话"))
+        for bad in ["AI夫妻对话", "AI-1124", "AI-1124-B01-分镜1", "AI-1324-夫妻对话", "AI-1124-分镜1", "1124-夫妻对话"]:
+            self.assertIsNotNone(ai_tags.name_problem(bad), bad)
+        with self.assertRaises(ValueError):
+            ai_tags.new_tag("1124", "B01")
+
+    def test_plan_tags_checked_but_started_plans_grandfathered(self):
+        import aigc_gen as ag
+        r = run_with({"product": "2x", "tag": "AI双人演绎", "scenes": [{"id": "s", "prompt": "空镜台面", "fallback_prompts": ["x"]}]})
+        orig = ag.cb.api
+        ag.cb.api = lambda *a, **k: {"tags": []}
+        try:
+            self.assertTrue(any("AI-MMDD" in e for e in ag.check_plan(r)[0]))
+            r.st["slots"]["s-01"]["attempts"].append({"status": "success"})
+            errs, warns = ag.check_plan(r)
+            self.assertFalse(any("AI-MMDD" in e for e in errs))
+            self.assertTrue(any("AI-MMDD" in w for w in warns))
+            r.plan["tag"] = "AI-1124-双人演绎"
+            r.st["slots"]["s-01"]["attempts"].clear()
+            self.assertFalse(any("AI-MMDD" in e for e in ag.check_plan(r)[0]))
+        finally:
+            ag.cb.api = orig
+
+
 if __name__ == "__main__":
     unittest.main()

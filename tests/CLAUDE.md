@@ -8,8 +8,8 @@
 测试不把平台内容审核替换为结构校验。
 
 成员清单
-- test_ai_tags.py: AI 标签分类与场景覆盖规则。
-- test_aigc_gen.py: 生成计划与独立素材绑定回归。
+- test_ai_tags.py: AI 标签分类、场景覆盖与「AI-MMDD-素材方向」命名；旧计划沿用旧标签。
+- test_aigc_gen.py: 生成计划、独立素材绑定与卡审库（文案分级、上下文短词、画面提醒）回归。
 - test_aigc_materials.py: 素材组去重、源区间与播放边界。
 - test_opener_refresh.py: 默认音轨不可变；显式授权只改音量；音频来源与字幕不变；拒绝非法音量与角标越界。
 - test_overview.py: 总排期日期、跨周与品线解析。
@@ -20,6 +20,8 @@
 - test_qc_gates.py: 不双倍产、单条合格素材固定、dry-run 收据门禁、poll 与分享按 brief 限定写入、分享视频必填 cut_id，线上重渲不替换已审核输出、开头重复授权、换后来源与稳定分配、产品名与成分分段、每段必须写画面；去花字保留转场，禁用源片实测时长与时间轴不变。
 - test_flow_gates.py: 用户 11-22 流程顺序与提速：默认 demo、AIGC 素材人审先于 demo、首轮只出 1 条、poll 并发且不越 brief；并发建脚本、渲染前错开开头且每条一次 PUT、闸门不过不渲染、尾部轮询加快。
 - test_effects.py: 透明特效原轨道、短片、确定性构建、对象续签、固定50条与排他锁；上传中断不重复；审核受理即时落盘、旧终态与线上冲突门禁。
+- test_progress.py: 进度阶段与下一条命令、在途时提示 poll 存活、demo 门、三种交付来源（state、pack、收据）、逐条驳回原因、status 走新入口。
+- test_skill_budget.py: 常驻文本上限：SKILL.md ≤ 7000 字符；产品 rules 不混 AIGC 外貌规则。
 - CLAUDE.md: 测试目录地图。
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

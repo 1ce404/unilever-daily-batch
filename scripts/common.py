@@ -1,12 +1,14 @@
 # ---------- 文件契约 ----------
 # [INPUT]: 依赖 Python 标准库读取配置、解析表格与计算文案指纹。
 #          通过 lark-cli 读取飞书文档；读取品牌、产品配置与金标脚本。
-# [OUTPUT]: 提供配置合并、飞书读取、表格解析、分句与字幕宽度计算。
+# [OUTPUT]: 提供配置合并、卡审库读取、飞书读取、表格解析、分句与字幕宽度计算。
 #           提供 brief 筛选、文案、AIGC 素材与 demo 人审校验、品牌文件命名；demo 默认对所有品牌开启。
 # [POS]: scripts 的共享规则底座；排期、文案、人审与批量入口依赖它。
 #        人审凭据绑定文案指纹，防止改稿沿用旧批准。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Shared helpers: config loading, Feishu fetch via lark-cli, HTML-ish table parsing, clause splitting."""
+import csv
+import functools
 import html
 import json
 import re
@@ -27,6 +29,41 @@ def load_config(path_or_key):
     for f in sorted((p.parent / p.stem).glob("*.json")):
         cfg["products"][f.stem] = json.loads(f.read_text())
     return cfg
+
+
+# ---------- 卡审库（用户 11-24）----------
+# 产品 config 写 "review_blocks": "<库名>" 时启用 references/review-blocks/<库名>.csv。
+# 库是数据，不进 SKILL.md：lint 按它机械拦文案，brief_card 只打一行指引，aigc_gen 按画面条目提醒提示词。
+@functools.lru_cache(maxsize=None)
+def _review_rows(name):
+    path = SKILL_DIR / "references" / "review-blocks" / f"{name}.csv"
+    rows = []
+    with path.open(encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            phrase = (r.get("违规词/表述") or "").strip()
+            if phrase:
+                rows.append({"id": r["卡审点"], "name": r["卡审点名称"], "dim": r["维度"], "risk": r["风险等级"],
+                             "phrase": phrase, "fix": (r.get("合规替换建议") or "").strip() or "直接删除"})
+    return tuple(rows)
+
+
+def review_blocks(product, kind=None):
+    """产品启用的卡审条目。kind="copy" 只要文案相关（维度含 文案 / 医疗混淆 / 资质 / 功效 / 违禁词），
+    kind="visual" 只要纯画面条目；产品 allow_words 里的说法不拦。"""
+    name = (product or {}).get("review_blocks")
+    if not name:
+        return []
+    allow = set(product.get("allow_words") or [])
+    copy_dims = ("文案", "医疗混淆", "资质", "功效", "违禁词")
+    out = []
+    for r in _review_rows(name):
+        if r["phrase"] in allow:
+            continue
+        is_copy = any(d in r["dim"] for d in copy_dims) and r["dim"] not in ("画面", "画面·资质")
+        if kind == "copy" and not is_copy or kind == "visual" and is_copy:
+            continue
+        out.append(r)
+    return out
 
 
 def lark_fetch(doc_url):
