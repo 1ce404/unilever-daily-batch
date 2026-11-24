@@ -27,6 +27,9 @@ CLAUDE.md - 本 skill 的目录地图与职责边界
 - common 统一配置读取、文案指纹与人审凭据检查。
 - lint_copy 检查底稿与平台改写，不替代人审。
 - clipo_batch 驱动批量流程，不代写待审文案。
+- 音色只由产品当前平台提示词选择。
+- 本地不覆盖音色，不设名单或配音性别门禁。
+- 实际音色留档；口播与 BGM 音量仍检查。
 - aigc_materials 只检查结构绑定，不检查内容。
 - AIGC 内容要求见 references/aigc-standards.md。
 - AIGC 生产与返工流程见 references/aigc-production.md。

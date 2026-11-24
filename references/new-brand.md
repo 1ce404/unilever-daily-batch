@@ -18,7 +18,7 @@
 | `daily_quota` / `schedule_format` / `brief_prefix` | 没有排期表的品牌写每天固定的产品和条数（例 `config/lux.json`）；按周、按结构排期的写 `"schedule_format": "weekly"` 和 `structures`（例 `config/ahc.json`）；brief 编号前缀区分品牌 |
 | `demo_first` | 默认 `true`（所有品牌先出 demo）；只有用户明说不用 demo 时写 `false` |
 
-**配音、字幕、BGM、画面、贴图、音效不在 skill 里配**：在平台给该产品写好提示词 `video_script_create`（QC 文档里的限制，如 AHC 只要女声、只要蓝底白字字幕，HC 要氛围感 BGM，都写进去）。这一步由用户在平台做。
+**音色以产品当前平台提示词为唯一来源**：skill 不覆盖、不设本地黑白名单、不筛配音性别。字幕、BGM 类别、画面、贴图与音效由平台提示词 `video_script_create` 指定。口播与 BGM 音量仍可由本地生产参数控制。平台提示词由用户维护，修改须单独授权。
 
 QC 文档里只能靠人判断的定制要求（如「Dove-Hair 提到仿生氨基酸时换成分画面」「HC-逛逛 结尾箭头往左下角」）文案相关的写进该产品 config 的 `rules`（任务卡会列出来）；画面、贴图、音效相关的写进该产品在平台上的提示词 `video_script_create`（告诉用户去改）。
 

@@ -21,6 +21,7 @@
 - test_flow_gates.py: 用户 11-22 流程顺序与提速：默认 demo、AIGC 素材人审先于 demo、首轮只出 1 条、poll 并发且不越 brief；并发建脚本、渲染前错开开头且每条一次 PUT、闸门不过不渲染、尾部轮询加快。
 - test_effects.py: 透明特效原轨道、短片、确定性构建、对象续签、固定50条与排他锁；上传中断不重复；审核受理即时落盘、旧终态与线上冲突门禁。
 - test_progress.py: 进度阶段与下一条命令、在途时提示 poll 存活、demo 门、三种交付来源（state、pack、收据）、逐条驳回原因、status 走新入口。
+- test_voice_policy.py: 平台音色与语速保留；日常、QC、续产与补齐不筛音色或性别；保护音量、画面与文案门禁，不依赖音轨返工工具。
 - test_skill_budget.py: 常驻文本上限：SKILL.md ≤ 7000 字符；产品 rules 不混 AIGC 外貌规则。
 - CLAUDE.md: 测试目录地图。
 

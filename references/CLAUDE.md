@@ -13,7 +13,7 @@ clipo-api.md: Clipo Remix REST 契约；建脚本、生成、渲染、复核、�
 new-brand.md: 品牌与产品接入路径；配置、平台提示词、范本与品线映射。
 rework.md: 返工与交付修订命令速查；从 SKILL.md 移出，主流程不再重复。
 review-blocks/: 产品线卡审库（数据）；lint 与 aigc_gen 读取；见 review-blocks/CLAUDE.md。
-qc-rules.md: 四层 QC 与规则归属；区分文案校验、人审及平台内容复核。
+qc-rules.md: 四层 QC 与规则归属；区分文案校验、人审及平台内容复核；音色选择只归产品平台提示词。
 writing.md: 团队底稿写法；依任务卡落稿，固定卖点复用、开头保持差异。
 
 法则：成员完整、一行一文件、父级链接、技术词前置。

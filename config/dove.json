@@ -99,23 +99,6 @@
     "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "campaign": null,
-  "tts": {
-    "voices": [],
-    "bad_voices": [
-      "zh_female_qiaopinv_uranus_bigtts",
-      "zh_male_guanggaojieshuo_uranus_bigtts",
-      "zh_female_qingchezizi_uranus_bigtts",
-      "zh_female_tianmeitaozi_uranus_bigtts",
-      "ICL_uranus_zh_female_chunchenvsheng_tob",
-      "zh_female_meilinvyou_uranus_bigtts",
-      "ICL_uranus_zh_female_meilinvyou_tob",
-      "zh_male_cixingjieshuonan_uranus_bigtts",
-      "ICL_uranus_zh_female_xingganyujie_tob",
-      "zh_female_zhishuaiyingzi_uranus_bigtts",
-      "zh_female_xiaohe_uranus_bigtts"
-    ],
-    "_note": "平台建脚本提示词定音色；量产前跑 voice_check，不稳的加进 bad_voices"
-  },
   "banned_footage_words": [
     "头皮屑",
     "头屑",
@@ -137,7 +120,6 @@
     "doc_parent_token": null,
     "notify_chat_id": null
   },
-  "_tts_note": "QC Dove-多啦 / DOVE-PW：湾湾小何、直率英子语速忽快忽慢，不要用",
   "_banned_footage_note": "素材描述里有这些词的，成片不交付（poll 拦）。规则来源和各品牌的 AIGC 要求见 references/aigc-standards.md",
   "_generate_factor_note": "用户 11-19：之后实际需要多少条就产多少条，不再双倍生成；不够数再用 topup 按缺口补"
 }

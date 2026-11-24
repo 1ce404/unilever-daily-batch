@@ -14,6 +14,7 @@
 #        提交要求文案人审有效；用 AI 素材的须素材人审；所有品牌默认先出 1 条 demo，demo 人审后才量产。
 #        submit 并发建脚本；poll 按 brief 并发读平台（同一 brief 顺序处理），素材索引与源片下载加锁只取一次。
 #        渲染前 prepare_draft 一次改完草稿（包装、错开开头、禁用画面、角标），闸门不过不渲染。
+#        音色只由每个产品的平台提示词决定；记录实际音色，不覆盖或按本地名单否决。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Run approved briefs through Clipo Remix: preflight → submit → poll (generate, render, AI review) → topup → report.
 
@@ -275,7 +276,7 @@ def build_script(pid, brief, title):
         ps["ai_rewrite"] = True
         pin_visual(ps, sg, CFG["products"][brief["product_key"]])
         pin_decor(ps, sg)
-    pin_voices(script, brief)
+    # ---------- 音色沿用产品提示词，不覆盖平台配音配置 ----------
     pin_bgm(script, brief["product_key"])
     script["segments"] = with_silent(script["segments"], brief["segments"], pid)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
@@ -288,9 +289,6 @@ def build_script(pid, brief, title):
     off = [i + 1 for i, x in enumerate(got) if not x.get("ai_rewrite")]
     if [x["type"] for x in allsegs] != ["original" if sg.get("silent") else "dubbing" for sg in brief["segments"]]:
         wrong = wrong or ["无口播原片段没写对"]
-    saved_voices = [x["id"] for x in api("GET", f"/video-scripts/{sid}")["config"]["tts"]["voices"]]
-    if stable_voices(brief) and saved_voices != stable_voices(brief):
-        wrong = wrong or ["音色没写进去"]
     fx = [i + 1 for i, (x, sg) in enumerate(zip(got, segs)) if sg.get("effect") and
           (x.get("effect") or {}).get("template_id") != sg["effect"]["template_id"]]
     if fx:
@@ -323,26 +321,6 @@ def with_silent(platform_segs, brief_segs, pid):
     for i, x in enumerate(out, 1):
         x["id"] = str(i)
     return out
-
-
-def stable_voices(brief):
-    """Voice ids to use for this brief (config `tts`): user 11-09/11-10 heard two speakers in one video because
-    the platform voices each segment separately and some voices swing wildly between segments."""
-    tts = CFG.get("tts") or {}
-    if tts.get("voices"):
-        return tts["voices"]
-    # user 11-11: a brief whose lines name the partner (「女朋友夸我」) is read by the matching voice only
-    g = brief.get("voice_gender") or CFG["products"][brief["product_key"]].get("voice_gender")
-    return (tts.get("voices_by_gender") or {}).get(g) or []
-
-
-def pin_voices(script, brief):
-    """Replace the platform's voice picks with the brand's stable voices; keep volume / speech rate."""
-    ids = stable_voices(brief)
-    if not ids:
-        return
-    tts = script.setdefault("config", {}).setdefault("tts", {})
-    tts["voices"] = [{"id": i, "platform": "volcengine", "voice_type": i, "config": {"resource_id": "seed-tts-2.0"}} for i in ids]
 
 
 def pin_bgm(script, product_key=None):
@@ -842,7 +820,7 @@ def deliverable(v):
     released 爆款-opener videos or explicitly chose to review batch content themselves). Existing known issues
     (copy, voice, footage, watermark) still apply either way."""
     return ((v.get("ai_review") == "pass" or bool(v.get("review_waived"))) and not v.get("copy_issues") and not v.get("watermark_missing")
-            and not v.get("voice_cmd") and not v.get("bad_voice") and not v.get("voice_drift")
+            and not v.get("voice_cmd") and not v.get("voice_drift")
             and not v.get("bad_footage") and not v.get("qc_issues"))
 
 
@@ -1018,11 +996,6 @@ def pull_generation(st, cfg, b, job, gen):
                 v["voice_cmd"] = any("[#" in t for t in raw)  # user 11-09: sounds like two speakers
                 v["bad_footage"] = bad_footage(b["product_key"], cut["draft"])
                 v["pinned_clips"] = pinned_clips(b, cut["draft"])
-                if rr.get("tts_speaker_id") in ((CFG.get("tts") or {}).get("bad_voices") or []):
-                    v["bad_voice"] = rr.get("tts_speaker_id")
-                allowed = stable_voices(b)  # 用户 11-20：2x / 呼吸瓶只用男声；不在本 brief 音色名单里的不交付
-                if allowed and rr.get("tts_speaker_id") and rr["tts_speaker_id"] not in allowed:
-                    v["bad_voice"] = rr["tts_speaker_id"]
                 v["texts"], v["voice"] = got, rr.get("tts_speaker_id")
                 v["duration_s"] = round(cut["draft"]["composition"]["durationInFrames"] / 30, 1)
                 if (CFG.get("watermark") or {}).get("add") and "水印" not in [t.get("name") for t in cut["draft"]["tracks"]]:
@@ -1044,13 +1017,13 @@ def pull_generation(st, cfg, b, job, gen):
                     v.pop("watermark_missing", None)
                 v["bad_footage"] = bad_footage(b["product_key"], cut["draft"])
                 v["pinned_clips"] = pinned_clips(b, cut["draft"])
-                from qc import cut_checks  # 用户 11-20：交付闸门，渲染前按草稿查角标、BGM、禁用画面、画面标签、音色
+                from qc import cut_checks  # ---------- 渲染前查角标、口播与 BGM 音量、禁用画面、画面标签 ----------
                 v["qc_issues"] = cut_checks(b, cut["draft"], rr.get("tts_speaker_id"))
-                if v["qc_issues"] or v["bad_footage"] or v.get("bad_voice") or v["copy_issues"] or v.get("voice_cmd"):
+                if v["qc_issues"] or v["bad_footage"] or v["copy_issues"] or v.get("voice_cmd"):
                     # 用户 11-22：交付不了的不渲染、不送审，直接记下原因，topup 补位（省一次渲染 + 一次审核）
                     v["stage"], v["error"] = "failed", "渲染前闸门不过：" + "；".join(
                         (v["qc_issues"] or []) + (v["bad_footage"] or []) + (v["copy_issues"] or [])
-                        + ([f"音色 {v['bad_voice']}"] if v.get("bad_voice") else []) + (["双人声指令"] if v.get("voice_cmd") else []))[:300]
+                        + (["双人声指令"] if v.get("voice_cmd") else []))[:300]
                     continue
                 r = api("POST", "/render-jobs", {"spec": cut["draft"], "options": {"codec": "h264", "quality": "high", "scale": 1},
                                                 "cut_id": cut_id, "idempotency_key": f"udb-{cut_id}"})

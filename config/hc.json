@@ -106,21 +106,6 @@
     "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "campaign": null,
-  "tts": {
-    "voices": [],
-    "_note": "还没测：平台建脚本提示词定的音色先用着；量产前跑 voice_check，不稳的音色加进 bad_voices",
-    "bad_voices": [
-      "zh_female_qiaopinv_uranus_bigtts",
-      "zh_male_guanggaojieshuo_uranus_bigtts",
-      "zh_female_qingchezizi_uranus_bigtts",
-      "zh_female_tianmeitaozi_uranus_bigtts",
-      "ICL_uranus_zh_female_chunchenvsheng_tob",
-      "zh_female_meilinvyou_uranus_bigtts",
-      "ICL_uranus_zh_female_meilinvyou_tob",
-      "zh_male_cixingjieshuonan_uranus_bigtts",
-      "ICL_uranus_zh_female_xingganyujie_tob"
-    ]
-  },
   "banned_footage_words": [
     "模糊",
     "头皮屑",

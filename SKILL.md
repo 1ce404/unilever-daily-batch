@@ -5,7 +5,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 # 联合利华批量混剪
 
-**文案由 Agent 写，成片由平台剪。** 文案里的事实只来自 `config/`。在技能目录下运行 `python3 -I scripts/<x>.py`。`$R` = `runs/YYYYMMDD`，`$C` = 品牌 key（`qingyang` `lux` `ahc` `hc` `dove` `luxpc`）。**查进度只用 `progress.py --config $C --run $R [--brief <id>]`**（离线，0.2 秒）：每个 brief 的合格 / 目标、在途、驳回原因、后台 poll 在不在跑，以及下一条可直接执行的命令。照它做；不另写代码读 state 或调接口查进度。
+**文案由 Agent 写，成片由平台剪。** 音色只由每个产品当前的平台提示词决定；skill 不覆盖、不设黑白名单、不筛配音性别，保留音量检查和实际音色记录。文案里的事实只来自 `config/`。在技能目录下运行 `python3 -I scripts/<x>.py`。`$R` = `runs/YYYYMMDD`，`$C` = 品牌 key（`qingyang` `lux` `ahc` `hc` `dove` `luxpc`）。**查进度只用 `progress.py --config $C --run $R [--brief <id>]`**（离线，0.2 秒）：每个 brief 的合格 / 目标、在途、驳回原因、后台 poll 在不在跑，以及下一条可直接执行的命令。照它做；不另写代码读 state 或调接口查进度。
 
 品牌速查：清扬 `MMDD-Bxx`（2x / huxi / selenium，飞书日排期）· 力士 `Lxx`（jingyou / spray / mist，`daily_quota`）· AHC `Axx`（周排期，每结构 15 条）· HC `Hxx` / 多芬 `Dxx` / 力士沐浴 `Pxx`（每批问用户）。产品配置在 `config/<品牌>/<key>.json`；开工前先看 `open_questions`。
 
@@ -66,7 +66,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 - `submit` 并发建平台脚本（5 路）；`poll` 按 brief 并发读平台（8 路），素材索引只拉一次。
 - **一次渲对**：渲染前把 BGM / 音效 / 箭头、去花字、开头按素材池错开、禁用画面替换、右下角角标改进同一份草稿，一次 PUT、一次回读。不再交付后 `spread-hooks` / `restyle` 重渲。
-- 渲染前交付闸门（`qc`、禁用画面、音色、改写违规）不过的直接记 failed，不渲染、不送审，`topup` 补位。
+- 渲染前交付闸门（`qc`、禁用画面、语音指令、改写违规）不过的直接记 failed，不渲染、不送审，`topup` 补位。
 - 只剩 ≤5 条渲染 / 审核时 10 秒轮询一次，其余 30 秒。
 - demo 算在总数里，量产只补其余条数；只按 1 倍生成，缺几条补几条。
 - 用户一次授权的范围不重复问；默认不逐条看成片，只看 `qc.py` 的结论。

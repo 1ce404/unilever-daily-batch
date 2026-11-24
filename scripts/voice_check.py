@@ -2,11 +2,11 @@
 """
 [INPUT]: 依赖 NumPy、ffmpeg、clipo_batch；读取真实剪辑编号并只读查询分段配音。
 [OUTPUT]: 生成各段基频与段间音高比；可指定输出路径，不替代听审。
-[POS]: scripts 的音色差异门禁。仅 GET 查询，不提交审核或修改声音。
+[POS]: scripts 的声音诊断入口。仅 GET 查询；记录实际音高证据，不维护音色名单、不提交审核或修改声音。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 用法：voice_check.py <skill目录> <品牌> <state.json> shared|all [输出路径]
-音高比达到 1.35 时拦截交付。
+输出音高比供质量复核；本命令不修改交付状态。
 """
 import json, sys, subprocess, urllib.request, numpy as np
 sys.path.insert(0, sys.argv[1] + "/scripts")

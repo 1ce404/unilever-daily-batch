@@ -5,6 +5,7 @@
 [OUTPUT]: 提供 day_progress()（结构化进度）、render()（一屏文字）与 status 命令（--json 给 agent）。
 [POS]: scripts 的唯一进度入口，只读。用户 11-24：agent 约四成工具调用是临时手写代码查「到哪了、缺几条、
        为什么驳回」；这里一次给全，并给出下一条可直接执行的命令。clipo_batch.py status 调用这里。
+       退役的本地音色名单不再作为阻塞原因；实际声音质量问题仍单列。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
     python3 -I scripts/progress.py --config qingyang --run $R            # 一屏：每个 brief 的数和下一步
@@ -44,7 +45,7 @@ def video_bucket(v):
 def why_not(v):
     """不合格的具体原因，一句话。"""
     for key, label in (("copy_issues", "改写违规"), ("qc_issues", "交付闸门"), ("bad_footage", "禁用画面"),
-                       ("bad_voice", "音色不对"), ("voice_cmd", "念出语音指令"), ("voice_drift", "音色漂移"),
+                       ("voice_cmd", "念出语音指令"), ("voice_drift", "音色漂移"),
                        ("watermark_missing", "缺 AI 角标")):
         val = v.get(key)
         if val:

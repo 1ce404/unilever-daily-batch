@@ -3,10 +3,11 @@
 [INPUT]: 依赖 clipo_batch 的配置、素材索引与 AI 镜头时段；读取剪辑草稿与审核状态。
 [OUTPUT]: 提供 cut_checks 与 brief_checks；开头去重尊重用户原话授权，并优先使用换后钩子。
 [POS]: scripts 的交付闸门。poll 渲染前写入单条结论，share 前按 brief 复核；不改草稿、不调写接口。
+       音色由产品的平台提示词决定；闸门检查音量，不限制音色或配音性别。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 用户 11-19/11-20：返工都是交付后看片才发现的（角标在右上、实拍也加角标、开头重复、BGM 听不见、
-念产品名配质地、女生形象、慢动作、女声）。这些都能从草稿判断，交付前机器挡住，不靠人看。
+念产品名配质地、女生形象、慢动作）。这些都能从草稿判断，交付前机器挡住，不靠人看。
 
     python3 -I scripts/qc.py --config qingyang --run $R [--brief <id>]
 """
@@ -34,9 +35,8 @@ def _name(clip):
 
 
 def cut_checks(brief, draft, voice=None):
-    """Problems one cut has before it may be delivered: [str]. Empty list = passes the gate."""
+    """返回交付问题；空列表表示通过。voice 参数只为兼容旧调用，不参与音色筛选。"""
     cfg, pk = cb.CFG, brief["product_key"]
-    prod = cfg["products"][pk]
     out = []
     clips = draft.get("clips", [])
     main = sorted((c for c in clips if c.get("trackId") == "main"), key=lambda c: c["from"])
@@ -72,10 +72,6 @@ def cut_checks(brief, draft, voice=None):
         tags, x = plan.get(seg), idx.get(_name(c)) or {}
         if tags and x and not tags & set(x.get("tags") or []):
             out.append(f"第{seg}段画面「{(x.get('name') or '')[:16]}」不在计划标签 {sorted(tags)} 里")
-    # ---------- 音色：本 brief 的名单（2x / 呼吸瓶只用男声） ----------
-    allowed = cb.stable_voices(brief)
-    if voice and allowed and voice not in allowed:
-        out.append(f"音色 {voice} 不在本 brief 名单（{prod.get('voice_gender') or cfg.get('tts', {}).get('gender', '')}）")
     return list(dict.fromkeys(out))
 
 
@@ -94,7 +90,7 @@ def brief_checks(brief, videos):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="交付闸门：读草稿检查角标、BGM、禁用画面、画面标签、音色和开头重复")
+    ap = argparse.ArgumentParser(description="交付闸门：读草稿检查角标、音量、禁用画面、画面标签和开头重复")
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")

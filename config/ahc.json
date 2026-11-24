@@ -102,29 +102,6 @@
     "_ai_only_note": "用户 11-19：KP 客户强调非 AI 素材不加「内容由AI生成」角标；只在 AI 镜头的时段显示，位置右下角"
   },
   "campaign": null,
-  "tts": {
-    "voices": [
-      "ICL_uranus_zh_female_zhixingwenwan_tob",
-      "ICL_uranus_zh_female_zhixinjiejie_tob",
-      "zh_female_qinqienv_uranus_bigtts",
-      "ICL_uranus_zh_female_tianmeihuopo_tob",
-      "zh_female_chunribu_uranus_bigtts"
-    ],
-    "bad_voices": [
-      "zh_female_qiaopinv_uranus_bigtts",
-      "zh_male_guanggaojieshuo_uranus_bigtts",
-      "zh_female_qingchezizi_uranus_bigtts",
-      "zh_female_tianmeitaozi_uranus_bigtts",
-      "ICL_uranus_zh_female_chunchenvsheng_tob",
-      "zh_female_meilinvyou_uranus_bigtts",
-      "ICL_uranus_zh_female_meilinvyou_tob",
-      "zh_male_cixingjieshuonan_uranus_bigtts",
-      "ICL_uranus_zh_female_xingganyujie_tob",
-      "zh_male_xionger_uranus_bigtts",
-      "zh_male_sunwukong_uranus_bigtts"
-    ],
-    "_note": "QC 定制化标准 · AHC：只要女生音色；甜美小橘、台妹、妹坨洁儿等方言朗读人不要，猴哥、熊二不要。用力士 11-10 实测段间音高稳定的 5 个普通话女声（知性温婉、知心姐姐、亲切女声、甜美活泼、春日部姐姐）"
-  },
   "banned_footage_words": [
     "秃顶",
     "脱发",

@@ -10,29 +10,32 @@ State 原地合并条目，保留批量循环引用。
 按 brief 换分享前保存旧分组与旧分享。
 新分享逐条回读输出对象；旧独立链接不删除。
 报告与交付清单分列平台结论和用户复核。
+产品平台提示词是日常音色选择的唯一来源。
+本地不覆盖或按音色名单、配音性别否决。
+实际音色留档；音量与声音质量门禁保留。
 
 成员清单
 CLAUDE.md: 本模块地图，记录命令职责与依赖方向。
 ai_tags.py: AI 素材标签规则唯一出处；新标签统一「AI-MMDD-素材方向」（new_tag / name_problem），检查、备份修复与恢复标签。
 aigc_gen.py: AIGC 场景生成与轮询；本地参考图上传缓存；提交前拦截不合规标签名（已提交的旧计划只提醒）、脸谱化及产品禁用（女生、慢动作）提示词，提醒卡审画面；按独立源切片入库并写 visual_sets；reject 先存旧槽位再删不合格切片，按 plan redo 换提示词补生成，每槽位每轮只重做一次（redo round 记轮次）。
 aigc_materials.py: AIGC 素材组映射、源素材去重与 draft 绑定校验；不审内容。
-batch_completion.py: 九组合格数量补齐；只续原任务，复用目检窗口，不改文案或人审。
+batch_completion.py: 九组合格数量补齐；音色不设本地名单，逐条音高证据保留；只续原任务，复用目检窗口，不改文案或人审。
 brief_card.py: 文案任务卡；汇总排期、规则、素材与范本，不写文案；必须现读平台 video_script_create，读不到即停；卡审库只打一行指引。
-clipo_batch.py: Clipo Remix 批量入口；校验人审后建脚本、生成、渲染与交付；所有品牌默认首轮 1 条 demo，用 AI 素材的须先有素材人审；submit 并发建脚本；poll 按 brief 并发读平台，素材索引与源片下载加锁只取一次，尾部缩短轮询；渲染前 prepare_draft 一次写入包装、错开开头、禁用画面替换与角标，闸门不过记 failed 不渲染；只按 1 倍生成，无匹配 dry-run 收据不提交；按产品优先配置调 BGM 与口播音量，AI 角标可只盖 AI 镜头；rename-shares 按命名规则重建手建分享，split-group 按店铺拆分组，可用 --store 限定店铺，refresh-group 换成重渲后的成片，rerender 重渲临时失败的成片，sync-visuals 先备份再按 brief 重钉画面标签；poll/share 按 --brief 限定写入；pack 分享仅聚合同店铺、同产品、同日 brief；素材池可显式固定一条合格来源，不放宽风险过滤；分享视频附 cut_id，固定已审核输出，线上重渲不替换交付对象；restyle 去花字但保留转场，禁用源片按原段标签与实测时长替换；add-footage 上传本地爆款开头并等理解完成后打标签；spread-hooks 先备份，保留已错开的合格来源，只替换重复钩子；以素材 ID 识别派生切片，不重渲同源片；按 brief 分享保留旧独立链接；pack 旧路径仍删除被替换的分享。
+clipo_batch.py: Clipo Remix 批量入口；保留平台音色配置并记录实际音色；校验人审后建脚本、生成、渲染与交付；所有品牌默认首轮 1 条 demo，用 AI 素材的须先有素材人审；submit 并发建脚本；poll 按 brief 并发读平台，素材索引与源片下载加锁只取一次，尾部缩短轮询；渲染前 prepare_draft 一次写入包装、错开开头、禁用画面替换与角标，闸门不过记 failed 不渲染；只按 1 倍生成，无匹配 dry-run 收据不提交；按产品优先配置调 BGM 与口播音量，AI 角标可只盖 AI 镜头；rename-shares 按命名规则重建手建分享，split-group 按店铺拆分组，可用 --store 限定店铺，refresh-group 换成重渲后的成片，rerender 重渲临时失败的成片，sync-visuals 先备份再按 brief 重钉画面标签；poll/share 按 --brief 限定写入；pack 分享仅聚合同店铺、同产品、同日 brief；素材池可显式固定一条合格来源，不放宽风险过滤；分享视频附 cut_id，固定已审核输出，线上重渲不替换交付对象；restyle 去花字但保留转场，禁用源片按原段标签与实测时长替换；add-footage 上传本地爆款开头并等理解完成后打标签；spread-hooks 先备份，保留已错开的合格来源，只替换重复钩子；以素材 ID 识别派生切片，不重渲同源片；按 brief 分享保留旧独立链接；pack 旧路径仍删除被替换的分享。
 common.py: 共享规则底座；配置、卡审库读取、飞书表格、文案指纹与三道人审凭据校验（脚本、AIGC 素材、demo）；demo 默认开启。
 delivery_share.py: share 定点修订、batch 整批交付、pack 合并同产品十条新版、collect 收组、replace 替换并规范命名；默认要求平台审核通过，用户检查原话仅豁免内容审核；产品、脚本与新版对象门禁不变；写前意图、完整回读；pack 不创建分组，所有入口保留原分享。
 effects.py: 力士透明特效入口；固定五个 brief 各十条与源码，同批命令排他；上传后完整回读；保留素材对象、仅续签地址；新审核受理收据与参数证据通过后才批量；只改 effect 轨道。
 fetch_sources.py: 飞书源文档拉取；保存排期、团队脚本与 QC 到 run 目录。
 footage_qc.py: 分类快照、画面返工与右下角 AI 角标（整片或只盖 AI 镜头）；默认保护声音；清单含用户原话时只调音量与 AI 角标；完整原草稿拒绝并发覆盖；整数源帧，替换窗口须有实测源时长，未变窗口沿用原剪辑；回读按同域媒体对象忽略签名刷新；备份续跑不重复 PUT，渲染意图防重复 POST；review 只审收据指定的新输出并核对受理数量，--wait 等整批终态后汇报驳回，不重复提交，允许重渲自动封面更新，不放宽轨道校验，不下载整批成片。
-resume_batch.py: 原任务缺口续产、终态等待与本地返工契约；review-status 仅 GET，finish 下载送审；不改文案、不建分享。
+resume_batch.py: 原任务缺口续产、终态等待与本地返工契约；记录实际音色，不按名单否决；review-status 仅 GET，finish 下载送审；不改文案、不建分享。
 lint_copy.py: 统一文案机械门禁；检查合规、卡审库（high 报错）、机制、CTA、开头差异与每段画面计划（产品名配外观、成分配质地、开头池够数）。
 overview.py: 每日品线内容总览；按周标题定位日期，不写 brief、不调用平台。
-qc.py: 交付闸门；钩子检查优先读换后来源，尊重用户重复授权；按草稿查角标位置与时段、BGM、禁用画面、画面标签、音色与开头重复；poll 渲染前与 share 前调用。
+qc.py: 交付闸门；钩子检查优先读换后来源，尊重用户重复授权；按草稿查角标位置与时段、BGM 与口播音量、禁用画面、画面标签与开头重复；不筛音色或配音性别；poll 渲染前与 share 前调用。
 opener_refresh.py: 已交付分组返工；固定分享成员与文案人审，逐条独立新开头，显式调音与 AI 角标；不写共享 state，下载只取指定组，旧本地交付保留恢复目录。
 parse_schedule.py: 品牌日排期拆为 brief 空稿；支持周结构与固定日配额。
 progress.py: 唯一进度入口，只读离线；每个 brief 的合格/目标、在途、驳回原因、交付（含 delivery_share 收据）、AIGC 计划、dry-run 收据、poll 存活与下一条完整命令；--json 给 agent，--brief 列逐条原因；clipo_batch status 调用它。
 review_doc.py: 人审文档生成与飞书结果同步；approve / approve-aigc / approve-demo 按顺序记录审核者、原话与文案指纹或素材标签。
-voice_check.py: 只读查询分段配音，依赖 NumPy 与 ffmpeg 检查音高比；输出可指定路径，不替代听审。
+voice_check.py: 只读查询分段配音，依赖 NumPy 与 ffmpeg 记录音高比；不维护音色名单或修改交付状态；输出可指定路径，不替代听审。
 
 法则：成员完整、一行一文件、父级链接、技术词前置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

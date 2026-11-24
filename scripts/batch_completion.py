@@ -3,6 +3,7 @@
 [INPUT]: 依赖 resume_batch 的快照、REST 封装和文案检查；读取画面返工与音高证据。
 [OUTPUT]: 提供九组新版交付状态、原任务补齐、追加终态等待与完整画面契约。
 [POS]: scripts 的合格数量补齐边界；不建脚本，不改文案、人审或共享提示词。
+       不限制平台选择的音色；保留逐条音高证据与其他交付门禁。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import argparse
@@ -69,9 +70,6 @@ def copy_issues(cfg, script, cut):
         raise RuntimeError('产品不在今日两号范围')
     row = rb.inspect_cut(cfg, script, cut, {}, {})
     issues = row['copy_issues']
-    allowed = {v for values in cfg['tts']['voices_by_gender'].values() for v in values}
-    if cut.get('random_result', {}).get('tts_speaker_id') not in allowed:
-        issues.append('音色不在品牌白名单')
     if not any(c.get('trackId') == 'watermark' for c in cut['draft']['clips']):
         issues.append('缺少水印')
     if cut['id'] in KNOWN_BAD:

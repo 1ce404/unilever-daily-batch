@@ -3,6 +3,7 @@
 [INPUT]: 依赖 clipo_batch 的 REST 封装、配置和下载器；读取既有线上脚本与剪辑。
 [OUTPUT]: 提供原任务续产、本地返工契约；finish 汇合九组下载送审，review-status 只读查询新输出审核。
 [POS]: scripts 的断点恢复边界。续产仅追加原任务；返工采用 footage_qc 契约；不建脚本、不改文案、不记录人审、不建分享。
+       音色沿用产品平台提示词；检查结果记录实际音色，不复制本地选择规则。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
 import argparse
@@ -165,14 +166,12 @@ def inspect_cut(cfg, script, cut, library, pool):
     if end != draft['composition']['durationInFrames']:
         structural.append('主画面未覆盖整片')
     # 用户 11-18：删掉「同一条视频人脸一致」的要求，人物窗口可以来自不同源片
+    # ---------- 记录平台实际音色，不按本地名单否决 ----------
     voice = cut.get('random_result', {}).get('tts_speaker_id')
-    voices = set(v for group in cfg['tts'].get('voices_by_gender', {}).values() for v in group)
-    if voice not in voices:
-        structural.append(f'音色不在配置白名单：{voice}')
     if not any(x.get('trackId') == 'watermark' for x in draft['clips']):
         structural.append('缺少合规水印轨道内容')
     return {'brief': title_parts[1], 'cut_id': cut['id'], 'product_key': pk, 'copy_issues': list(dict.fromkeys(issues)),
-            'structural_issues': structural, 'technical_unverified': technical, 'person_sources': sources,
+            'structural_issues': structural, 'technical_unverified': technical, 'person_sources': sources, 'voice': voice,
             'output_status': cut.get('output_status'), 'ai_review_result': cut.get('ai_review_result'),
             'ai_review_reason': cut.get('ai_review_reason'),
             'deliverable': cut.get('output_status') == 'success' and cut.get('ai_review_result') == 'pass' and not (issues or structural or technical)}

@@ -1,6 +1,6 @@
 # QC
 
-QC 标准原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb（`fetch_sources.py` 拉到 `sources/qc.txt`）。QC 文档新增条目，**先改 config 再写脚本**。
+QC 标准原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb（`fetch_sources.py` 拉到 `sources/qc.txt`）。QC 文档新增条目，先按职责归属更新再写脚本。音色规则只归产品平台提示词，不复制成本地名单或性别门禁。
 
 ## 四层检查
 
@@ -20,7 +20,7 @@ QC 标准原文：https://tezign.feishu.cn/docx/HrWtd4mowoGeAUxtYeFc91KhnJb（`f
 | 放在哪 | 放什么 | 例子 |
 |---|---|---|
 | skill：`config/<品牌>.json` 的 `banned_words`；`config/<品牌>/<产品>.json` 的 `banned_words` / `foreign_claims` / `regex_error` / `rules` | 文案能查的：禁用词、别的产品 / 香型的卖点、数字、产品名写法、CTA。lint 查底稿，`poll` 查每条改写，`submit` 把禁用词写进这条脚本的改写要求 | Dove-PC 不写「修护」「提亮」「限时」、不写数字；Lux-PC 墨兰乌木不写竹林 |
-| 平台产品提示词 | 文案查不到的：BGM 类别、字幕样式、贴图位置、音效分类（`video_script_create`）；改写时不准新增的词（`video_script_rewrite`）；成片审核标准（`video_cut_review`） | HC-逛逛结尾箭头左下角放大；Dove 字幕白底浅阴影；Dove 开头是泡沫洗浴画面 |
+| 平台产品提示词 | 文案查不到的：音色选择（唯一来源，不做本地覆盖或过滤）、BGM 类别、字幕样式、贴图位置、音效分类（`video_script_create`）；改写时不准新增的词（`video_script_rewrite`）；成片审核标准（`video_cut_review`） | HC-逛逛结尾箭头左下角放大；Dove 字幕白底浅阴影；Dove 开头是泡沫洗浴画面 |
 
 禁用词两处都要有：建脚本提示词管不到改写，每条视频的口播是改写那一步写的。
 
