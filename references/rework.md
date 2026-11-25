@@ -4,6 +4,7 @@
 
 | 场景 | 命令 |
 |---|---|
+| 已分享分组质量复核（无原state） | `group_quality_rework.py inventory / snapshot / media / resources / pool / graphics`；本次清扬30条按 `group_rework_apply.py plan → apply --stage pilot --dry-run → apply → status / review / media`，实际看图后 `accept`，余量 `--stage rest`；`finish`回读原分组和每条当前输出。助手不能替用户审批新脚本/新AI。 |
 | 不够数 | `clipo_batch.py topup --dry-run` → `topup` → `poll`（缺几条补几条） |
 | 生成失败 | `clipo_batch.py submit --retry-failed`（在原任务上继续） |
 | 渲染临时失败 | `clipo_batch.py rerender --brief <id>` → `poll` |

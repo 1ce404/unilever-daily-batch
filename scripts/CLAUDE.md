@@ -43,3 +43,6 @@ voice_check.py: 只读查询分段配音，依赖 NumPy 与 ffmpeg 记录音高�
 - sync_skill.py 管理开工同步；quality_contract.py 回读配置/检查单片与整组；media_qc.py 生成本轮视频技术检查与逐镜头复核证据；asset_health.py 在渲染前拦截失效媒体。LUX本次返工辅助命令以lux_*命名；lux_final_qc.py逐镜头留证、只替换问题镜头及失效音效，提交前校验源可用性和精确dry-run，幂等区分修复轮次。只在该任务配置启用，不能把样片、批准、阈值带入其他客户。
 
 lux_upper_rework.py: 本次brief4十条上方花字返工；4套Clipo现有模板轮换，锁定花字原文/时段以及其他轨道，原生脚本与草稿回读、媒体可用性、单次幂等渲染留证。
+
+group_quality_rework.py: 已有分享分组只读快照、原片逐镜证据与原生资源复核；不替换产品事实。
+group_rework_apply.py: 本次清扬30条授权返工，保护原声/文案/字幕时间，受检源分配、跨片频率留证、代表片后续量、原生箭头音效及当前输出交付回读；不新生成TTS/AIGC。
