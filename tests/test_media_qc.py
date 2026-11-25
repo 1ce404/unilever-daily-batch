@@ -12,4 +12,9 @@ class RenderedMediaTest(unittest.TestCase):
     evidence=inspect(video,draft,root/color,{})
     self.assertEqual(evidence['technical_pass'],color=='blue');self.assertEqual(evidence['visual_review'],'pending');self.assertEqual(len(evidence['frames']),3)
     if color=='black':self.assertTrue(evidence['black_intervals'])
+ def test_one_frame_black_at_30fps_is_not_hidden_by_old_35ms_threshold(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t);video=root/'single-frame.mp4';graph='color=c=blue:s=108x192:r=30:d=0.333333[a];color=c=black:s=108x192:r=30:d=0.033333[b];color=c=green:s=108x192:r=30:d=0.333333[c];[a][b][c]concat=n=3:v=1:a=0[v]'
+   subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','sine=frequency=700:duration=0.7','-filter_complex',graph,'-map','[v]','-map','0:a','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',str(video)],check=True)
+   draft={'composition':{'fps':30,'durationInFrames':21},'clips':[{'id':'main','trackId':'main','from':0,'durationInFrames':21}]};e=inspect(video,draft,root/'qc',{'max_black_interval_seconds':.035});self.assertFalse(e['technical_pass']);self.assertTrue(any(0<x['duration']<=1/30+.001 for x in e['black_intervals']))
 if __name__=='__main__':unittest.main()

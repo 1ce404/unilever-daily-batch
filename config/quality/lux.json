@@ -21,5 +21,6 @@
     "subtitle_styles": 5,
     "bgm": 6,
     "upper_titles": 3
-  }
+  },
+  "reject_single_frame_black": true
 }

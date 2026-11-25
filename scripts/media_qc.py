@@ -8,8 +8,8 @@ from quality_contract import contract
 
 def inspect(video,draft,out,rules):
  out=Path(out);out.mkdir(parents=True,exist_ok=True);video=Path(video);frames=[]
- p=subprocess.run(['ffmpeg','-hide_banner','-i',str(video),'-vf','crop=iw*.78:ih*.86:iw*.11:ih*.05,blackdetect=d=0.035:pix_th=0.1:pic_th=0.98','-af','astats=metadata=1:reset=0','-f','null','-'],capture_output=True,text=True,check=True)
- black=[{'start':float(a),'end':float(b),'duration':float(c)} for a,b,c in re.findall(r'black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)',p.stderr) if float(c)>=rules.get('max_black_interval_seconds',.035)]
+ p=subprocess.run(['ffmpeg','-hide_banner','-i',str(video),'-vf','crop=iw*.78:ih*.86:iw*.11:ih*.05,blackdetect=d=0:pix_th=0.1:pic_th=0.98','-af','astats=metadata=1:reset=0','-f','null','-'],capture_output=True,text=True,check=True)
+ black=[{'start':float(a),'end':float(b),'duration':float(c)} for a,b,c in re.findall(r'black_start:([\d.]+) black_end:([\d.]+) black_duration:([\d.]+)',p.stderr) if float(c)>=(0 if rules.get('reject_single_frame_black',True) else rules.get('max_black_interval_seconds',.035))]
  peaks=re.findall(r'Peak level dB: ([-\d.inf]+)',p.stderr);peak=max((float(x) for x in peaks),default=-math.inf);fps=draft['composition'].get('fps',30)
  # Every source window gets a beginning/middle/end view for empty tails, shake and overlays.
  for i,clip in enumerate(sorted([x for x in draft['clips'] if x.get('trackId')=='main'],key=lambda x:x['from'])):
