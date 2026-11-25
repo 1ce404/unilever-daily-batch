@@ -24,7 +24,7 @@ and must not ask for mask words.
 `prompts` gives one slot per prompt (different person / action each); `prompt` + `versions` submits the same prompt
 N times. Optional plan keys: model, resolution, ratio, generate_audio (default false), max_inflight.
 
-submit adds the tags to the product's tag list, fills free slots up to max_inflight and exits; poll keeps going in
+submit backs up and verifies product tags before adding them, fills free slots up to max_inflight and exits; poll keeps going in
 the background: it reads each task, REPLACES the tags of each successful clip with its scene tag (the platform's
 auto-understanding tags AI clips 使用后 / 头皮出油 too, which put AI people into real-footage segments), checks
 them again on later rounds (so `clipo_batch.py pool --tags <tag>` finds them), tops up the queue, and
@@ -576,7 +576,15 @@ def main():
             print(f"\n(dry run) 共 {len(r.st['slots'])} 条，待提交 {len(todo)} 条（每条单独计费；被拦的每条最多再试 {MAX_RETRIES} 次，"
                   f"最多 {len(todo) * (MAX_RETRIES + 1)} 次）。这次先提交 {len(first)} 条，其余 poll 边跑边补。确认后去掉 --dry-run")
             return
+        # 生成需要新增产品标签：先备份当前共享产品元数据，再添加并回读标签。
+        before_path = Path(args.plan).with_name(Path(args.plan).stem + "-product-before.json")
+        if not before_path.exists():
+            before_path.write_text(json.dumps(cb.api("GET", f"/products/{r.product['clipo_product_id']}"), ensure_ascii=False, indent=2))
         added = ai_tags.add_product_tags(r.product["clipo_product_id"], r.tags())
+        after = cb.api("GET", f"/products/{r.product['clipo_product_id']}")
+        if not set(r.tags()).issubset(set(after.get("tags") or [])):
+            raise SystemExit("产品标签回读不一致，未提交素材生成")
+        Path(args.plan).with_name(Path(args.plan).stem + "-product-after.json").write_text(json.dumps(after, ensure_ascii=False, indent=2))
         if added:
             print(f"产品标签新增：{'、'.join(added)}")
         sent = r.submit_free()

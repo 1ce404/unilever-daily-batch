@@ -3,11 +3,10 @@
 [INPUT]: 依赖 clipo_batch 的配置、素材索引与 AI 镜头时段；读取剪辑草稿与审核状态。
 [OUTPUT]: 提供 cut_checks 与 brief_checks；开头去重尊重用户原话授权，并优先使用换后钩子。
 [POS]: scripts 的交付闸门。poll 渲染前写入单条结论，share 前按 brief 复核；不改草稿、不调写接口。
-       音色由产品的平台提示词决定；闸门检查音量，不限制音色或配音性别。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
 用户 11-19/11-20：返工都是交付后看片才发现的（角标在右上、实拍也加角标、开头重复、BGM 听不见、
-念产品名配质地、女生形象、慢动作）。这些都能从草稿判断，交付前机器挡住，不靠人看。
+念产品名配质地、女生形象、慢动作、女声）。这些都能从草稿判断，交付前机器挡住，不靠人看。
 
     python3 -I scripts/qc.py --config qingyang --run $R [--brief <id>]
 """
@@ -35,12 +34,20 @@ def _name(clip):
 
 
 def cut_checks(brief, draft, voice=None):
-    """返回交付问题；空列表表示通过。voice 参数只为兼容旧调用，不参与音色筛选。"""
+    """Problems one cut has before it may be delivered: [str]. Empty list = passes the gate."""
     cfg, pk = cb.CFG, brief["product_key"]
+    prod = cfg["products"][pk]
     out = []
     clips = draft.get("clips", [])
     main = sorted((c for c in clips if c.get("trackId") == "main"), key=lambda c: c["from"])
     idx = cb.footage_index(pk)
+    if cfg.get('forbid_repeated_main_source'):
+        from urllib.parse import urlparse
+        seen = {}
+        for c in main:
+            path = urlparse(c['props'].get('src','')).path
+            if path in seen: out.append(f"片内重复素材：{c['id']} 与 {seen[path]}")
+            seen[path] = c['id']
     # ---------- 角标：右下角样式；ai_only 时只盖 AI 镜头 ----------
     wm_cfg = cfg.get("watermark") or {}
     if wm_cfg.get("add"):
@@ -53,9 +60,17 @@ def cut_checks(brief, draft, voice=None):
             out.append("角标时段和 AI 镜头不一致（实拍不加、AI 镜头要加）")
     # ---------- BGM 音量 ----------
     vol, voice_vol = cb.mix_volumes(pk)
+    approved_mix = brief.get("mix") or {}
+    vol = approved_mix.get("bgm_volume", vol)
+    voice_vol = approved_mix.get("voice_volume", voice_vol)
     if voice_vol is not None and any(abs((c["props"].get("volume") or 0) - voice_vol) > 1e-6
                                      for c in clips if c.get("trackId") == "voiceover"):
         out.append(f"口播音量不是 {voice_vol}")
+    variant_music = next((c for c in clips if c.get('trackId')=='audio' and c.get('id','').startswith('bgm-variant-')),None)
+    if variant_music:
+        mid=variant_music['id'].removeprefix('bgm-variant-')
+        if mid not in (cfg.get('batch_native_variants') or {}).get('bgm_ids',[]):out.append('BGM不在本批已选素材池')
+        vol=.16 if mid=='6aafcfe4f406342b4dc429c5' else .23
     if vol is not None:
         bgm = [c for c in clips if c.get("trackId") == "audio"]
         if not bgm:
@@ -72,6 +87,13 @@ def cut_checks(brief, draft, voice=None):
         tags, x = plan.get(seg), idx.get(_name(c)) or {}
         if tags and x and not tags & set(x.get("tags") or []):
             out.append(f"第{seg}段画面「{(x.get('name') or '')[:16]}」不在计划标签 {sorted(tags)} 里")
+    from quality_contract import cut_issues
+    if not brief.get('approved_voice_preservation'):
+        out += cut_issues(draft,cfg)
+    else:
+        # Preserve an explicitly approved multi-part demo audio without waiving captions/footage.
+        copy_cfg=dict(cfg)
+        out += [x for x in cut_issues(draft,copy_cfg) if not x.startswith('口播未采用')]
     return list(dict.fromkeys(out))
 
 
@@ -86,11 +108,13 @@ def brief_checks(brief, videos):
             out.append(f"{k} 开头和 {seen[first]} 是同一条素材")
         elif first:
             seen[first] = k
+    from quality_contract import batch_issues
+    out += batch_issues(brief,videos,cb.CFG)
     return out
 
 
 def main():
-    ap = argparse.ArgumentParser(description="交付闸门：读草稿检查角标、音量、禁用画面、画面标签和开头重复")
+    ap = argparse.ArgumentParser(description="交付闸门：读草稿检查角标、BGM、禁用画面、画面标签、音色和开头重复")
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
@@ -104,7 +128,9 @@ def main():
         vids = [(k, v) for k, v in sorted(st.videos.items()) if v["brief_id"] == bid and v.get("stage") == "done"]
         for k, v in vids:
             cut = cb.api("GET", f"/video-cuts/{v['cut_id']}")
-            v["qc_issues"] = cut_checks(b, cut["draft"], (cut.get("random_result") or {}).get("tts_speaker_id"))
+            v["qc_issues"] = cut_checks(b, cut["draft"], v.get("voice") or (cut.get("random_result") or {}).get("tts_speaker_id"))
+            from quality_contract import cut_facts
+            v['quality_facts']=cut_facts(cut['draft'])
             bad += bool(v["qc_issues"])
             rows.append((k, v["qc_issues"]))
         picked, _ = cb.picks(st, bid, b["quantity"])

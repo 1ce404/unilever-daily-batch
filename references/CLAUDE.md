@@ -18,3 +18,5 @@ writing.md: 团队底稿写法；依任务卡落稿，固定卖点复用、开�
 
 法则：成员完整、一行一文件、父级链接、技术词前置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
+- lux-production-qc.md：LUX客户2026-11-25完整反馈的执行解释；数值阈值在config/quality/lux.json。

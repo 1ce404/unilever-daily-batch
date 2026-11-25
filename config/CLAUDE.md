@@ -24,3 +24,5 @@ JSON 保持标准语法，不加入可执行代码。
 selenium 启用卡审库 review_blocks（references/review-blocks/）。
 文案事实与已审核脚本文字保持原样。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+
+- quality/lux.json：LUX客户制作要求的唯一阈值源，由quality_contract引用，不作为产品读取。

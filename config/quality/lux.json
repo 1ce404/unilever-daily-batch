@@ -1,0 +1,20 @@
+{
+  "source": "用户2026-11-25的LUX完整反馈；较新的明确要求优先",
+  "min_subtitle_styles": 5,
+  "min_bgm": 6,
+  "min_voice_choices": 3,
+  "min_ai_hooks": 5,
+  "min_real_pool": 9,
+  "subtitle_max_units": 12,
+  "subtitle_max_font_size": 36,
+  "subtitle_safe_top_percent": 70,
+  "subtitle_uniform_within_video": true,
+  "min_upper_titles": 3,
+  "forbid_repeated_main_source": true,
+  "whole_voice_required": true,
+  "default_speech_rate": 1.4,
+  "approved_task_rate_override": true,
+  "require_media_qc": true,
+  "max_black_interval_seconds": 0.035,
+  "require_visual_review": true
+}

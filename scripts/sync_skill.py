@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Check/update this skill from its owning GitHub main without overwriting unbacked local changes.
+Works for both git clones and copied/archive installs. Uses Git credentials already on that machine.
+"""
+import argparse,datetime,hashlib,json,os,shutil,subprocess,sys,tempfile
+from pathlib import Path
+REPO='https://github.com/1ce404/unilever-daily-batch.git'
+BRANCH='main'
+def git(*args,cwd=None):
+ r=subprocess.run(['git',*args],cwd=cwd,text=True,capture_output=True,timeout=120)
+ if r.returncode:raise RuntimeError(r.stderr.strip() or 'Git request failed')
+ return r.stdout.strip()
+def current(root):
+ if (root/'.git').exists():return git('rev-parse','HEAD',cwd=root)
+ p=root/'.skill-version.json'
+ return json.loads(p.read_text()).get('commit') if p.exists() else None
+def latest(repo=REPO,branch=BRANCH):
+ rows=git('ls-remote','--exit-code',repo,'refs/heads/'+branch).splitlines()
+ if len(rows)!=1:raise RuntimeError('Could not resolve exact upstream branch')
+ return rows[0].split()[0]
+def assert_current(root):
+ root=Path(root);remote=latest();local=current(root)
+ if local!=remote:raise RuntimeError('Skill未同步最新main。先执行 python3 -I scripts/sync_skill.py --apply，再重新运行；不使用旧版继续生产。')
+ print('Skill版本已核验 '+remote[:12],flush=True);return remote
+
+def apply(root,repo=REPO,branch=BRANCH):
+ root=Path(root).resolve();remote=latest(repo,branch);local=current(root)
+ if local==remote:
+  print('Already current '+remote);return remote
+ if (root/'.git').exists():
+  if git('status','--porcelain',cwd=root):raise RuntimeError('本地有修改，先提交或备份；未覆盖任何文件。')
+  git('fetch',repo,branch,cwd=root);fetched=git('rev-parse','FETCH_HEAD',cwd=root)
+  if fetched!=remote:raise RuntimeError('Upstream moved during update; retry a fresh check')
+  git('merge','--ff-only','FETCH_HEAD',cwd=root);print('Updated '+remote);return remote
+ manifest=root/'.skill-version.json';old=json.loads(manifest.read_text()) if manifest.exists() else {};changes=[]
+ for rel,digest in old.get('files',{}).items():
+  p=root/rel
+  if p.exists() and hashlib.sha256(p.read_bytes()).hexdigest()!=digest:changes.append(rel)
+ if changes:raise RuntimeError('本地文件被修改，先备份再更新：'+', '.join(changes[:8]))
+ with tempfile.TemporaryDirectory(prefix='unilever-skill-update-') as tmp:
+  checkout=Path(tmp)/'repo';git('clone','--depth','1','--branch',branch,repo,str(checkout));sha=git('rev-parse','HEAD',cwd=checkout)
+  if sha!=remote:raise RuntimeError('Upstream moved during update; retry')
+  tracked=git('ls-files',cwd=checkout).splitlines();files={}
+  for rel in tracked:
+   src=checkout/rel
+   if src.is_symlink() or not src.is_file() or '..' in Path(rel).parts:raise RuntimeError('Unsupported update path '+rel)
+   files[rel]=hashlib.sha256(src.read_bytes()).hexdigest()
+  stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S');backup=root.parent/(root.name+'-backup-'+stamp)
+  # Copied installs get a complete rollback copy before any tracked file is replaced.
+  shutil.copytree(root,backup,ignore=shutil.ignore_patterns('__pycache__','*.pyc'),dirs_exist_ok=False)
+  for rel in tracked:
+   dest=root/rel;dest.parent.mkdir(parents=True,exist_ok=True);staged=dest.with_name(dest.name+'.updating');shutil.copy2(checkout/rel,staged);os.replace(staged,dest)
+  for rel in set(old.get('files',{}))-set(files):
+   p=root/rel
+   if p.is_file():p.unlink()
+  manifest.write_text(json.dumps({'repository':repo,'branch':branch,'commit':sha,'installed_at':datetime.datetime.now().isoformat(),'files':files},ensure_ascii=False,indent=2))
+  print('Updated '+sha+'; rollback '+str(backup));return sha
+
+def main():
+ p=argparse.ArgumentParser();p.add_argument('--apply',action='store_true');p.add_argument('--check',action='store_true');p.add_argument('--install',default=str(Path(__file__).resolve().parent.parent));a=p.parse_args()
+ try:
+  apply(a.install) if a.apply else assert_current(a.install)
+ except (RuntimeError,subprocess.SubprocessError,OSError) as e:print('BLOCK: '+str(e),file=sys.stderr);return 2
+ return 0
+if __name__=='__main__':sys.exit(main())
