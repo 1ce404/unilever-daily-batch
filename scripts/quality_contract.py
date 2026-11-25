@@ -41,7 +41,9 @@ def config_issues(script,b,cfg,library=(),sound_ids=None):
 
 def cut_facts(d):
  clips=d.get('clips',[]);cues=sorted([x for x in clips if x.get('trackId')=='overlay'],key=lambda x:x.get('from',0));styles=[{k:v for k,v in x.get('props',{}).items() if k not in ['text','text_color','font_url']} for x in cues];sig=hashlib.sha256(json.dumps(styles[0] if styles else {},sort_keys=True).encode()).hexdigest();music=next((x for x in clips if x.get('trackId')=='audio'),{})
- return {'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
+ upper_codes=[hashlib.sha256(x.get('props',{}).get('code','').encode()).hexdigest() for x in sorted(clips,key=lambda x:x.get('from',0)) if x.get('id','').startswith('upper-')]
+ upper_sig=hashlib.sha256(json.dumps(upper_codes).encode()).hexdigest() if upper_codes else None
+ return {'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
 
 def cut_issues(d,cfg):
  rules=contract(cfg)
@@ -72,6 +74,10 @@ def batch_issues(b,videos,cfg):
  for label,key,need in [('字幕样式','style_signature',max(rules['min_subtitle_styles'],(cfg.get('batch_native_variants') or {}).get('required_actual_styles',0))),('BGM','bgm_source',max(rules['min_bgm'],(cfg.get('batch_native_variants') or {}).get('required_actual_bgm',0)))]:
   n=len({f[key] for f in facts})
   if n<min(len(facts),need):out.append(f'整组真实{label}仅{n}种，不能以候选配置数代替实际变化')
+ need=(b.get('upper_title_variation') or {}).get('min_actual_sets',0)
+ if need:
+  actual={f.get('upper_style_signature') for f in facts if f.get('upper_style_signature')}
+  if len(actual)<min(need,len(facts)):out.append(f'整组上方花字实际仅{len(actual)}套，要求至少{need}套；不能用主字幕样式或只换颜色代替花字变化')
  return out
 
 def audit(a,cfg):
