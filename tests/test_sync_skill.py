@@ -6,10 +6,10 @@ import sync_skill as s
 class SyncSkillTest(unittest.TestCase):
  def test_stale_install_blocks_instead_of_claiming_latest(self):
   with tempfile.TemporaryDirectory() as t,patch.object(s,'latest',return_value='new'):
-   with self.assertRaisesRegex(RuntimeError,'未同步'):s.assert_current(t)
+   with self.assertRaisesRegex(RuntimeError,'校验清单|未同步'):s.assert_current(t)
  def test_current_manifest_matches_exact_remote(self):
   with tempfile.TemporaryDirectory() as t,patch.object(s,'latest',return_value='commit'):
-   Path(t,'.skill-version.json').write_text(json.dumps({'commit':'commit'}));self.assertEqual(s.assert_current(t),'commit')
+   Path(t,'SKILL.md').write_text('same');Path(t,'.skill-version.json').write_text(json.dumps({'commit':'commit','files':{'SKILL.md':hashlib.sha256(b'same').hexdigest()}}));self.assertEqual(s.assert_current(t),'commit')
  def test_modified_copied_install_is_not_overwritten(self):
   with tempfile.TemporaryDirectory() as t,patch.object(s,'latest',return_value='new'):
    p=Path(t,'SKILL.md');p.write_text('local edit');Path(t,'.skill-version.json').write_text(json.dumps({'commit':'old','files':{'SKILL.md':hashlib.sha256(b'upstream').hexdigest()}}))
@@ -27,4 +27,8 @@ class SyncSkillTest(unittest.TestCase):
     if args[:2]==('rev-parse','FETCH_HEAD'):return 'old'
     return ''
    with patch.object(s,'git',side_effect=git),self.assertRaisesRegex(RuntimeError,'尚未发布'):s.apply(t)
+ def test_matching_commit_does_not_hide_changed_installed_file(self):
+  with tempfile.TemporaryDirectory() as t,patch.object(s,'latest',return_value='commit'):
+   Path(t,'SKILL.md').write_text('changed');Path(t,'.skill-version.json').write_text(json.dumps({'commit':'commit','files':{'SKILL.md':hashlib.sha256(b'upstream').hexdigest()}}))
+   with self.assertRaisesRegex(RuntimeError,'不一致'):s.assert_current(t)
 if __name__=='__main__':unittest.main()

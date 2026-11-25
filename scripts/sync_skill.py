@@ -20,12 +20,19 @@ def latest(repo=REPO,branch=BRANCH):
  return rows[0].split()[0]
 def assert_current(root):
  root=Path(root);remote=latest();local=current(root)
+ if (root/'.git').exists():
+  if git('status','--porcelain',cwd=root):raise RuntimeError('本地有未发布修改，不能冒充已同步版本。')
+ else:
+  manifest=root/'.skill-version.json';files=json.loads(manifest.read_text()).get('files',{}) if manifest.exists() else {}
+  if not files:raise RuntimeError('复制安装缺少文件校验清单，需先更新安装。')
+  if any(not (root/rel).is_file() or hashlib.sha256((root/rel).read_bytes()).hexdigest()!=digest for rel,digest in files.items()):raise RuntimeError('本地文件与已安装提交不一致，需先备份并同步。')
  if local!=remote:raise RuntimeError('Skill未同步最新main。先执行 python3 -I scripts/sync_skill.py --apply，再重新运行；不使用旧版继续生产。')
  print('Skill版本已核验 '+remote[:12],flush=True);return remote
 
 def apply(root,repo=REPO,branch=BRANCH):
  root=Path(root).resolve();remote=latest(repo,branch);local=current(root)
  if local==remote:
+  if repo==REPO and branch==BRANCH:assert_current(root)
   print('Already current '+remote);return remote
  if (root/'.git').exists():
   if git('status','--porcelain',cwd=root):raise RuntimeError('本地有修改，先提交或备份；未覆盖任何文件。')
