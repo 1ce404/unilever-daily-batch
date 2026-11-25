@@ -133,8 +133,11 @@ def main():
             v["qc_issues"] = cut_checks(b, cut["draft"], v.get("voice") or (cut.get("random_result") or {}).get("tts_speaker_id"))
             from quality_contract import cut_facts
             v['quality_facts']=cut_facts(cut['draft'])
-            bad += bool(v["qc_issues"])
-            rows.append((k, v["qc_issues"]))
+            from quality_contract import delivery_issues
+            current_delivery=delivery_issues(v,cfg)
+            combined=v["qc_issues"]+current_delivery
+            bad += bool(combined)
+            rows.append((k,combined))
         picked, _ = cb.picks(st, bid, b["quantity"])
         for m in brief_checks(b, [(k, st.videos[k]) for k in picked]):
             rows.append((bid, [m]))

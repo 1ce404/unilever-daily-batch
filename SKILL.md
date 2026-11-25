@@ -47,7 +47,7 @@ LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)�
 
 **⑤ demo ⏸**
 1. 跑 `clipo_batch.py submit --dry-run`，再跑 `submit`：每个脚本只出 1 条。
-2. 在后台跑 `poll`。
+2. 在后台跑 `poll`。LUX渲染完成后先 `qc.py`、`media_qc.py --all --config $C --run $R`，实际看图/看片并用 `media_qc.py --run $R --key <视频编号> --config $C --reviewer Agent --review-note "<已检查项与证据>"` 留当前版本复核记录，复跑QC；未经检查不分享demo。
 3. 跑 `share --brief <id> --partial`，把 demo 发给用户。
 4. 用户通过后，跑 `review_doc.py approve-demo --brief <id> --by 用户 --note "<原话>"`。
 
