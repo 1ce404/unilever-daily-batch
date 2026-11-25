@@ -167,6 +167,22 @@ def publish_page(a,cfg):
  doc='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>LUX 11月25日批量验收</title><style>body{max-width:1300px;margin:30px auto;padding:0 24px;color:#342b24;background:#faf8f3;font:16px/1.7 system-ui}a{color:#875c22}h1{font-size:30px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px}article{background:white;padding:14px;border-radius:12px}video{width:100%;max-height:520px;background:#111}section{margin:34px 0}.meta{color:#786b5c}table{width:100%}</style><h1>LUX · 11月25日 · 50条批量验收</h1><p class="meta">'+datetime.datetime.now().strftime('%Y-%m-%d %H:%M')+' 更新。5组各10条，均完成制作自查，待你验收。</p><p>单片主字幕统一单行；全批轮换5种原生字幕样式、6首BGM；第1组使用5个同类追光AI钩子。上方花字、贴纸、转场与音效保留。空镜前奏、产品出画尾巴和明显其他品牌背景已局部替换，并复查本轮成片。</p><p><a target="_blank" href="'+esc(gurl)+'">打开Clipo · 完整50条合集</a></p>'+''.join(cards)+tail
  save(out/'批量验收记录.json',{'at':datetime.datetime.now().isoformat(),'status':'production_qc_pass_client_review_pending','videos':50,'group_url':gurl});(out/'index-before-full-batch.html').write_text(before);(out/'index.html').write_text(doc);print(out/'index.html',gurl)
 
+def rereview_current(a,cfg):
+ root=Path(a.run);out=root/'revisions/终审';st=cb.State(root);keys=['1125-L01-V06','1125-L01-V07'];receiptfile=out/'naming-rereview-receipt.json';videos=[st.videos[k] for k in keys]
+ if receiptfile.exists():print('Naming rereview already submitted once');return
+ ids=[v['cut_id'] for v in videos]
+ plan={'keys':keys,'cut_ids':ids,'render_jobs':[v['render_job'] for v in videos],'reason':'洗发水为用户已审批和任务config的产品名称；实际镜头为同SKU精油香氛洗发露。保留全部原结论，原生复审，不改稿或放行。'}
+ if a.dry_run:save(out/'naming-rereview-plan.json',plan);print(plan);return
+ if json.loads((out/'naming-rereview-plan.json').read_text())!=plan:raise RuntimeError('Naming review plan changed')
+ for key,v in zip(keys,videos):
+  if v.get('ai_review')!='reject' or not v.get('media_qc',{}).get('visual_pass'):raise RuntimeError('Only individually inspected rejected output may be rereviewed')
+  save(out/(key+'-naming-review-before.json'),copy.deepcopy(v))
+ receipt=cb.api('POST','/video-cuts/review',{'cut_ids':ids},tries=1)
+ if receipt.get('queued')!=2 or receipt.get('skipped',0):raise RuntimeError('Review acceptance mismatch '+str(receipt))
+ save(receiptfile,receipt)
+ for v in videos:v.update(stage='reviewing',ai_review=None,ai_reason=None)
+ st.save();print('2 existing current renders submitted to native naming rereview')
+
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['boards','snapshot','rereview','repair','plan_repairs','repair_batch','media_repairs','approve_repaired','publish_page']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--key');p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['boards','snapshot','rereview','repair','plan_repairs','repair_batch','media_repairs','approve_repaired','publish_page','rereview_current']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--key');p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
