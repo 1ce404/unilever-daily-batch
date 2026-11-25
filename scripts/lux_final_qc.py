@@ -163,7 +163,13 @@ def publish_page(a,cfg):
    if not f.exists():raise RuntimeError('Current native render is not downloaded')
    body+='<article><p>'+esc(key)+'</p><video controls playsinline preload="none" poster="../qc/'+key+'/shot-00-0.jpg" src="../qc/'+key+'/current.mp4?v='+esc(v['render_job'])+'"></video></article>'
   url=cfg['clipo']['base_url'].rstrip('/')+'/share/'+share['id'];cards.append('<section><h2>'+esc(b['brief_id']+' · '+b['direction'])+'</h2><p><a target="_blank" href="'+esc(url)+'">打开Clipo本组10条</a></p><div class="grid">'+body+'</div></section>')
- gurl=cfg['clipo']['base_url'].rstrip('/')+'/share/group/'+st.data['share_group']['id']
+ gid=st.data['share_group']['id'];group=cb.api('GET',f'/video-share-groups/{gid}');expected=[st.data['shares'][b['brief_id']]['id'] for b in sorted(cb.load_briefs(root),key=lambda b:b['brief_id'])];save(root/'revisions/终审/group-before-final.json',group)
+ if sorted(x['id'] for x in group['shares'])!=sorted(expected) or group['name']!='20261125-LUX-50条批量验收':
+  cb.api('PATCH',f'/video-share-groups/{gid}',{'name':'20261125-LUX-50条批量验收','video_share_ids':list(reversed(expected))})
+ back=cb.api('GET',f'/video-share-groups/{gid}')
+ if sorted(x['id'] for x in back['shares'])!=sorted(expected):raise RuntimeError('Final group members mismatch')
+ st.data['share_group']['name']=back['name'];st.save();save(root/'revisions/终审/group-final-readback.json',back)
+ gurl=cfg['clipo']['base_url'].rstrip('/')+'/share/group/'+gid
  doc='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>LUX 11月25日批量验收</title><style>body{max-width:1300px;margin:30px auto;padding:0 24px;color:#342b24;background:#faf8f3;font:16px/1.7 system-ui}a{color:#875c22}h1{font-size:30px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px}article{background:white;padding:14px;border-radius:12px}video{width:100%;max-height:520px;background:#111}section{margin:34px 0}.meta{color:#786b5c}table{width:100%}</style><h1>LUX · 11月25日 · 50条批量验收</h1><p class="meta">'+datetime.datetime.now().strftime('%Y-%m-%d %H:%M')+' 更新。5组各10条，均完成制作自查，待你验收。</p><p>单片主字幕统一单行；全批轮换5种原生字幕样式、6首BGM；第1组使用5个同类追光AI钩子。上方花字、贴纸、转场与音效保留。空镜前奏、产品出画尾巴和明显其他品牌背景已局部替换，并复查本轮成片。</p><p><a target="_blank" href="'+esc(gurl)+'">打开Clipo · 完整50条合集</a></p>'+''.join(cards)+tail
  save(out/'批量验收记录.json',{'at':datetime.datetime.now().isoformat(),'status':'production_qc_pass_client_review_pending','videos':50,'group_url':gurl});(out/'index-before-full-batch.html').write_text(before);(out/'index.html').write_text(doc);print(out/'index.html',gurl)
 

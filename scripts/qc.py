@@ -118,6 +118,14 @@ def brief_checks(brief, videos):
     return out
 
 
+def final_delivery_issues(video,cfg):
+    from quality_contract import delivery_issues
+    issues=list(video.get('qc_issues') or [])+delivery_issues(video,cfg)
+    if not cb.deliverable(video) and not issues:
+        reason=video.get('ai_reason') or ('自动审核未通过' if video.get('ai_review')!='pass' else '文案/声音/画面交付标记未通过')
+        issues.append('未通过交付资格：'+str(reason))
+    return issues
+
 def main():
     ap = argparse.ArgumentParser(description="交付闸门：读草稿检查角标、BGM、禁用画面、画面标签、音色和开头重复")
     ap.add_argument("--config", required=True)
@@ -136,12 +144,13 @@ def main():
             v["qc_issues"] = cut_checks(b, cut["draft"], v.get("voice") or (cut.get("random_result") or {}).get("tts_speaker_id"))
             from quality_contract import cut_facts
             v['quality_facts']=cut_facts(cut['draft'])
-            from quality_contract import delivery_issues
-            current_delivery=delivery_issues(v,cfg)
-            combined=v["qc_issues"]+current_delivery
+            combined=final_delivery_issues(v,cfg)
             bad += bool(combined)
             rows.append((k,combined))
         picked, _ = cb.picks(st, bid, b["quantity"])
+        if len(picked)<b["quantity"]:
+            rows.append((bid,[f"合格成片不足 {len(picked)}/{b['quantity']}"]))
+            bad+=1
         for m in brief_checks(b, [(k, st.videos[k]) for k in picked]):
             rows.append((bid, [m]))
             bad += 1

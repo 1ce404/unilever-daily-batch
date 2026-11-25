@@ -15,3 +15,14 @@ class ExactDraftEvidence(unittest.TestCase):
   for field,value in [('from',6),('volume',.13),('src','https://example.com/v?token=new')]:
    changed=dict(old);changed[field]=value
    self.assertNotEqual(canonical(old),canonical(changed))
+
+class DeliveryReport(unittest.TestCase):
+ def test_ai_rejection_cannot_report_zero_issues(self):
+  import qc
+  old=qc.cb.CFG;qc.cb.CFG={}
+  try:
+   self.assertTrue(qc.final_delivery_issues({'ai_review':'reject','ai_reason':'名称待核'},{}))
+   self.assertEqual(qc.final_delivery_issues({'ai_review':'pass'},{}),[])
+   self.assertTrue(qc.final_delivery_issues({'ai_review':'pass','copy_issues':['改稿未审']},{}))
+   self.assertEqual(qc.final_delivery_issues({'ai_review':'reject','review_waived':'用户指定本条自行检查'},{}),[])
+  finally:qc.cb.CFG=old
