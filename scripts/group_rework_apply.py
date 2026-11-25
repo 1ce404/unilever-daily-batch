@@ -146,6 +146,10 @@ def validate(old,plan):
 
 def apply(a,cfg):
  root=Path(a.out);rows=selected(a,root);keys=[r['key'] for r in rows];plans=[read(root/'plans'/(k+'.json')) for k in keys];budget=root/('budget-'+a.stage+'.json')
+ for plan in plans:
+  if plan.get('variant',{}).get('bgm_reference'):
+   from group_bgm_rework import validate_mix
+   validate_mix(plan,root)
  if a.dry_run:
   save(budget,{'at':time.time(),'keys':keys,'fingerprints':[digest(p['draft']) for p in plans],'renders':len(keys),'tts':0,'aigc':0});print('DRY-RUN',a.stage,'existing renders',len(keys),'new videos/TTS/AIGC 0',flush=True);return
  b=read(budget)
@@ -335,6 +339,8 @@ def finish(a,cfg):
   for phase,t,f in [('before',tbefore,root/'qc-original'/key/'original.mp4'),('after',tafter,root/'qc-new'/key/'current.mp4')]:subprocess.run(['ffmpeg','-v','error','-y','-ss',str(t),'-i',str(f),'-frames:v','1','-vf','scale=324:-2',str(out/(f'{i}-{phase}.jpg'))],check=True)
   comparison+='<article><h3>'+label+'</h3><div class="pair"><figure><img src="'+str(i)+'-before.jpg"><figcaption>修改前</figcaption></figure><figure><img src="'+str(i)+'-after.jpg"><figcaption>修改后</figcaption></figure></div></article>'
  doc='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>清扬30条 · 修改后验收</title><style>body{max-width:1300px;margin:30px auto;padding:0 24px;font:16px/1.7 system-ui;color:#153b31;background:#f1f6f3}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:18px}article{background:white;border-radius:12px;padding:15px}video{width:100%;max-height:500px;background:#111}a{color:#117b56}.pair{display:flex;gap:8px}figure{margin:0;flex:1}img{width:100%}</style><h1>清扬30条 · 修改后验收</h1><p>'+datetime.datetime.now().strftime('%Y-%m-%d %H:%M')+'。4组10/15/3/2条，原片保留。30条均通过新版原生审核、黑帧/峰值检查和实际逐镜检查。</p><p><a href="'+esc(url)+'">打开原Clipo合集（已回读新版30条）</a> · <a href="../问题清单/index.html">原片问题与证据</a></p><p>被指出的男士源全部撤下；产品正面、质地及洗后画面对位；5套单行主字幕、4类上方花字轮换；保留原有多音色、多首BGM，重配音乐音量；每条结尾均有原生箭头和短音效。前25条开场原声保留，按用户选择暂不补对白字幕。</p><h2>修改前后对照</h2><div class="grid">'+comparison+'</div>'+''.join(cards)+'</html>'
+ if (root/'bgm-reference/activated.json').exists():
+  doc=doc.replace('保留原有多音色、多首BGM，重配音乐音量','保留已审配音；按用户飞书快消参考更换为系统已上传的7首BGM并重配混音').replace('30条均通过新版原生审核、黑帧/峰值检查和实际逐镜检查。','30条均通过当前原生审核、单帧黑屏和音频峰值检查；画面逐帧相同的沿用前版实际复核，其余已重看检查图。配乐听感待客户验收。')
  (out/'index.html').write_text(doc);save(root/'delivery-receipt.json',{'time':datetime.datetime.now().isoformat(),'group':url,'videos':30,'counts':[10,15,3,2],'status':'production_qc_pass_client_review_pending','page':str(out/'index.html'),'local':str(dest),'deferred':'前25条开场对白字幕按用户选择暂不补'});print('DELIVERY VERIFIED',url,'30/30',out/'index.html',flush=True)
 
 def native_cta(a,cfg):
