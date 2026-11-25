@@ -40,4 +40,4 @@ voice_check.py: 只读查询分段配音，依赖 NumPy 与 ffmpeg 记录音高�
 法则：成员完整、一行一文件、父级链接、技术词前置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
-- sync_skill.py 管理开工同步；quality_contract.py 回读配置/检查单片与整组；media_qc.py 生成本轮视频技术检查与逐镜头复核证据；asset_health.py 在渲染前拦截失效媒体。LUX本次返工辅助命令以lux_*命名，只在该任务配置启用，不能把样片、批准、阈值带入其他客户。
+- sync_skill.py 管理开工同步；quality_contract.py 回读配置/检查单片与整组；media_qc.py 生成本轮视频技术检查与逐镜头复核证据；asset_health.py 在渲染前拦截失效媒体。LUX本次返工辅助命令以lux_*命名；lux_final_qc.py逐镜头留证、只替换问题镜头及失效音效，提交前校验源可用性和精确dry-run，幂等区分修复轮次。只在该任务配置启用，不能把样片、批准、阈值带入其他客户。

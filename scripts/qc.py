@@ -71,6 +71,9 @@ def cut_checks(brief, draft, voice=None):
         mid=variant_music['id'].removeprefix('bgm-variant-')
         if mid not in (cfg.get('batch_native_variants') or {}).get('bgm_ids',[]):out.append('BGM不在本批已选素材池')
         vol=.16 if mid=='6aafcfe4f406342b4dc429c5' else .23
+    per_cut_mix=(brief.get('mix_overrides') or {}).get(draft.get('composition',{}).get('id'),{})
+    if per_cut_mix.get('reason') and per_cut_mix.get('evidence'):
+        vol=per_cut_mix.get('bgm_volume',vol)
     if vol is not None:
         bgm = [c for c in clips if c.get("trackId") == "audio"]
         if not bgm:
