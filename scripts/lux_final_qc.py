@@ -189,6 +189,27 @@ def rereview_current(a,cfg):
  for v in videos:v.update(stage='reviewing',ai_review=None,ai_reason=None)
  st.save();print('2 existing current renders submitted to native naming rereview')
 
+def stage_delivery(a,cfg):
+ import shutil
+ root=Path(a.run);st=cb.State(root);out=root/'本地交付/20261125-LUX';plans=[]
+ by_object={v.get('object_key'):(key,v) for key,v in st.videos.items() if cb.deliverable(v)}
+ for bid,share in sorted(st.data['shares'].items()):
+  page=cb.api('GET',f"/video-shares/{share['id']}")
+  if len(page['videos'])!=10:raise RuntimeError('Share is not a full 10-video batch')
+  for row in page['videos']:
+   obj=row.get('video_object_key') or urllib.parse.unquote(urllib.parse.urlparse(row['video_url']).path.lstrip('/'))
+   if obj not in by_object:raise RuntimeError('Share output is not currently approved')
+   key,v=by_object[obj];folder=root/'qc'/key;ev=json.loads((folder/'media-qc.json').read_text());src=folder/'current.mp4';sha=hashlib.sha256(src.read_bytes()).hexdigest()
+   if ev.get('render_job')!=v.get('render_job') or ev.get('output_object_key')!=obj or ev.get('sha256')!=sha or not v.get('media_qc',{}).get('visual_pass'):raise RuntimeError('Current checked cache differs '+key)
+   dest=out/page['title']/(row['name']+'.mp4');plans.append((src,dest,sha,key,obj))
+ if len(plans)!=50 or len({p[3] for p in plans})!=50:raise RuntimeError('Expected exactly 50 unique final outputs')
+ for src,dest,sha,key,obj in plans:
+  dest.parent.mkdir(parents=True,exist_ok=True)
+  if not dest.exists() or hashlib.sha256(dest.read_bytes()).hexdigest()!=sha:
+   tmp=dest.with_suffix('.qc-copy.tmp');shutil.copy2(src,tmp);tmp.replace(dest)
+  if hashlib.sha256(dest.read_bytes()).hexdigest()!=sha:raise RuntimeError('Local final copy hash mismatch')
+ save(out/'已检成片复用凭据.json',[{'video':key,'file':str(dest),'sha256':sha,'native_output':obj} for src,dest,sha,key,obj in plans]);print('50 current Clipo renders verified and staged; no duplicate downloads, no re-render')
+
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['boards','snapshot','rereview','repair','plan_repairs','repair_batch','media_repairs','approve_repaired','publish_page','rereview_current']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--key');p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['boards','snapshot','rereview','repair','plan_repairs','repair_batch','media_repairs','approve_repaired','publish_page','rereview_current','stage_delivery']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--key');p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
