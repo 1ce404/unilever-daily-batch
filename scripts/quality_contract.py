@@ -69,7 +69,7 @@ def batch_issues(b,videos,cfg):
  if not rules or len(videos)<int(b.get('quantity',1)) or len(videos)<2:return []
  facts=[v.get('quality_facts') for _,v in videos];out=[]
  if any(x is None for x in facts):return ['整组真实字幕/BGM检查记录不完整']
- for label,key,need in [('字幕样式','style_signature',rules['min_subtitle_styles']),('BGM','bgm_source',rules['min_bgm'])]:
+ for label,key,need in [('字幕样式','style_signature',max(rules['min_subtitle_styles'],(cfg.get('batch_native_variants') or {}).get('required_actual_styles',0))),('BGM','bgm_source',max(rules['min_bgm'],(cfg.get('batch_native_variants') or {}).get('required_actual_bgm',0)))]:
   n=len({f[key] for f in facts})
   if n<min(len(facts),need):out.append(f'整组真实{label}仅{n}种，不能以候选配置数代替实际变化')
  return out

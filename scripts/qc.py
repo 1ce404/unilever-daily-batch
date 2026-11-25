@@ -88,7 +88,9 @@ def cut_checks(brief, draft, voice=None):
         if tags and x and not tags & set(x.get("tags") or []):
             out.append(f"第{seg}段画面「{(x.get('name') or '')[:16]}」不在计划标签 {sorted(tags)} 里")
     from quality_contract import cut_issues
-    if not brief.get('approved_voice_preservation'):
+    preservation=brief.get('approved_voice_preservation') or {}
+    approved_multitrack=isinstance(preservation,dict) and preservation.get('note') and preservation.get('composition_id')==draft.get('composition',{}).get('id')
+    if not approved_multitrack:
         out += cut_issues(draft,cfg)
     else:
         # Preserve an explicitly approved multi-part demo audio without waiving captions/footage.

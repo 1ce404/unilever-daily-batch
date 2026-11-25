@@ -21,7 +21,15 @@ def inspect(video,draft,out,rules):
 def main():
  from quality_contract import cut_facts
  import clipo_batch as cb
- p=argparse.ArgumentParser();p.add_argument('--config',required=True);p.add_argument('--video');p.add_argument('--draft');p.add_argument('--out');p.add_argument('--run');p.add_argument('--key');p.add_argument('--reviewer');p.add_argument('--review-note');a=p.parse_args();cfg=load_config(a.config);rules=contract(cfg)
+ p=argparse.ArgumentParser();p.add_argument('--config',required=True);p.add_argument('--video');p.add_argument('--draft');p.add_argument('--out');p.add_argument('--run');p.add_argument('--key');p.add_argument('--all',action='store_true');p.add_argument('--reviewer');p.add_argument('--review-note');a=p.parse_args();cfg=load_config(a.config);rules=contract(cfg)
+ if a.run and a.all:
+  from concurrent.futures import ThreadPoolExecutor
+  cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';st=cb.State(a.run);keys=[k for k,v in sorted(st.videos.items()) if v.get('stage')=='done' and v.get('object_key')]
+  def one(key):
+   r=subprocess.run([sys.executable,'-I',str(Path(__file__).resolve()),'--config',a.config,'--run',a.run,'--key',key],capture_output=True,text=True)
+   print(r.stdout.strip() or key+' '+r.stderr[-350:],flush=True);return {'video':key,'technical_exit':r.returncode,'visual_review':'pending'}
+  with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(one,keys))
+  out=Path(a.run)/'qc';out.mkdir(exist_ok=True);(out/'batch-technical-qc.json').write_text(json.dumps(results,ensure_ascii=False,indent=2));return int(any(x['technical_exit'] for x in results))
  if a.run and a.key:
   cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';st=cb.State(a.run);v=st.videos[a.key];out=Path(a.run)/'qc'/a.key;out.mkdir(parents=True,exist_ok=True)
   if a.review_note:
