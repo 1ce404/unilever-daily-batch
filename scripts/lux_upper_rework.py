@@ -110,6 +110,7 @@ def boards(a,cfg):
   for i,c in enumerate(clips):
    t=(c['from']+min(c['durationInFrames']*.6,30))/fps;dest=out/(key+f'-upper-{i}.jpg');subprocess.run(['ffmpeg','-v','error','-y','-ss',str(t),'-i',str(root/'qc'/key/'current.mp4'),'-frames:v','1','-vf','scale=432:-2',str(dest)],check=True);im=Image.open(dest).convert('RGB');im=im.crop((0,0,432,400));im=im.resize((216,200));x=(n-1)%5*216;y=(n-1)//5*220;sheets[i].paste(im,(x,y));ImageDraw.Draw(sheets[i]).text((x+4,y+202),key+' / '+str((n-1)%4+1),fill='black')
  for i,im in enumerate(sheets):im.save(out/f'upper-event-{i+1}-10-videos.jpg',quality=92)
+ sheets[0].crop((0,0,864,220)).save(out/'4套花字对比.jpg',quality=94)
  print('3 actual rendered upper-event boards, each covers all10 current outputs',flush=True)
 
 def case(a,cfg):
@@ -165,6 +166,18 @@ def r2_submit(a,cfg):
   for f in ['media_qc','object_key','review_waived']:v.pop(f,None)
   st.save();print(key,record['family'],'safe upper native render',flush=True)
 
+def finish_page(a,cfg):
+ import re
+ root=Path(a.run);st=cb.State(root);b=next(b for b in cb.load_briefs(root) if b['brief_id']==BID);keys,_=cb.picks(st,BID,10)
+ if len(keys)!=10:raise RuntimeError('Not all revised brief4 outputs are deliverable')
+ from quality_contract import batch_issues
+ if batch_issues(b,[(k,st.videos[k]) for k in keys],cfg):raise RuntimeError('Actual flower/primary caption/BGM variation gate failed')
+ p=root/'验收/index.html';text=p.read_text();notice='<p>本次更新：brief4的10条上方花字采用标注、柔光轻框、金色轻弹、光晕胶囊4套原生样式轮换；已逐条复核避让。下方主字幕、文案、配音、镜头与BGM保留。旧demo另替换2个已失效短音效引用。其他40条保留原版。</p><figure><img style="width:100%;height:auto" src="../revisions/brief4花字返工/4套花字对比.jpg"><figcaption>前4条的实际开场花字对比</figcaption></figure>'
+ text,n=re.subn(r'(<h2>1125-L04[^<]*</h2>)',lambda m:m.group(1)+notice,text,count=1)
+ if n!=1:raise RuntimeError('Brief4 review section missing')
+ p.write_text(text);save(root/'revisions/brief4花字返工/final-check.json',{'videos':[{k:v for k,v in st.videos[key].items() if k in ['render_job','object_key','upper_title_family','upper_template_id','media_qc']}|{'video':key} for key in keys],'actual_upper_families':4,'native_share':st.data['shares'][BID],'status':'production_qc_pass_client_review_pending'})
+ print('Brief4 revised review page and four-family comparison ready',p)
+
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['inventory','choices','plan','submit','media','boards','case','rereview','compact_choices','r2_plan','r2_submit']);p.add_argument('--round',type=int,choices=[1,2],default=1);p.add_argument('--config',required=True);p.add_argument('--run',required=True);a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['inventory','choices','plan','submit','media','boards','case','rereview','compact_choices','r2_plan','r2_submit','finish_page']);p.add_argument('--round',type=int,choices=[1,2],default=1);p.add_argument('--config',required=True);p.add_argument('--run',required=True);a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
