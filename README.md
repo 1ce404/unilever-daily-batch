@@ -31,7 +31,13 @@ Agent skill：联合利华千川 / 逛逛混剪视频批量生产（清扬、力
 git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/unilever-daily-batch
 ```
 
-入口是 `SKILL.md`，Claude Code、Codex、Cursor 等支持 skills 的 agent 都能用。更新：在这个目录里 `git pull`。
+入口是 `SKILL.md`，Claude Code、Codex、Cursor 等支持 skills 的 agent 都能用。每次开工前更新并核对版本：
+
+```bash
+python3 -I scripts/sync_skill.py --apply
+```
+
+Git clone安装只允许干净工作树的快进更新；复制/ZIP安装先完整备份再替换仓库文件。首次给另一位同学更新旧安装时，需要先取到这版 `sync_skill.py` 或重新克隆此仓库。之后提交入口会校验GitHub main提交号，不允许未同步的版本默默生产。离线、无仓库权限或本地改动时会清楚报阻塞，不声称另一台电脑已更新。
 
 依赖：Python 3.9+（只用标准库）、[`lark-cli`](https://github.com/larksuite)（读飞书文档，要先登录）、能访问 Clipo Remix；测配音（`scripts/voice_check.py`）另需 ffmpeg 和 numpy。
 

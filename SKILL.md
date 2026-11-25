@@ -9,6 +9,12 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 品牌速查：清扬 `MMDD-Bxx`（2x / huxi / selenium，飞书日排期）· 力士 `Lxx`（jingyou / spray / mist，`daily_quota`）· AHC `Axx`（周排期，每结构 15 条）· HC `Hxx` / 多芬 `Dxx` / 力士沐浴 `Pxx`（每批问用户）。产品配置在 `config/<品牌>/<key>.json`；开工前先看 `open_questions`。
 
+## 开工版本与LUX自查
+
+每次新开工先执行 `python3 -I scripts/sync_skill.py --apply`，确认已与GitHub main同步后重新读本文件；本地有未备份修改时先保留，不能直接覆盖。提交入口也检查版本，旧版、离线未核验版不默默生产。现有在途任务继续使用其已保存的生产版本，不能中途切换代码。
+
+LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)，阈值只在 `config/quality/lux.json`。发布前必须回读真实配置、检查每条成片和整组差异；字幕单片统一不等于整批一种，素材/BGM/AI样片展示不等于已配置。用 `quality_contract.py audit`、`qc.py`、`media_qc.py` 留证据，任何未检/失败不得写成通过或进入交付。
+
 ## 流程（用户 11-22）
 
 ```
@@ -41,7 +47,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 **⑤ demo ⏸**
 1. 跑 `clipo_batch.py submit --dry-run`，再跑 `submit`：每个脚本只出 1 条。
-2. 在后台跑 `poll`。
+2. 在后台跑 `poll`。LUX渲染完成后先 `qc.py`、`media_qc.py --all --config $C --run $R`，实际看图/看片并用 `media_qc.py --run $R --key <视频编号> --config $C --reviewer Agent --review-note "<已检查项与证据>"` 留当前版本复核记录，复跑QC；未经检查不分享demo。
 3. 跑 `share --brief <id> --partial`，把 demo 发给用户。
 4. 用户通过后，跑 `review_doc.py approve-demo --brief <id> --by 用户 --note "<原话>"`。
 

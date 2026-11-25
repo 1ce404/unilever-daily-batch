@@ -144,5 +144,6 @@
   "banned_footage_files": {
     "ae192496cd3840d3a601150e45a2cd80.mp4": "用户 11-19 力士：质地镜头手心泛红有少量皮屑（平台审核却判通过），QC 不要头屑画面",
     "6c37b012e9b64f3cb48b5896afe989d4.mp4": "用户 11-19 力士：平台审核判露脐暴露（厨房卷发美女展示身材），会被驳回"
-  }
+  },
+  "quality_contract": "quality/lux.json"
 }

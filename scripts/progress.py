@@ -39,6 +39,9 @@ def video_bucket(v):
         return "failed"
     if cb.deliverable(v):
         return "ok"
+    from quality_contract import delivery_issues
+    if (v.get('ai_review')=='pass' or v.get('review_waived')) and delivery_issues(v,cb.CFG):
+        return 'quality_pending'
     return "rejected"
 
 
@@ -66,6 +69,8 @@ def next_step(cfg, b, job, counts, lint_errs, shared, cmd):
     bid, q = b["brief_id"], b["quantity"]
     if counts["ok"] >= q:  # 够数优先：成片按当时审过的文案生产，之后新增的 lint 规则不把它打回「改文案」
         return ("已交付", "-") if shared else ("可交付", f"{cmd('qc.py', bid)} → {cmd('clipo_batch.py share', bid)}")
+    if counts.get('quality_pending'):
+        return '成片自查', f"{cmd('qc.py', bid)} → media_qc.py --run <本批目录> --key <待检视频编号> → 实际看图/看片并记录，勿直接补产"
     if not b.get("segments"):
         return "写脚本", f"{cmd('brief_card.py', bid)} → 写 segments → {cmd('lint_copy.py', bid)}"
     if lint_errs:
@@ -181,7 +186,7 @@ def day_progress(cfg, run, only=None):
         bid = b["brief_id"]
         vids = {k: v for k, v in st.videos.items() if v["brief_id"] == bid}
         counts = Counter(video_bucket(v) for v in vids.values())
-        for k in ("ok", "in_flight", "rejected", "failed", "aigc_pending"):
+        for k in ("ok", "in_flight", "rejected", "failed", "aigc_pending", "quality_pending"):
             counts.setdefault(k, 0)
         lint_errs = sum(l == "error" for l, _ in lint_brief(b, cfg)) if b.get("segments") else 0
         job = jobs.get(bid) or {}
@@ -191,7 +196,7 @@ def day_progress(cfg, run, only=None):
         rows.append({
             "brief": bid, "product": b.get("product_key"), "store": b.get("store"), "target": b["quantity"],
             "ok": counts["ok"], "in_flight": counts["in_flight"], "rejected": counts["rejected"],
-            "failed": counts["failed"], "aigc_pending": counts["aigc_pending"],
+            "failed": counts["failed"], "aigc_pending": counts["aigc_pending"], "quality_pending": counts["quality_pending"],
             "short": max(b["quantity"] - counts["ok"], 0), "stage": stage, "next": todo,
             "reasons": dict(reasons.most_common()),
             "details": ([{"video": "文案", "why": m} for m in lint_msgs] +
@@ -223,6 +228,8 @@ def render(p):
     for r in rows:
         tot.update({k: r[k] for k in ("target", "ok", "short", "in_flight", "rejected")})
     out.append(f"\n合计：合格 {tot['ok']}/{tot['target']}，缺 {tot['short']}，在途 {tot['in_flight']}，驳回 {tot['rejected']}")
+    checks=sum(r.get('quality_pending',0) for r in rows)
+    if checks:out.append(f"已渲染、待严格成片自查 {checks} 条；这部分先检查，不重复补产")
     why = Counter()
     for r in rows:
         why.update(r["reasons"])

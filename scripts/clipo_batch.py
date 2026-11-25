@@ -4,6 +4,7 @@
 #          依赖 lint_copy 的文案规则、aigc_materials 的素材绑定检查；footage_qc 提供源片探测与角标。
 #          通过 urllib 调用 Clipo Remix REST，读取并保存批次状态。
 # [OUTPUT]: 提供预检、提交、轮询、补量、复审、报告与分享命令；提交与补量只按 1 倍，凭 dry-run 收据才发送。
+#           本任务补充逐组包装要求传入建脚本、brief keep_terms保留与inspect-scripts只读配置快照。
 #           提供素材池、AIGC 绑定、成片下载与离线状态命令；poll/share 按 --brief 限定写入；画面同步先备份。
 #           分享视频附 cut_id，固定状态中已审核输出；线上剪辑只提供封面与规格。
 #           状态合并保留批量条目引用；复审绑定最新输出并核对受理收据。
@@ -14,7 +15,7 @@
 #        提交要求文案人审有效；用 AI 素材的须素材人审；所有品牌默认先出 1 条 demo，demo 人审后才量产。
 #        submit 并发建脚本；poll 按 brief 并发读平台（同一 brief 顺序处理），素材索引与源片下载加锁只取一次。
 #        渲染前 prepare_draft 一次改完草稿（包装、错开开头、禁用画面、角标），闸门不过不渲染。
-#        音色只由每个产品的平台提示词决定；记录实际音色，不覆盖或按本地名单否决。
+#        日常音色沿用产品平台提示词；本地不设音色黑白名单。明确用户要求只在任务级配置留档。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Run approved briefs through Clipo Remix: preflight → submit → poll (generate, render, AI review) → topup → report.
 
@@ -258,6 +259,16 @@ def build_script(pid, brief, title):
     lines = "\n".join(f"第{i + 1}段（{sg.get('title') or sg.get('role')}）：{seg_text(sg)}" for i, sg in enumerate(segs))
     req = (f"按下面已经人审通过的口播文案建脚本：一共 {len(segs)} 段，每段的口播文案逐字照抄，不改字、不加字、不合并、不拆分；"
            f"每段都允许 AI 改写。画面、字幕、配音、BGM、贴图、音效按产品提示词配。\n{lines}")
+    # 本任务逐组包装方案也须进入平台，不能只留在本地 brief。
+    prod_plan = brief.get("production_plan") or {}
+    fields = (("palette", "配色"), ("subtitle", "字幕包装"), ("bgm", "BGM"),
+              ("sound_effects", "音效"), ("transitions", "转场"), ("subtitle_rules", "字幕规则"))
+    directions = [f"{label}：{prod_plan[key]}" for key, label in fields if prod_plan.get(key)]
+    if directions:
+        req += "\n本条专属执行要求（只配置包装，不改上方已审口播；从平台实际资源选择可用项）：\n" + "\n".join(directions)
+        req += "\n请配置可见但克制的包装、至少两种适当转场，BGM与动作音效分开；音效不得含人声/台词；字幕样式与底色保持对比。"
+    if len(req) > 2000:
+        raise RuntimeError(f"建脚本需求 {len(req)} 字超过平台2000字，未发送")
     g = api("POST", "/video-script-generations", {"product_id": pid, "requirement": req})
     for _ in range(72):
         time.sleep(5)
@@ -276,12 +287,15 @@ def build_script(pid, brief, title):
         ps["ai_rewrite"] = True
         pin_visual(ps, sg, CFG["products"][brief["product_key"]])
         pin_decor(ps, sg)
-    # ---------- 音色沿用产品提示词，不覆盖平台配音配置 ----------
+    # Voice choices remain owned by the product platform prompt.
     pin_bgm(script, brief["product_key"])
     script["segments"] = with_silent(script["segments"], brief["segments"], pid)
     body = {k: script[k] for k in ("product_id", "video", "config", "segments") if k in script}
     body["title"] = title[:120]
-    body["vo_rewrite_prompt"] = alt_prompt(segs, CFG["products"][brief["product_key"]])[:2000]
+    rewrite = alt_prompt(segs, CFG["products"][brief["product_key"]])
+    if brief.get("keep_terms"):
+        rewrite += "\n- 以下本稿核心表达须逐字保留：" + "、".join(brief["keep_terms"])
+    body["vo_rewrite_prompt"] = rewrite[:2000]
     api("PUT", f"/video-scripts/{sid}", body)
     allsegs = api("GET", f"/video-scripts/{sid}")["segments"]
     got = [x for x in allsegs if x["type"] != "original"]
@@ -296,6 +310,10 @@ def build_script(pid, brief, title):
     if wrong or off:
         api("DELETE", f"/video-scripts/{sid}")
         raise RuntimeError(f"平台脚本和审过的文案对不上（不一致的段 {wrong}，没开 AI 改写的段 {off}），已删掉，没有生成")
+    if CFG.get('quality_contract'):
+        from quality_contract import config_issues
+        issues=config_issues(api('GET',f'/video-scripts/{sid}'),brief,CFG,list_segments(pid))
+        if issues:raise RuntimeError('真实配置未满足批量要求：'+'；'.join(issues))
     return sid
 
 
@@ -603,6 +621,11 @@ def _submit_plan(cfg, run, probe):
 
 
 def cmd_submit(cfg, run, args):
+    if cfg.get('quality_contract') and not args.scripts_only:
+        from quality_contract import audit
+        audit_args=argparse.Namespace(run=run,brief=args.brief)
+        if any(State(run).data.get('briefs',{}).get(b['brief_id'],{}).get('script_id') for b in load_briefs(run,args.brief)):
+            if audit(audit_args,cfg):raise RuntimeError('真实配置未通过客户制作要求，未提交生成')
     if not args.dry_run and not args.scripts_only:  # 铁律 2：先算一遍要发多少，和 dry-run 收据对上才发
         probe = argparse.Namespace(**{**vars(args), "dry_run": True, "_quiet": True})
         if not dry_run_gate(run, "submit", _submit_plan(cfg, run, probe), False):
@@ -819,6 +842,8 @@ def deliverable(v):
     """Passed AI review, or the user released this video by name (`review_waived` holds their words: user 11-11
     released 爆款-opener videos or explicitly chose to review batch content themselves). Existing known issues
     (copy, voice, footage, watermark) still apply either way."""
+    from quality_contract import delivery_issues
+    if delivery_issues(v,CFG):return False
     return ((v.get("ai_review") == "pass" or bool(v.get("review_waived"))) and not v.get("copy_issues") and not v.get("watermark_missing")
             and not v.get("voice_cmd") and not v.get("voice_drift")
             and not v.get("bad_footage") and not v.get("qc_issues"))
@@ -862,6 +887,12 @@ def cmd_topup(cfg, run, args):
         if generating(job) or any(v.get("stage") not in ("done", "failed") for v in vids):
             print(f"⏳ {bid} 还有视频没跑完，先 poll")
             continue
+        if cfg.get('quality_contract'):
+            from quality_contract import delivery_issues
+            pending=[v for v in vids if (v.get('ai_review')=='pass' or v.get('review_waived')) and delivery_issues(v,cfg)]
+            if pending:
+                print(f"⏸ {bid} 有{len(pending)}条已渲染视频待成片自查，先完成检查，不重复补产")
+                continue
         ok = sum(deliverable(v) for v in vids)
         short = b["quantity"] - ok
         if short <= 0:
@@ -915,6 +946,17 @@ def hook_for(st, b, key, pool):
     return free[0] if free else pool[(n - 1) % len(pool)]
 
 
+def fit_single_line_subtitles(draft):
+    """字幕只缩字号、不拆字、不改cue或文字；给描边/字体差异留足宽度。"""
+    d=copy.deepcopy(draft);width=d['composition']['width'];cap=(CFG or {}).get('subtitle_font_max',36)
+    for clip in d.get('clips',[]):
+        props=clip.get('props') or {}
+        if clip.get('trackId')!='overlay' or not props.get('text'):continue
+        text=props['text'];units=max(1,len(text.replace('\n','').replace('\r','')))
+        props['font_size']=max(1,min(props.get('font_size') or cap,cap,int(width*.42/units)))
+    return d
+
+
 def prepare_draft(st, b, v, key, cut):
     """渲染前对一份草稿做完全部改动：BGM/音效/箭头、去花字、错开开头、替换禁用画面、右下角角标。
     Returns (draft, watermark spans | None 整片 | False 不加角标)。"""
@@ -942,6 +984,9 @@ def prepare_draft(st, b, v, key, cut):
             d, v["restyle_replacements"] = replace_banned_shots(b, d, cut_id, st.path.parent / "restyle-media")
         except RuntimeError as e:
             v["replace_error"] = str(e)[:200]  # 换不了的保留，交给下面的闸门拦
+    if b['brief_id'] in (CFG.get('lux_bulk_approved_briefs') or []) and not key.endswith('-V01'):
+        import lux_bulk_polish
+        d = lux_bulk_polish.prepare(sys.modules[__name__], st, b, v, key, cut, d)
     spans = False
     wm = CFG.get("watermark") or {}
     if wm.get("add"):
@@ -949,6 +994,8 @@ def prepare_draft(st, b, v, key, cut):
         from footage_qc import with_watermark
         spans = ai_spans(b["product_key"], d) if wm.get("ai_only") else None
         d = with_watermark(d, spans)
+    if CFG.get("subtitle_single_line"):
+        d=fit_single_line_subtitles(d)
     return d, spans
 
 
@@ -1017,8 +1064,16 @@ def pull_generation(st, cfg, b, job, gen):
                     v.pop("watermark_missing", None)
                 v["bad_footage"] = bad_footage(b["product_key"], cut["draft"])
                 v["pinned_clips"] = pinned_clips(b, cut["draft"])
-                from qc import cut_checks  # ---------- 渲染前查角标、口播与 BGM 音量、禁用画面、画面标签 ----------
+                if CFG.get('quality_contract'):
+                    from asset_health import check_sources
+                    v['asset_issues']=check_sources(cut['draft'])
+                    if v['asset_issues']:
+                        v.update(stage='failed',error='失效媒体拦截：'+'；'.join(v['asset_issues']))
+                        continue
+                from qc import cut_checks  # 用户 11-20：交付闸门，渲染前按草稿查角标、BGM、禁用画面、画面标签、音色
                 v["qc_issues"] = cut_checks(b, cut["draft"], rr.get("tts_speaker_id"))
+                from quality_contract import cut_facts
+                v['quality_facts']=cut_facts(cut['draft'])
                 if v["qc_issues"] or v["bad_footage"] or v["copy_issues"] or v.get("voice_cmd"):
                     # 用户 11-22：交付不了的不渲染、不送审，直接记下原因，topup 补位（省一次渲染 + 一次审核）
                     v["stage"], v["error"] = "failed", "渲染前闸门不过：" + "；".join(
@@ -1146,6 +1201,10 @@ def poll_video(st, briefs, v):
                 v["ai_review"] = cut.get("ai_review_result")
                 v["ai_reason"] = cut.get("ai_review_reason")
                 v["stage"] = "done"
+                if v['brief_id'] in (CFG.get('lux_bulk_approved_briefs') or []):
+                    import lux_bulk_polish
+                    key = next(k for k,z in st.videos.items() if z['cut_id']==v['cut_id'])
+                    lux_bulk_polish.release_layout(sys.modules[__name__], st, briefs[v['brief_id']], v, key, cut)
     except RuntimeError as e:
         v["last_error"] = str(e)[:300]
 
@@ -1530,7 +1589,7 @@ def cmd_share(cfg, run, args):
             cmd_share_packed(cfg, run, args, st, briefs, None)
         print(f"\n(dry run) 将建 {len(todo)} 个分享链接。确认后去掉 --dry-run")
         return
-    day = Path(run).name
+    day = (all_briefs[0].get("date") or Path(run).name).replace("-", "")
     group = st.data.get("share_group")
     packed = any(b.get("pack") for b in briefs.values())
     if (todo or packed) and not group:
@@ -1883,7 +1942,7 @@ def with_bgm_volume(draft, product_key=None):
     sfx = CFG.get("sfx_volume")
     d = copy.deepcopy(draft)
     last = max((c["id"].split("-")[0] for c in d["clips"] if c.get("trackId") == "voiceover"
-                and str(c.get("id", "")).startswith("v")), key=lambda x: int(x[1:] or 0), default=None)
+                and str(c.get("id", "")).split("-")[0][1:].isdigit() and str(c.get("id", "")).startswith("v")), key=lambda x: int(x[1:] or 0), default=None)
     last = last[1:] if last else None
     if CFG.get("no_confetti"):  # 用户 11-19：礼花不要每条都加，太吵；只留最后一句的戳直播间箭头
         d["clips"] = [c for c in d["clips"] if not (c.get("trackId") in ("sticker", "sound_effects")
@@ -2225,10 +2284,37 @@ def cmd_download(cfg, run, args):
         print("\n".join(f"  - {f}" for f in failed))
 
 
+def cmd_inspect_scripts(cfg, run, args):
+    """只读回读已建平台脚本与包装配置；保存快照，不提交生成或更改共享提示词。"""
+    st = State(run)
+    out = Path(run) / "clipo" / "script-snapshots"
+    out.mkdir(parents=True, exist_ok=True)
+    for b in load_briefs(run, args.brief):
+        sid = (st.data.get("briefs", {}).get(b["brief_id"]) or {}).get("script_id")
+        if not sid:
+            print(f"{b['brief_id']} 未建平台脚本")
+            continue
+        script = api("GET", f"/video-scripts/{sid}")
+        (out / f"{b['brief_id']}.json").write_text(json.dumps(script, ensure_ascii=False, indent=2))
+        actual = [sg.get("content") or "" for sg in script.get("segments", [])]
+        expected = [seg_text(sg) for sg in b.get("segments", [])]
+        summary = {"brief": b["brief_id"], "script_id": sid, "copy_exact": actual == expected,
+                   "config": script.get("config"),
+                   "segments": [{k: sg.get(k) for k in ("id", "title", "visual", "subtitle_style", "transition", "word_art", "sticker", "sound_effects", "effect")} for sg in script.get("segments", [])]}
+        (out / f"{b['brief_id']}-inspection.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+        print(json.dumps({"brief": b["brief_id"], "script_id": sid, "copy_exact": summary["copy_exact"],
+              "segments": len(actual), "transitions": sum(bool(x.get("transition")) for x in script.get("segments", [])),
+              "effects": sum(bool(x.get("effect") or x.get("word_art")) for x in script.get("segments", [])),
+              "sfx_segments": sum(bool(x.get("sound_effects")) for x in script.get("segments", [])),
+              "snapshot": str(out / f"{b['brief_id']}.json")}, ensure_ascii=False))
+        if not summary["copy_exact"]:
+            raise SystemExit("平台脚本文案与当前已审主版不符，停止后续生产")
+
+
 def main():
     global BASE, CFG
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "bind-aigc", "status", "rename-shares", "split-group", "refresh-group", "rerender", "sync-visuals", "spread-hooks", "restyle", "add-footage"])
+    ap.add_argument("cmd", choices=["preflight", "submit", "poll", "topup", "rereview", "report", "share", "download", "pool", "bind-aigc", "status", "rename-shares", "split-group", "refresh-group", "rerender", "sync-visuals", "spread-hooks", "restyle", "add-footage", "inspect-scripts"])
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
@@ -2263,8 +2349,11 @@ def main():
     cfg = load_config(args.config)
     BASE = cfg["clipo"]["base_url"].rstrip("/") + "/api/v1"
     CFG = cfg
+    if args.cmd in ('submit','topup') and not args.dry_run:
+        from sync_skill import assert_current
+        assert_current(Path(__file__).resolve().parent.parent)
     {"preflight": cmd_preflight, "submit": cmd_submit, "poll": cmd_poll, "topup": cmd_topup, "rereview": cmd_rereview, "report": cmd_report, "share": cmd_share,
-     "download": cmd_download, "pool": cmd_pool, "bind-aigc": cmd_bind_aigc, "status": cmd_status, "rename-shares": cmd_rename_shares, "split-group": cmd_split_group, "refresh-group": cmd_refresh_group, "rerender": cmd_rerender, "sync-visuals": cmd_sync_visuals, "spread-hooks": cmd_spread_hooks, "restyle": cmd_restyle, "add-footage": cmd_add_footage}[args.cmd](cfg, args.run, args)
+     "download": cmd_download, "pool": cmd_pool, "bind-aigc": cmd_bind_aigc, "status": cmd_status, "rename-shares": cmd_rename_shares, "split-group": cmd_split_group, "refresh-group": cmd_refresh_group, "rerender": cmd_rerender, "sync-visuals": cmd_sync_visuals, "spread-hooks": cmd_spread_hooks, "restyle": cmd_restyle, "add-footage": cmd_add_footage, "inspect-scripts": cmd_inspect_scripts}[args.cmd](cfg, args.run, args)
 
 
 if __name__ == "__main__":
