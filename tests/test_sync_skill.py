@@ -19,4 +19,12 @@ class SyncSkillTest(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t);repo=root/'repo';repo.mkdir();run=lambda *args:subprocess.run(['git',*args],cwd=repo,check=True,capture_output=True)
    run('init','-b','main');run('config','user.name','Skill QA');run('config','user.email','qa@example.invalid');(repo/'SKILL.md').write_text('latest');run('add','SKILL.md');run('commit','-m','fixture');target=root/'installed';target.mkdir();(target/'SKILL.md').write_text('old');s.apply(target,str(repo),'main');self.assertEqual((target/'SKILL.md').read_text(),'latest');self.assertTrue(list(root.glob('installed-backup-*/SKILL.md')));self.assertEqual(json.loads((target/'.skill-version.json').read_text())['commit'],s.git('rev-parse','HEAD',cwd=repo))
+ def test_ahead_git_install_does_not_report_false_update(self):
+  with tempfile.TemporaryDirectory() as t,patch.object(s,'latest',return_value='old'):
+   Path(t,'.git').mkdir()
+   def git(*args,**kwargs):
+    if args[:2]==('rev-parse','HEAD'):return 'ahead'
+    if args[:2]==('rev-parse','FETCH_HEAD'):return 'old'
+    return ''
+   with patch.object(s,'git',side_effect=git),self.assertRaisesRegex(RuntimeError,'尚未发布'):s.apply(t)
 if __name__=='__main__':unittest.main()

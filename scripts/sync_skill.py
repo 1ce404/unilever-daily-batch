@@ -31,7 +31,9 @@ def apply(root,repo=REPO,branch=BRANCH):
   if git('status','--porcelain',cwd=root):raise RuntimeError('本地有修改，先提交或备份；未覆盖任何文件。')
   git('fetch',repo,branch,cwd=root);fetched=git('rev-parse','FETCH_HEAD',cwd=root)
   if fetched!=remote:raise RuntimeError('Upstream moved during update; retry a fresh check')
-  git('merge','--ff-only','FETCH_HEAD',cwd=root);print('Updated '+remote);return remote
+  git('merge','--ff-only','FETCH_HEAD',cwd=root)
+  if git('rev-parse','HEAD',cwd=root)!=remote:raise RuntimeError('本地存在尚未发布的提交；未降级，先合并上游再更新。')
+  print('Updated '+remote);return remote
  manifest=root/'.skill-version.json';old=json.loads(manifest.read_text()) if manifest.exists() else {};changes=[]
  for rel,digest in old.get('files',{}).items():
   p=root/rel
@@ -40,6 +42,8 @@ def apply(root,repo=REPO,branch=BRANCH):
  with tempfile.TemporaryDirectory(prefix='unilever-skill-update-') as tmp:
   checkout=Path(tmp)/'repo';git('clone','--depth','1','--branch',branch,repo,str(checkout));sha=git('rev-parse','HEAD',cwd=checkout)
   if sha!=remote:raise RuntimeError('Upstream moved during update; retry')
+  local_version=root/'VERSION';upstream_version=checkout/'VERSION'
+  if local_version.exists() and (not upstream_version.exists() or local_version.read_text().strip()>upstream_version.read_text().strip()):raise RuntimeError('远端main尚未包含本机新版；未降级，先合并已提交PR。')
   tracked=git('ls-files',cwd=checkout).splitlines();files={}
   for rel in tracked:
    src=checkout/rel
