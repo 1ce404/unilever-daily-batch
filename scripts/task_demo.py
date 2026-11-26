@@ -151,7 +151,9 @@ def main():
   for sg in b['segments']:
    hints=(cfg.get('demo_caption_chunks',{}).get(b['brief_id'],{})).get(sg['id'])
    if hints:sg['caption_chunks']=hints
-  tts=load(out/'tts.json');library=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);draft,evidence=build(b,cut,tts,script,library,cfg,key)
+  tts=load(out/'tts.json')
+  if (out/'gain-upload.json').exists():tts['audio_url']=cb.api('POST','/storage/download-tokens',{'object_key':load(out/'gain-upload.json')['object_key']})['download_url']
+  library=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);draft,evidence=build(b,cut,tts,script,library,cfg,key)
   # Native assembly can omit an effect node; materialize every configured product/texture title.
   existing={x['id'].split('-')[0] for x in draft['clips'] if x['trackId']=='effect'}
   for x in draft['clips']:
