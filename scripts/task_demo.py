@@ -16,6 +16,20 @@ def norm(s):return re.sub(r'[^\w\u4e00-\u9fff]','',s)
 def digest(x):return hashlib.sha256(json.dumps(x,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 def load(p):return json.loads(Path(p).read_text())
 
+def fit_source_count(ordered,used,length,minimum,cfg,fps):
+ """Fit reviewed, original-speed windows by adding genuine shots, never looping a short source."""
+ for count in range(max(1,minimum),len(ordered)+1):
+  chosen=set(used)
+  for j in range(count):
+   frames=length//count+(j<length%count);pick=None
+   for m in ordered:
+    path=urlparse(m['object_url']).path;available=math.floor((m['end_ms']-m['begin_ms'])*fps/1000);window=(cfg.get('source_highlight_windows') or {}).get(path.rsplit('/',1)[-1],{});start=math.ceil(window.get('start_seconds',0)*fps);end=min(available,math.floor(window.get('end_seconds',available/fps)*fps))
+    if path not in chosen and end-start>=frames+4:pick=path;break
+   if pick is None:break
+   chosen.add(pick)
+  else:return count
+ raise RuntimeError('Reviewed unique original-speed windows cannot cover segment')
+
 def timing(tts,rows,fps):
  whole=''.join(norm(s['text']) for s in rows);tokens=[];pos=0
  for t in tts.get('timeline',{}).get('items',[]):
@@ -63,6 +77,7 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
   else:
    preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta
   count=max(len(base),math.ceil(length/60));cursor=begin
+  if allocation is not None:count=fit_source_count(ordered,used,length,count,cfg,fps)
   for j in range(count):
    frames=length//count+(j<length%count);pick=None
    for m in ordered:
