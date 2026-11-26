@@ -47,6 +47,7 @@ def repair(a,cfg):
  st=cb.State(a.run);plan=read(a.plan);key=plan['key'];v=st.videos[key];b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==v['brief_id'])
  if not plan.get('authorization') or b['brief_id']!=a.brief:raise RuntimeError('Repair authorization or task mismatch')
  cut=cb.api('GET','/video-cuts/'+v['cut_id']);draft=copy.deepcopy(cut['draft']);library={x['id']:x for x in cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id'])};fps=draft['composition']['fps']
+ cb._SEGMENTS[b['product_key']]={m['object_url'].split('?')[0].rsplit('/',1)[-1]:m for m in library.values() if m.get('object_url')}
  for c in draft['clips']:
   if c['id'] in plan.get('remove_transition_ids',[]):
    if c['trackId']!='main':raise RuntimeError('Only selected main-shot transitions may be removed')
@@ -81,6 +82,24 @@ def repair(a,cfg):
  v.update(render_job=job['job_id'],stage='rendering',ai_review=None,ai_reason=None,qc_issues=[],quality_facts=cut_facts(draft))
  for k in ['error','last_error','object_key','bad_footage']:v.pop(k,None)
  st.save();print(key,'source-only repair rendering',job['job_id'])
+
+def repair_batch(a,cfg):
+ """Apply an explicit reviewed list serially, sharing only a fresh read-only source catalog."""
+ rows=read(a.plan)
+ if not isinstance(rows,list) or not rows or len({x['key'] for x in rows})!=len(rows):raise RuntimeError('Unique reviewed repair rows required')
+ st=cb.State(a.run)
+ for x in rows:
+  p=read(x['plan'])
+  if p['key']!=x['key'] or st.videos[x['key']]['brief_id']!=x['brief'] or st.videos[x['key']].get('customer_rework_required'):raise RuntimeError('Repair-list ownership or customer rejection mismatch')
+ original=cb.list_segments;cache={}
+ def catalog(pid):
+  if pid not in cache:cache[pid]=original(pid)
+  return cache[pid]
+ cb.list_segments=catalog
+ try:
+  for x in rows:repair(argparse.Namespace(**{**vars(a),'brief':x['brief'],'plan':x['plan']}),cfg)
+ finally:cb.list_segments=original
+ print('DRY-RUN' if a.dry_run else 'APPLIED','explicit existing-cut repairs',len(rows),'TTS0 new-videos0',flush=True)
 
 def budget(a,cfg):
  if not a.dry_run:raise RuntimeError('Budget requires --dry-run; no paid operations here')
@@ -206,5 +225,5 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','repair_batch','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()

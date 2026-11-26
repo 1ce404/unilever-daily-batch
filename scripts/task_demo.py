@@ -16,6 +16,18 @@ def norm(s):return re.sub(r'[^\w\u4e00-\u9fff]','',s)
 def digest(x):return hashlib.sha256(json.dumps(x,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 def load(p):return json.loads(Path(p).read_text())
 
+def effect_template(eid,run):
+ try:return cb.api('GET','/resource/remotion-effect-template/'+eid)
+ except RuntimeError as exc:
+  if 'remotion_effect_template_not_found' not in str(exc):raise
+  cache=Path(run)/'clipo/task-inventory'/('effect-'+eid+'.json')
+  if not cache.exists():raise
+  item=load(cache)
+  if item.get('id')!=eid or not item.get('code'):raise RuntimeError('Native effect cache identity mismatch')
+  validate_code(item['code'])
+  save(Path(run)/'clipo/effect-cache-reuse'/('effect-'+eid+'.json'),{'id':eid,'cache':str(cache.resolve()),'sha256':hashlib.sha256(cache.read_bytes()).hexdigest(),'reason':'native template removed; exact previously fetched code retained','at':time.time()})
+  return item
+
 def fit_source_count(ordered,used,length,minimum,cfg,fps):
  """Fit reviewed, original-speed windows by adding genuine shots, never looping a short source."""
  for count in range(max(1,minimum),len(ordered)+1):
@@ -191,7 +203,7 @@ def main():
     if parent and parent.get('effect'):x['props']['params']=copy.deepcopy(parent['effect'].get('params',{}))
   for i,sg in enumerate(script['segments']):
    if not sg.get('effect') or sg['id'] in existing:continue
-   fx=sg['effect'];template=cb.api('GET','/resource/remotion-effect-template/'+fx['template_id']);validate_code(template['code']);start,end=evidence['segment_frames'][i:i+2];draft['clips'].append({'id':sg['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':fx.get('params',{}),'x':0,'y':0,'scale':1}})
+   fx=sg['effect'];template=effect_template(fx['template_id'],r);validate_code(template['code']);start,end=evidence['segment_frames'][i:i+2];draft['clips'].append({'id':sg['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':fx.get('params',{}),'x':0,'y':0,'scale':1}})
   save(out/'draft.json',draft);save(out/'timing-and-sources.json',evidence)
   from qc import cut_checks
   issues=cut_checks(b,draft,load(out/'voice-intent.json')['voice']['voice_type']);save(out/'preflight.json',{'issues':issues,'draft_hash':digest(draft)})
