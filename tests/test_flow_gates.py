@@ -1,6 +1,6 @@
 """
 [INPUT]: 依赖 common 的 demo_first、aigc_problem；依赖 review_doc 的 approve_aigc、approve_demo；依赖 clipo_batch 的 parallel、cmd_poll。
-[OUTPUT]: 验证用户 11-22 流程门禁与提速：默认 demo；AI 素材人审先于 demo；poll 并发且不越 brief；并发建脚本；渲染前错开开头、每条一次 PUT；闸门不过不渲染；尾部轮询加快。
+[OUTPUT]: 验证用户 11-22 流程门禁与提速：默认 demo；AI 素材人审先于 demo；poll 并发且不越 brief；并发建脚本；渲染前保留重复开头、不为去重写草稿；闸门不过不渲染；尾部轮询加快。
 [POS]: tests 的流程顺序回归；不调用平台接口。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -111,7 +111,7 @@ def gen_draft(src='hook-a.mp4'):
 
 
 class RenderOnceTest(unittest.TestCase):
-    """用户 11-22：渲染前一次改完（开头错开、角标），一次 PUT；闸门不过不渲染。"""
+    """渲染前保留平台开头；重复不触发草稿写入，其他闸门不过仍不渲染。"""
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -147,13 +147,13 @@ class RenderOnceTest(unittest.TestCase):
             cb.pull_generation(st, cb.CFG, self.brief, job, job)
         return st, calls, drafts
 
-    def test_openers_spread_before_render_with_one_put_each(self):
+    def test_repeated_openers_render_without_deduplication_puts(self):
         st, calls, drafts = self.run_pull()
-        openers = [st.videos[f'B1-V0{i}']['hook_clip'] if 'hook_clip' in st.videos[f'B1-V0{i}'] else 'a' for i in (1, 2, 3)]
-        self.assertEqual(sorted(openers), ['a', 'b', 'c'])
-        self.assertEqual(sum(m == 'PUT' for m, _ in calls), 2)  # V01 已是 a，只写 V02/V03 各一次
+        self.assertTrue(all(v['pinned_clips'][0] == 'a' and 'hook_clip' not in v for v in st.videos.values()))
+        self.assertTrue(all(draft == gen_draft() for draft in drafts.values()))
+        self.assertFalse(any(m == 'PUT' for m, _ in calls))
         self.assertEqual(sum(p == '/render-jobs' for _, p in calls), 3)
-        self.assertEqual(sum(m == 'GET' and p.startswith('/video-cuts/') for m, p in calls), 5)
+        self.assertEqual(sum(m == 'GET' and p.startswith('/video-cuts/') for m, p in calls), 3)
 
     def test_gate_failure_skips_render(self):
         st, calls, _ = self.run_pull(['BGM 音量不是 0.2'])

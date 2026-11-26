@@ -10,7 +10,7 @@
 | 渲染临时失败 | `clipo_batch.py rerender --brief <id>` → `poll` |
 | 改了平台审核提示词 | 先停 `poll`，再 `clipo_batch.py rereview`（不重新生成） |
 | 去花字 / 换禁用源片 | `clipo_batch.py restyle --remove-effects --replace-banned --dry-run` |
-| 开头重复（新生成的渲染前已自动错开） | `clipo_batch.py spread-hooks`；已交付的用 `footage_qc.py repair` 只换第 1 段 → `refresh-group --map <目录>` |
+| 用户明确要求换开头 | `clipo_batch.py spread-hooks`；已交付的用 `footage_qc.py repair` 只换第 1 段 → `refresh-group --map <目录>`；默认允许切片重复，不自动执行 |
 | 补右下角 AI 角标 | `footage_qc.py watermark --cut <id>… --out <目录> --dry-run` → 去掉 dry-run 加 `--wait` → `refresh-group` |
 | 已交付分组换 AIGC 开头并调音 | `opener_refresh.py prepare` → `apply --dry-run` → `apply` → `footage_qc.py review` → `refresh-group` → `opener_refresh.py download` |
 | 定点修订续跑 | `footage_qc.py repair --resume-backup <原备份>`；`review --out <收据目录> --wait` |

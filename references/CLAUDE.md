@@ -14,7 +14,7 @@ new-brand.md: 品牌与产品接入路径；配置、平台提示词、范本与
 rework.md: 返工与交付修订命令速查；从 SKILL.md 移出，主流程不再重复。
 review-blocks/: 产品线卡审库（数据）；lint 与 aigc_gen 读取；见 review-blocks/CLAUDE.md。
 qc-rules.md: 四层 QC 与规则归属；区分文案校验、人审及平台内容复核；音色选择只归产品平台提示词。
-writing.md: 团队底稿写法；依任务卡落稿，固定卖点复用、开头保持差异。
+writing.md: 团队底稿写法；固定卖点复用、开头文案保持差异；画面默认标签随机，用户指定才固定，开头切片可复用。
 
 法则：成员完整、一行一文件、父级链接、技术词前置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

@@ -10,11 +10,12 @@
 #           状态合并保留批量条目引用；复审绑定最新输出并核对受理收据。
 #           按 brief 替换分享先备份，回读新版输出；保留旧独立链接。
 #           交付清单分列 AI 审核与用户复核，不以授权伪造通过数。
-#           素材池可显式只选一条合格来源，供痛点段固定配片；不放宽风险过滤。
+#           开头可固定或复用同一合格切片；不按交付条数补开头、不自动换开头、不按开头重排交付。
+#           素材池可显式只选一条合格来源；素材风险与画面匹配检查保留。
 # [POS]: scripts 的批量生产入口；文案与素材检查委托兄弟模块，交付闸门委托 qc；错开钩子时保留合格来源。
 #        提交要求文案人审有效；用 AI 素材的须素材人审；所有品牌默认先出 1 条 demo，demo 人审后才量产。
 #        submit 并发建脚本；poll 按 brief 并发读平台（同一 brief 顺序处理），素材索引与源片下载加锁只取一次。
-#        渲染前 prepare_draft 一次改完草稿（包装、错开开头、禁用画面、角标），闸门不过不渲染。
+#        渲染前 prepare_draft 一次改完草稿（包装、禁用画面、角标），闸门不过不渲染。
 #        日常音色沿用产品平台提示词；本地不设音色黑白名单。明确用户要求只在任务级配置留档。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """Run approved briefs through Clipo Remix: preflight → submit → poll (generate, render, AI review) → topup → report.
@@ -430,12 +431,11 @@ def bad_footage(product_key, draft):
 
 
 def pinned_clips(brief, draft):
-    """Footage segment id of the first shot of every pinned brief segment (silent opener, pool or visual_query),
-    so picks() can spread a pool's clips over the delivered videos. Draft clip ids are "<script segment id>-<shot>";
-    platform segment ids follow the brief's segment order (with_silent renumbers them from 1)."""
+    """记录指定段及默认开头的来源，供显式返工查询，不用于交付去重。
+    草稿 clip id 为「平台分段 id-镜头」；平台分段按 brief 顺序从 1 编号。"""
     pinned = [str(k + 1) for k, sg in enumerate(brief["segments"]) if sg.get("silent") or sg.get("footage_pool") or sg.get("visual_query")]
     if not pinned:
-        pinned = ["1"]  # 用户 11-19：开头镜头一定要错开（没点名素材池时，也按开头那段的素材分组轮流挑）
+        pinned = ["1"]  # 留档开头来源，供显式返工查询；不参与去重或交付排序。
     idx, first = footage_index(brief["product_key"]), {}
     for c in sorted((c for c in draft.get("clips", []) if c.get("trackId") == "main"), key=lambda c: c["from"]):
         x = idx.get((c.get("props", {}).get("src") or "").split("?")[0].rsplit("/", 1)[-1])
@@ -444,9 +444,8 @@ def pinned_clips(brief, draft):
 
 
 def pin_visual(platform_seg, seg, product=None):
-    """User 11-06/11-09: the line decides the footage. A brief segment may pin `visual_tags` (product footage
-    tags, any of them may match, e.g. ["泡沫丰富", "产品质地"] for a line about using the shampoo); otherwise the
-    platform's own choice stays."""
+    """默认只写 visual_tags，平台在标签下全部候选中随机选片（多标签任一匹配）。
+    用户指定的 footage_pool / visual_query 才附加检索筛选；未指定时清除旧 query/score。"""
     tags = seg.get("visual_tags") or (seg.get("footage_pool") or {}).get("tags")
     if not tags and product and any(t in seg_text(seg) for t in product.get("ingredient_terms", [])):
         tags = product.get("ingredient_footage")  # user 11-10: a line about an ingredient / tech shows texture
@@ -456,6 +455,10 @@ def pin_visual(platform_seg, seg, product=None):
         q = seg.get("footage_pool") or seg.get("visual_query")  # user 11-11 one AI scene clip; 11-13 a pool of clips
         if q:
             v["props"]["query"], v["props"]["score"] = q["query"], q.get("score", 0.8)
+        else:
+            # ---------- 仅指定标签时保留全标签候选，不沿用平台建稿时附加的相似度筛选 ----------
+            v["props"].pop("query", None)
+            v["props"].pop("score", None)
 
 
 def pin_decor(platform_seg, seg):
@@ -650,13 +653,6 @@ def cmd_submit(cfg, run, args):
             skipped += 1
             continue
         pid = cfg["products"][b["product_key"]]["clipo_product_id"]
-        # 用户 11-19：开头素材池比交付条数少，同一个链接里开头必然重复，提交前就说
-        opener = next((sg for sg in b["segments"] if not sg.get("silent")), b["segments"][0]).get("visual_tags")
-        if opener:
-            counts = tag_counts(pid)
-            have = sum(counts.get(t, 0) for t in opener)
-            if have < int(b["quantity"]):
-                print(f"⚠️  {b['brief_id']} 开头素材池 {opener} 只有 {have} 条可用，交付 {b['quantity']} 条开头会重复：先补素材")
         texts = [seg_text(sg) for sg in b["segments"]]
         title = video_title(cfg, b)
         job = st.data.setdefault("briefs", {}).setdefault(b["brief_id"], {})
@@ -936,16 +932,6 @@ def settled(v):
     return bool(v.get("render_job")) or v.get("stage") in ("aigc_pending", "failed")
 
 
-def hook_for(st, b, key, pool):
-    """用户 11-19/11-22：同一 brief 每条开头用池子里不同的一条。按已落地视频占用情况挑下一条空闲来源；
-    池子不够时轮回。渲染前就定好，不再交付后 spread-hooks 重渲。"""
-    used = {opener_clip(x) for k, x in st.videos.items() if k != key and x["brief_id"] == b["brief_id"]
-            and x.get("stage") != "failed"}
-    free = [c for c in pool if c not in used]
-    n = int(key.rsplit("V", 1)[1])
-    return free[0] if free else pool[(n - 1) % len(pool)]
-
-
 def fit_single_line_subtitles(draft):
     """字幕只缩字号、不拆字、不改cue或文字；给描边/字体差异留足宽度。"""
     d=copy.deepcopy(draft);width=d['composition']['width'];cap=(CFG or {}).get('subtitle_font_max',36)
@@ -958,27 +944,12 @@ def fit_single_line_subtitles(draft):
 
 
 def prepare_draft(st, b, v, key, cut):
-    """渲染前对一份草稿做完全部改动：BGM/音效/箭头、去花字、错开开头、替换禁用画面、右下角角标。
+    """渲染前一次完成 BGM/音效/箭头、去花字、禁用画面替换与右下角角标；不因重复换开头。
     Returns (draft, watermark spans | None 整片 | False 不加角标)。"""
     cut_id = cut.get("id") or v["cut_id"]
     d = with_bgm_volume(cut["draft"], b["product_key"])  # 用户 11-19：箭头盖满最后一句、音效音量、BGM 音量
     if b.get("disable_effects"):
         d = without_effects(d)
-    seg0 = (b.get("segments") or [{}])[0]
-    pool = [c["segment_id"] for c in (seg0.get("footage_pool") or {}).get("clips", [])]
-    if len(pool) > 1 and not b.get("hook_repeat_ok"):
-        want = hook_for(st, b, key, pool)
-        idx = footage_index(b["product_key"])
-        by_id = {x["id"]: x for x in idx.values()}
-        first = min((c for c in d["clips"] if c.get("trackId") == "main"), key=lambda c: c["from"])
-        x = by_id.get(want)
-        cur = idx.get(first["props"]["src"].split("?")[0].rsplit("/", 1)[-1]) or {}
-        if x and cur.get("id") != want:
-            have = (x.get("end_ms", 0) - x.get("begin_ms", 0)) / 1000
-            if have * d["composition"].get("fps", 30) >= first["durationInFrames"] + 1:  # 原速足长才换，不慢放
-                first["props"].update(src=x["object_url"], startFrom=0, playbackRate=1.0)
-                first["props"].pop("loop", None)
-                v["hook_clip"] = want
     if b.get("replace_banned_footage") or bad_footage(b["product_key"], d):
         try:
             d, v["restyle_replacements"] = replace_banned_shots(b, d, cut_id, st.path.parent / "restyle-media")
@@ -1053,7 +1024,7 @@ def pull_generation(st, cfg, b, job, gen):
                 if aigc_required(b) and not v.get("aigc_material_set"):
                     v["stage"] = "aigc_pending"
                     continue
-                # 用户 11-22「一次渲对」：包装、开头错开、禁用画面替换、角标都在渲染前改进同一份草稿，一次 PUT + 一次回读
+                # ---------- 包装、禁用画面替换与角标在渲染前一次写入并回读；保留平台随机开头 ----------
                 styled, wm_spans = prepare_draft(st, b, v, vids[-1], cut)
                 if styled != cut["draft"]:
                     api("PUT", f"/video-cuts/{cut_id}", {"script_id": cut["script_id"], "draft": styled})
@@ -1395,22 +1366,10 @@ def opener_clip(v):
 
 
 def picks(st, bid, quantity):
-    """(delivered, spares): `quantity` deliverable videos of a brief, and the rest. User 11-13: when a brief pins
-    footage from a pool, take them round-robin by the clip each video landed on, so one delivery mixes the pool's
-    clips instead of repeating whichever clip the platform drew most (by number otherwise)."""
+    """按视频编号选取合格成片；前 quantity 条交付，其余备用，不按开头切片重排。"""
     good = sorted((k for k, v in st.videos.items() if v["brief_id"] == bid and deliverable(v)),
                   key=lambda k: int(k.rsplit("V", 1)[1]))
-    by_clip = {}
-    for k in good:  # 用户 11-19：同一个链接里开头别重复，按开头镜头分组轮流挑
-        by_clip.setdefault(opener_clip(st.videos[k]), []).append(k)
-    if len(by_clip) <= 1:
-        return good[:quantity], good[quantity:]
-    out, queues = [], list(by_clip.values())
-    while len(out) < quantity and any(queues):
-        for q in queues:
-            if q and len(out) < quantity:
-                out.append(q.pop(0))
-    return out, [k for k in good if k not in out]
+    return good[:quantity], good[quantity:]
 
 
 def share_url(share_id):
@@ -1454,7 +1413,7 @@ def write_delivery(st, briefs, run):
             + (f"按用户原话交付、由用户检查 {user_review} 条；不记作 AI 审核通过。" if user_review else ""), ""]
     packs = [(k[5:], v) for k, v in st.data.get("shares", {}).items() if k.startswith("pack:")]
     if packs:
-        head += ["## 合并交付链接（每个 10 条，混着不同开头）", ""]
+        head += ["## 合并交付链接（每个 10 条）", ""]
         head += [f"- {name}（{len(v['videos'])} 条）：{share_url(v['id'])}" for name, v in sorted(packs)] + [""]
     (Path(run) / out_name(CFG, "delivery.md")).write_text("\n".join(head + out))
     print(f"→ {Path(run) / out_name(CFG, 'delivery.md')}（交付 {total}/{need}）")
@@ -1570,10 +1529,10 @@ def cmd_share(cfg, run, args):
         if len(pick) < b["quantity"] and not args.partial:
             print(f"⏸  {bid} 可交付 {len(pick)}/{b['quantity']}，不够数先不发（要先发加 --partial）")
             continue
-        from qc import brief_checks  # 用户 11-19：同一链接开头不能重复
-        dup = brief_checks(b, [(k, st.videos[k]) for k in pick])
-        if dup and not b.get("pack"):
-            print(f"⏸  {bid} 开头重复，先 spread-hooks 换开头：{dup[:3]}")
+        from qc import brief_checks
+        batch_problems = brief_checks(b, [(k, st.videos[k]) for k in pick])
+        if batch_problems:
+            print(f"⏸  {bid} 整组质量检查未通过：{batch_problems[:3]}")
             continue
         old = shares.get(bid)
         same_name = old and (old.get("title") or video_title(cfg, b)) == delivery_name(cfg, b, all_briefs)
@@ -1822,10 +1781,9 @@ def hook_assignments(pool, videos):
 
 
 def cmd_spread_hooks(cfg, run, args):
-    """User 11-19: every video of B17 opened on the same kitten. The platform picks the top-scored clip of a pool
-    almost every time, so a pool alone does not vary the opening. This gives each finished video of --brief its own
-    clip of segment 1's footage_pool (in pool order, kept ones first), swaps only that clip's src, PUTs, reads back
-    and re-renders; poll sends it to AI review again. Other tracks, copy and voices stay as they are."""
+    """仅在用户明确要求换开头时调用；默认生产不调用此命令。
+    按首段素材池分配来源，只改首镜来源，备份后写入、回读、重渲染并重新送审。
+    其他轨道、文案与声音保持原值。"""
     st = State(run)
     for b in load_briefs(run, args.brief):
         seg = (b.get("segments") or [{}])[0]
@@ -2147,12 +2105,9 @@ def cmd_sync_visuals(cfg, run, args):
 
 
 def cmd_pool(cfg, run, args):
-    """User 11-13: a pinned segment should pull from a pool of clips of the same kind, not one clip (every video of
-    the brief came out with the same AIGC). The platform takes the clips whose description similarity to `query`
-    is at least `score` and draws among them; a long query naming one clip leaves only that clip, so the query
-    must name what the clips share. This searches `--query` within `--tags`, takes the top `--size` usable clips
-    (risk-flagged and banned-footage clips stop the pool), sets `score` between the last one in and the first one
-    out, prints the pool, and with --brief/--seg writes it into that brief segment as `footage_pool`."""
+    """用户指定素材或限定候选时使用；默认标签随机不调用此命令。
+    在 tags 内按 query 检索前 size 条合格切片；风险与禁用素材阻止入池。
+    score 区分池内外；--size 1 可限定单条，--brief/--seg 写入分段的 footage_pool。"""
     pk = args.product or next(iter(cfg["products"]))
     pid = cfg["products"][pk]["clipo_product_id"]
     tags = [t for t in (args.tags or "").split(",") if t]

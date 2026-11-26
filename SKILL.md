@@ -28,7 +28,7 @@ LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)�
 
 **② 写脚本**
 - 先跑 `brief_card.py --config $C --run $R`，照任务卡写 brief 的 `segments`：`role` / `title` / `text` / `alt` / `visual_tags`。任务卡现读平台提示词 `video_script_create`，终稿照它写。写法见 [writing.md](references/writing.md)。
-- 每段都写 `visual_tags`。产品名单独一句，配产品外观；成分另起一段，配质地。
+- 每段都写 `visual_tags`，默认从标签下全部素材随机选片。用户明确指定才固定素材或限定候选池。产品名单独一句，配产品外观；成分另起一段，配质地。
 - 热梗写进 `keep_terms`，否则 AI 改写会改掉。
 - 写完跑 `lint_copy.py --config $C --run $R`，错误清零。
 
@@ -71,7 +71,8 @@ LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)�
 ## 提速
 
 - `submit` 并发建平台脚本（5 路）；`poll` 按 brief 并发读平台（8 路），素材索引只拉一次。
-- **一次渲对**：渲染前把 BGM / 音效 / 箭头、去花字、开头按素材池错开、禁用画面替换、右下角角标改进同一份草稿，一次 PUT、一次回读。不再交付后 `spread-hooks` / `restyle` 重渲。
+- **一次渲对**：渲染前把 BGM / 音效 / 箭头、去花字、禁用画面替换、右下角角标改进同一份草稿，一次 PUT、一次回读。
+- **开头切片可复用**：可固定同一条，不要求素材数匹配交付条数，不自动换开头或因重复拦交付。开头文案差异、素材合规与画面匹配仍检查。只有用户要求换开头时才用 `spread-hooks`。
 - 渲染前交付闸门（`qc`、禁用画面、语音指令、改写违规）不过的直接记 failed，不渲染、不送审，`topup` 补位。
 - 只剩 ≤5 条渲染 / 审核时 10 秒轮询一次，其余 30 秒。
 - demo 算在总数里，量产只补其余条数；只按 1 倍生成，缺几条补几条。

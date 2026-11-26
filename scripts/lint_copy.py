@@ -2,7 +2,7 @@
 """
 [INPUT]: 依赖 common 的品牌事实、已审文案、卡审库与句长工具。
 [OUTPUT]: 提供底稿与平台改写的合规检查；产品配了 review_blocks 时按卡审库拦文案（high 报错，mid/low 提醒）；
-          正面干净、干爽与时间顺序不算负面或极限词。
+          正面干净、干爽与时间顺序不算负面或极限词；开头切片可复用，不要求素材数量匹配交付条数。
 [POS]: scripts 的机械文案门禁；clipo_batch 与断点恢复共用，不改输入文案。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
@@ -312,7 +312,7 @@ OPENING_BANNED = re.compile(r"拍[一二三四五六七八九十\d]+发|到手|\
 MECH_OPENING_OK = ("爆款复刻", "价格优惠")  # user 11-11: 爆款复刻 copies viral videos that open with the deal; 11-20: 价格优惠 opens with the deal
 
 
-POOL_MIN = 3  # user 11-13: one pinned clip made every video of a brief look the same
+POOL_MIN = 3  # 非开头段的素材池下限；开头段允许单条切片。
 
 
 def k_open(segs, sg):
@@ -321,9 +321,8 @@ def k_open(segs, sg):
 
 
 def lint_pools(brief, segs):
-    """Pinned footage must come from a pool: `footage_pool` with at least POOL_MIN clips, each clip used by at most
-    ceil(quantity / clips) of the brief's videos. A single pinned clip (`visual_query`, silent `footage`) is only
-    allowed when the brief is packed with other briefs that bring their own clips (the 11-11 力士 way)."""
+    """开头段与连续无口播开头允许固定单条切片；素材池仍须非空并提供检索参数。
+    非开头段保留素材池下限与 pack 例外，不按开头重复次数拦截。"""
     out = []
     if brief.get("within_folder_material_diversity_required") and brief.get("visual_sets"):
         return out  # per-video exact sets are validated by bind-aigc/share, not random pools
@@ -334,16 +333,14 @@ def lint_pools(brief, segs):
             n = len(pool.get("clips") or [])
             if not (pool.get("query") and pool.get("score") and pool.get("tags") is not None):
                 out.append(("error", f"S{sg.get('id')} footage_pool 要有 query、tags、score（用 clipo_batch.py pool 生成）"))
-            if n < POOL_MIN:
-                out.append(("error", f"S{sg.get('id')} 素材池只有 {n} 条，至少 {POOL_MIN} 条同类素材（一个 brief 的视频才不会全是同一条）"))
-            elif k_open(segs, sg) and brief.get("quantity") and n < brief["quantity"] and not brief.get("pack") \
-                    and not brief.get("hook_repeat_ok"):  # 用户点名同意开头重复时写原话（11-20 穆祉丞只有 5 条：「可以重复」）
-                out.append(("error", f"S{sg.get('id')} 开头素材池 {n} 条、交付 {brief['quantity']} 条：开头不能重复（用户 11-19），"
-                                     f"先补到 {brief['quantity']} 条再提交；生成后 spread-hooks 逐条换开"))
-            elif brief.get("quantity") and -(-brief["quantity"] // n) > 4:
+            opener = k_open(segs, sg) or sg.get("silent")
+            if not n:
+                out.append(("error", f"S{sg.get('id')} 素材池为空，至少选一条合格素材"))
+            elif not opener and n < POOL_MIN:
+                out.append(("error", f"S{sg.get('id')} 素材池只有 {n} 条，非开头段至少 {POOL_MIN} 条同类素材"))
+            elif not opener and brief.get("quantity") and -(-brief["quantity"] // n) > 4:
                 out.append(("warn", f"S{sg.get('id')} 池子 {n} 条、交付 {brief['quantity']} 条，每条素材要用 {-(-brief['quantity'] // n)} 次，再多找几条"))
-        elif single and not brief.get("pack") and not ((k_open(segs, sg) or sg.get("silent")) and brief.get("fixed_opener")):
-            # fixed_opener（用户原话）：爆款裂变要求每条都保留同一个原片开头（用户 11-20），开头重复是有意的
+        elif single and not brief.get("pack") and not (k_open(segs, sg) or sg.get("silent")):
             out.append(("error", f"S{sg.get('id')} 只钉了一条素材，这个 brief 的视频画面会全一样：用 clipo_batch.py pool 做 {POOL_MIN} 条以上的素材池，"
                                  "或按素材拆小 brief 再 pack 合并交付"))
     return out

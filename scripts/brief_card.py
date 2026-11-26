@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# ---------- 文件契约 ----------
+# [INPUT]: 依赖 common 的配置、范本与卡审库；依赖 lint_copy 的历史文案读取，现读平台写稿规则。
+# [OUTPUT]: 输出逐 brief 写稿任务卡；说明默认标签随机、用户指定才固定素材。
+# [POS]: scripts 的写稿上下文入口；不代写文案，不写平台对象。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """④ Print one page per brief with everything the agent needs to write it the team's way (references/writing.md).
 
     python3 scripts/brief_card.py --config qingyang --run runs/20261105 [--brief 1105-B01]
@@ -92,6 +97,7 @@ def card(cfg, run, brief, today):
     if sp.get("must_mention"):
         out.append(f"  卖点必须出现：{'、'.join(sp['must_mention'])}（第一次讲卖点那句要带产品全名）")
     out.append("  每句写 2~3 个说法（主版 text + alt），语气各一版：口语带情绪 / 正常叙述 / 偏书面。③⑤ 可以沿用固定说法")
+    out.append("  画面默认只写 visual_tags，平台从标签下全部素材随机选片；用户明确指定才固定素材或限定素材池。开头切片可重复，不自动换片或因重复补素材。")
     if prod.get("audience_note"):
         out.append(f"\n受众 / 口吻：{prod['audience_note']}")
     if prod.get("rules"):

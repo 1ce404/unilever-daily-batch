@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 [INPUT]: 依赖 clipo_batch 的配置、素材索引与 AI 镜头时段；读取剪辑草稿与审核状态。
-[OUTPUT]: 提供 cut_checks 与 brief_checks；开头去重尊重用户原话授权，并优先使用换后钩子。
-[POS]: scripts 的交付闸门。poll 渲染前写入单条结论，share 前按 brief 复核；不改草稿、不调写接口。
+[OUTPUT]: 提供单片与整组质量检查；开头切片可复用，不按素材重复拦截。
+[POS]: scripts 的交付闸门。poll 检查草稿，share 检查已配置的整组质量要求。
+       独立命令汇总成片验收凭据；不改草稿、不调写接口。
+       音色由产品的平台提示词决定；闸门检查音量，不限制音色或配音性别。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
-用户 11-19/11-20：返工都是交付后看片才发现的（角标在右上、实拍也加角标、开头重复、BGM 听不见、
-念产品名配质地、女生形象、慢动作、女声）。这些都能从草稿判断，交付前机器挡住，不靠人看。
+用户 11-19/11-20：返工都是交付后看片才发现的（角标在右上、实拍也加角标、BGM 听不见、
+念产品名配质地、女生形象、慢动作）。这些都能从草稿判断，交付前机器挡住，不靠人看。
 
     python3 -I scripts/qc.py --config qingyang --run $R [--brief <id>]
 """
@@ -103,19 +105,9 @@ def cut_checks(brief, draft, voice=None):
 
 
 def brief_checks(brief, videos):
-    """Problems across the videos picked for one link: openers must all differ (用户 11-19)."""
-    if brief.get("hook_repeat_ok"):
-        return []
-    seen, out = {}, []
-    for k, v in videos:
-        first = cb.opener_clip(v)
-        if first and first in seen:
-            out.append(f"{k} 开头和 {seen[first]} 是同一条素材")
-        elif first:
-            seen[first] = k
+    """复核已配置的整组质量要求；开头切片重复不构成问题。"""
     from quality_contract import batch_issues
-    out += batch_issues(brief,videos,cb.CFG)
-    return out
+    return batch_issues(brief, videos, cb.CFG)
 
 
 def final_delivery_issues(video,cfg):
@@ -127,7 +119,7 @@ def final_delivery_issues(video,cfg):
     return issues
 
 def main():
-    ap = argparse.ArgumentParser(description="交付闸门：读草稿检查角标、BGM、禁用画面、画面标签、音色和开头重复")
+    ap = argparse.ArgumentParser(description="交付闸门：检查角标、音量、画面标签与成片验收凭据")
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")

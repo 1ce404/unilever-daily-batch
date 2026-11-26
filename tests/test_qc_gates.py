@@ -1,6 +1,6 @@
 """
-[INPUT]: 依赖 clipo_batch 的 dry_run_gate、gen_quantity；依赖 qc 的 brief_checks；依赖 lint_copy 的画面对位与形态问答检查。
-[OUTPUT]: 验证提交门禁、单条合格素材固定、分享范围、必填剪辑编号与审核版本固定、画面计划与钩子授权；去花字保留转场，禁用画面只换原速足长源片；状态合并保持条目引用，复审拒绝旧输出与跳过受理；分享替换写前备份，保留旧链接并逐条回读新版对象。
+[INPUT]: 依赖 clipo_batch 的生产与分享入口；依赖 qc 的交付检查；依赖 lint_copy 的画面计划、素材池与形态问答检查。
+[OUTPUT]: 验证提交门禁、开头切片复用与编号选片、分享范围、必填剪辑编号与审核版本固定、画面计划；去花字保留转场，禁用画面只换原速足长源片；状态合并保持条目引用，复审拒绝旧输出与跳过受理；分享替换写前备份，保留旧链接并逐条回读新版对象。
 [POS]: tests 的交付闸门与提交门禁回归；不调用平台接口。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """
@@ -15,8 +15,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import clipo_batch as cb
-from qc import brief_checks
-from lint_copy import lint_visual_plan, lint_script
+import qc
+from lint_copy import lint_pools, lint_visual_plan, lint_script
 
 PRODUCT = {'full_name': '清扬控油蓬松洗发水', 'name_aliases': ['清扬控油蓬松洗发水'],
            'ingredient_terms': ['SCA'], 'intro_footage': ['产品外观']}
@@ -127,9 +127,33 @@ class GateTest(unittest.TestCase):
         self.assertTrue(cb.dry_run_gate(run, 'submit', {'B01': 10}, False))
         self.assertFalse(cb.dry_run_gate(run, 'submit', {'B01': 10}, False))
 
-    def test_repeated_openers_blocked(self):
-        vids = [('V1', {'pinned_clips': ['a']}), ('V2', {'pinned_clips': ['a']}), ('V3', {'pinned_clips': ['b']})]
-        self.assertEqual(len(brief_checks({}, vids)), 1)
+    def test_repeated_openers_keep_video_order_and_quality_gates(self):
+        def video(source, **kw):
+            return {'brief_id': 'B1', 'ai_review': 'pass', 'pinned_clips': [source], **kw}
+        state = SimpleNamespace(videos={'B1-V04': video('b'), 'B1-V02': video('a'),
+                                       'B1-V01': video('a'), 'B1-V03': video('c', bad_footage=['禁用'])})
+        self.assertEqual(cb.picks(state, 'B1', 2), (['B1-V01', 'B1-V02'], ['B1-V04']))
+
+    def test_opening_pool_allows_reuse_but_requires_valid_candidates(self):
+        for size in (1, 2, 3):
+            with self.subTest(size=size):
+                seg = {'id': '1', 'footage_pool': {'query': '开头', 'tags': ['开头'], 'score': 0.8,
+                                                  'clips': [{'segment_id': str(i)} for i in range(size)]}}
+                self.assertEqual(lint_pools({'quantity': 10}, [seg]), [])
+        seg['footage_pool']['clips'] = []
+        self.assertTrue(any('素材池为空' in m for _, m in lint_pools({'quantity': 10}, [seg])))
+        seg['footage_pool']['clips'] = [{'segment_id': 'a'}]
+        del seg['footage_pool']['query']
+        self.assertTrue(any('query' in m for _, m in lint_pools({'quantity': 10}, [seg])))
+
+    def test_explicit_single_openers_need_no_repeat_flags(self):
+        for segs in ([{'id': '1', 'visual_query': {'segment_id': 'a', 'query': '指定素材'}}],
+                     [{'id': '1', 'silent': True, 'footage': {'segment_id': 'a', 'query': '原片'}},
+                      {'id': '2', 'silent': True, 'footage': {'segment_id': 'b', 'query': '原片后半'}}]):
+            with self.subTest(segs=segs):
+                self.assertEqual(lint_pools({'quantity': 10}, segs), [])
+        body = [{'id': '1'}, {'id': '2', 'visual_query': {'segment_id': 'b'}}]
+        self.assertTrue(lint_pools({'quantity': 10}, body))
 
     def test_hook_assignment_keeps_existing_distinct_sources(self):
         videos = [("kept1", {"hook_clip": "b"}), ("new", {"pinned_clips": ["b"]}),
@@ -185,7 +209,7 @@ class GateTest(unittest.TestCase):
                 with patch.object(cb, "BASE", "https://offline.invalid/api/v1"), \
                      patch.object(cb, "api", side_effect=api), patch.object(cb, "load_briefs", return_value=[brief]), \
                      patch.object(cb, "validate_selection"), patch.object(cb, "picks", return_value=(["V1"], [])), \
-                     patch.object(cb, "delivery_name", return_value="标题"), patch("qc.brief_checks", return_value=[]), \
+                     patch.object(cb, "delivery_name", return_value="标题"), \
                      patch.object(cb, "share_video", return_value={"cut_id": "cut", "video_object_key": "outputs/new.mp4"}), \
                      patch.object(cb, "write_delivery"):
                     if valid:
@@ -253,15 +277,33 @@ class GateTest(unittest.TestCase):
         self.assertEqual(pull.call_count, 1)
         self.assertEqual(pull.call_args.args[2]["brief_id"], "chosen")
 
-    def test_user_can_authorize_repeated_star_openers(self):
-        vids = [("V1", {"pinned_clips": ["a"]}), ("V2", {"pinned_clips": ["a"]})]
-        self.assertEqual(brief_checks({"hook_repeat_ok": "可以重复（用户 11-20）"}, vids), [])
+    def test_qc_allows_repeated_openers_and_still_blocks_cut_issues(self):
+        cfg = {'brand_key': 'qingyang', 'clipo': {'base_url': 'https://offline.invalid'}}
+        b = {'brief_id': 'B1', 'quantity': 2, 'product_key': 'p', 'segments': []}
+        state = SimpleNamespace(videos={f'B1-V0{i}': {'brief_id': 'B1', 'stage': 'done',
+                                'cut_id': f'c{i}', 'pinned_clips': ['a'], 'ai_review': 'pass'} for i in (1, 2)}, save=lambda: None)
+        for issues, exit_code in (([], 0), (['禁用画面'], 1)):
+            with self.subTest(issues=issues), patch.object(sys, 'argv', ['qc.py', '--config', 'q', '--run', self.tmp.name]), \
+                 patch.object(qc, 'load_config', return_value=cfg), patch.object(cb, 'State', return_value=state), \
+                 patch.object(cb, 'load_briefs', return_value=[b]), patch.object(cb, 'api', return_value={'draft': {}}), \
+                 patch.object(qc, 'cut_checks', return_value=issues) as checks:
+                with self.assertRaises(SystemExit) as exc:
+                    qc.main()
+                self.assertEqual(exc.exception.code, exit_code)
+                self.assertEqual(checks.call_count, 2)
 
-    def test_replaced_hook_takes_priority(self):
-        vids = [("V1", {"pinned_clips": ["a"], "hook_clip": "b"}),
-                ("V2", {"pinned_clips": ["a"], "hook_clip": "c"})]
-        self.assertEqual(brief_checks({}, vids), [])
-        self.assertEqual(cb.opener_clip(vids[0][1]), "b")
+    def test_tags_only_uses_all_tag_candidates_without_query(self):
+        platform = {'visual': {'mode': 'material_segment', 'props': {
+            'tags': ['旧标签'], 'query': '平台建稿附加的描述', 'score': 0.95, 'duration': 3}}}
+        cb.pin_visual(platform, {'visual_tags': ['指定标签']})
+        self.assertEqual(platform['visual']['props'], {'tags': ['指定标签'], 'duration': 3})
+        cb.pin_visual(platform, {'visual_tags': ['指定标签'],
+                                 'visual_query': {'segment_id': 'a', 'query': '用户指定素材', 'score': 0.9}})
+        self.assertEqual(platform['visual']['props']['query'], '用户指定素材')
+        self.assertEqual(platform['visual']['props']['score'], 0.9)
+
+    def test_replaced_hook_takes_priority_for_explicit_rework(self):
+        self.assertEqual(cb.opener_clip({'pinned_clips': ['a'], 'hook_clip': 'b'}), 'b')
 
     def test_name_and_ingredient_split(self):
         segs = [{'id': '1', 'role': 'product', 'text': '清扬控油蓬松洗发水，有SCA技术。', 'visual_tags': ['产品外观']}]

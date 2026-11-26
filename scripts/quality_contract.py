@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# ---------- 文件契约 ----------
+# [INPUT]: 依赖品牌质量配置、原生脚本与草稿、真实素材和成片验收凭据。
+# [OUTPUT]: 提供配置、单片、整组与交付质量检查；不要求开头素材数量匹配交付条数。
+# [POS]: scripts 的配置级质量契约；由 qc 与生产入口调用，不写共享资源。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 """[INPUT] Brand quality contract, current Clipo script/cut and actual source metadata.
 [OUTPUT] Pure configuration/cut/batch gates plus a read-only native configuration audit.
 [POS] LUX customer requirements; enabled by config, no product facts or shared resource writes.
@@ -24,7 +29,6 @@ def config_issues(script,b,cfg,library=(),sound_ids=None):
  meta={x['id']:x for x in library};upper=0
  for i,s in enumerate(script.get('segments',[])):
   briefseg=(b.get('segments') or [])[i] if i<len(b.get('segments') or []) else {};ai=any(str(t).startswith('AI') for t in briefseg.get('visual_tags',[]));vis=s.get('visual') or {};ids=vis.get('props',{}).get('segment_ids') or [];need=min(rules['min_ai_hooks'] if ai else rules['min_real_pool'],q) if q>1 else 1
-  if i==0 and not ai and not b.get('hook_repeat_ok') and q>1:need=max(need,q)
   if vis.get('mode')!='material_segment_ids':out.append(f"S{s.get('id')}未绑定可核验的候选素材ID池")
   elif len(set(ids))<need:out.append(f"S{s.get('id')}素材池{len(set(ids))}条，至少需{need}条")
   if ids and meta:
