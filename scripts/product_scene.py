@@ -22,7 +22,7 @@ export const Composition=(props)=>{
  const w=b[2]*k,h=b[3]*k;const left=p.placement.center_x-w/2,top=p.placement.bottom-h;
  const polygon='polygon('+p.polygon.map(q=>`${q[0]/p.source_width*100}% ${q[1]/p.source_height*100}%`).join(',')+')';
  return <AbsoluteFill style={{pointerEvents:'none'}}>
- <div style={{position:'absolute',left:left-w*.12,top:p.placement.bottom-h*.009,width:w*1.24,height:h*.025,borderRadius:'50%',background:'rgba(71,48,25,0.27)',filter:'blur(5px)'}}/>
+ <div style={{position:'absolute',left:left-w*.12,top:p.placement.bottom-h*.022,width:w*1.24,height:h*.025,borderRadius:'50%',background:'rgba(71,48,25,0.27)',filter:'blur(5px)'}}/>
  <div style={{position:'absolute',left,top,width:w,height:h,overflow:'hidden'}}>
  <Img src={p.src} style={{position:'absolute',left:-b[0]*k,top:-b[1]*k,width:p.source_width*k,height:p.source_height*k,maxWidth:'none',clipPath:polygon}}/>
  </div></AbsoluteFill>;
