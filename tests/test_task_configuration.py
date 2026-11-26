@@ -3,7 +3,7 @@ import copy,sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from common import copy_hash
-from task_configuration import validate_body
+from task_configuration import validate_body,native_body
 class TaskConfigTest(unittest.TestCase):
  def fixture(self):
   b={'status':'approved','segments':[{'id':'1','role':'hook','text':'护发精油，还能用喷的？','visual_tags':['AI-1126-轻雾']}]}
@@ -23,4 +23,11 @@ class TaskConfigTest(unittest.TestCase):
   for ids in [['missing'],['a','a']]:
    b,body=self.fixture();body['segments'][0]['visual']={'mode':'material_segment_ids','props':{'segment_ids':ids}}
    with self.subTest(ids=ids),self.assertRaises(RuntimeError):validate_body(body,b,[{'id':'a'}])
+ def test_native_null_subtitle_inherits_global_only(self):
+  b,body=self.fixture();a=copy.deepcopy(body);a['segments'][0]['subtitle_style']=None
+  self.assertEqual(native_body(a,body),native_body(body,body))
+  a['segments'][0]['subtitle_style']={'mode':'override'}
+  self.assertNotEqual(native_body(a,body),native_body(body,body))
+  a=copy.deepcopy(body);a['config']['tts']['voices'].pop()
+  self.assertNotEqual(native_body(a,body),native_body(body,body))
 if __name__=='__main__':unittest.main()

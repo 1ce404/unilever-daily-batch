@@ -13,6 +13,13 @@ from common import load_config,approval_problem,copy_hash
 def save(p,d):
  p=Path(p);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(d,ensure_ascii=False,indent=2));return p
 
+def native_body(d,keys):
+ """Server emits optional segment subtitle_style=null for inherited global styles."""
+ out=copy.deepcopy({k:d.get(k) for k in keys})
+ for segment in out.get('segments',[]):
+  if segment.get('subtitle_style') is None:segment.pop('subtitle_style',None)
+ return out
+
 def digest(d):return hashlib.sha256(json.dumps(d,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 def items(d):return d if isinstance(d,list) else d.get('items',[])
 def pages(path):
@@ -76,8 +83,8 @@ def apply(a,cfg):
    if before['product_id']!=pid or before.get('title')!=body['title']:raise RuntimeError('Existing task identity mismatch')
    rec=out/(bid+'-applied.json')
    if rec.exists():
-    prior=json.loads(rec.read_text());current={k:before.get(k) for k in body}
-    if digest(current)!=prior['body_digest'] and current!=body:raise RuntimeError('Task script changed externally; refusing overwrite')
+    prior=json.loads(rec.read_text());current=native_body(before,body)
+    if digest(current)!=prior['body_digest'] and current!=native_body(body,body):raise RuntimeError('Task script changed externally; refusing overwrite')
   if a.dry_run:
    save(out/(bid+'-dryrun.json'),{'body':body,'copy_hash':copy_hash(b),'pending_ai_segments':pending});print(bid,'DRY-RUN','segments',len(body['segments']),'pending_AI',pending,flush=True);continue
   intent=out/(bid+'-create-intent.json');created=out/(bid+'-created.json')
@@ -86,18 +93,18 @@ def apply(a,cfg):
    if len(found)>1:raise RuntimeError('Ambiguous existing title')
    if found:
     candidate=cb.api('GET','/video-scripts/'+found[0]['id'])
-    if {k:candidate.get(k) for k in body}!=body:raise RuntimeError('Existing title has different body; no duplicate creation')
+    if native_body(candidate,body)!=native_body(body,body):raise RuntimeError('Existing title has different body; no duplicate creation')
     sid=candidate['id'];save(created,candidate)
    else:
     if intent.exists() and not created.exists():raise RuntimeError('Prior create outcome uncertain; reconcile instead of retry')
     save(intent,{'body':body,'authorization':plan['authorization']});d=cb.api('POST','/video-scripts',body,tries=1);sid=d['id'];save(created,d)
   else:
-   if before and {k:before.get(k) for k in body}!=body:
+   if before and native_body(before,body)!=native_body(body,body):
     save(out/(bid+'-before-'+digest(before)[:12]+'.json'),before);cb.api('PUT','/video-scripts/'+sid,body,tries=1)
   after=cb.api('GET','/video-scripts/'+sid);save(out/(bid+'-after.json'),after)
-  if any(after.get(k)!=body[k] for k in body):raise RuntimeError('Native script readback mismatch '+bid)
+  if native_body(after,body)!=native_body(body,body):raise RuntimeError('Native script readback mismatch '+bid)
   job.update(script_id=sid,texts=[s['text'] for s in b['segments']],configuration_only=True,stage='script_ready',pending_ai_segments=pending)
-  st.save();save(out/(bid+'-applied.json'),{'script_id':sid,'body_digest':digest(body),'copy_hash':copy_hash(b),'pending_ai_segments':pending})
+  st.save();save(out/(bid+'-applied.json'),{'script_id':sid,'body_digest':digest(native_body(body,body)),'copy_hash':copy_hash(b),'pending_ai_segments':pending})
   c=after['config'];result={'brief':bid,'script_id':sid,'pending_ai_segments':pending,'styles':len(c.get('subtitle_style',{}).get('style_ids',[])),'BGM':len(c.get('bgm',{}).get('props',{}).get('ids',[])),'voices':len(c.get('tts',{}).get('voices',[]))};results.append(result);print(json.dumps(result,ensure_ascii=False),flush=True)
  save(out/'summary.json',results)
 
