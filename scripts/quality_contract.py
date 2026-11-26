@@ -132,3 +132,6 @@ def delivery_issues(video,cfg):
  if rules.get('require_visual_review') and (not e.get('visual_pass') or not e.get('reviewer') or not e.get('review_note')):out.append('当前成片空镜/抖动/遮挡等实际视觉复核未完成')
  if rules.get('require_upper_title_samples') and e.get('upper_title_sample_count',0)<3*(video.get('quality_facts') or {}).get('upper_title_count',0):out.append('上方花字未逐处抽帧检查自动换行')
  return out
+
+def needs_media_review(video,cfg):
+ return not video.get('customer_rework_required') and bool(video.get('ai_review')=='pass' or video.get('review_waived')) and bool(delivery_issues(video,cfg))

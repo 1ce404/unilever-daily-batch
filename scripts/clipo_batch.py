@@ -888,8 +888,8 @@ def cmd_topup(cfg, run, args):
             print(f"⏳ {bid} 还有视频没跑完，先 poll")
             continue
         if cfg.get('quality_contract'):
-            from quality_contract import delivery_issues
-            pending=[v for v in vids if (v.get('ai_review')=='pass' or v.get('review_waived')) and delivery_issues(v,cfg)]
+            from quality_contract import needs_media_review
+            pending=[v for v in vids if needs_media_review(v,cfg)]
             if pending:
                 print(f"⏸ {bid} 有{len(pending)}条已渲染视频待成片自查，先完成检查，不重复补产")
                 continue

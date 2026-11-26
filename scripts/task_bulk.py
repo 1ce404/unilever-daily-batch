@@ -113,6 +113,25 @@ def allocate(a,cfg):
   save(target,{'plan':plan,'counts':counts,'budget_at':budget['at']});st=cb.State(a.run);st.data.setdefault('briefs',{}).setdefault(a.brief,{}).pop('customer_rework_hold',None);st.save()
  print('DRY-RUN' if a.dry_run else 'SAVED','reviewed source allocation',len(plan['videos']),'videos; person groups',counts)
 
+def copies(a,cfg):
+ """Export actual native rewrites and actual used-source counts, never count planned resources as used."""
+ st=cb.State(a.run);root=Path(a.run)/'task-bulk';budget=read(root/(a.brief+'-budget.json'));allocation=read(root/(a.brief+'-source-allocation.json'));groups=allocation['plan']['source_groups'];rows=[];people={};sources={}
+ for key in budget['keys']:
+  v=st.videos.get(key)
+  if not v:continue
+  text=''.join(v.get('texts') or []);prepared=root/key/'prepared.json';used=[]
+  if prepared.exists():
+   evidence=read(prepared)['evidence']['source_windows'];seen=set()
+   for x in evidence:
+    sid=x['source_segment_id'];sources.setdefault(sid,{'videos':set(),'shots':0,'frames':0});sources[sid]['videos'].add(key);sources[sid]['shots']+=1;sources[sid]['frames']+=x['used_frames']
+    if sid in groups:seen.add(groups[sid])
+   used=sorted(seen)
+   for g in used:people[g]=people.get(g,0)+1
+  rows.append({'key':key,'cut_id':v.get('cut_id'),'stage':v.get('stage'),'copy':text,'copy_hash':hashlib.sha256(td.norm(text).casefold().encode()).hexdigest(),'actual_person_groups':used,'last_error':v.get('last_error'),'native_copy_source':'Clipo random_result.vo_rewrite → collected video texts'})
+ serial={k:{**v,'videos':sorted(v['videos'])} for k,v in sources.items()};out=Path(a.run)/'revisions/新批量文案与人物分配';out.mkdir(parents=True,exist_ok=True);save(out/(a.brief+'-实际改写与用料.json'),{'rows':rows,'unique_actual_copy':len({x['copy_hash'] for x in rows if x['copy']}),'actual_person_groups':people,'actual_source_frequency':serial})
+ (out/(a.brief+'-实际文案.md')).write_text('\n\n'.join('### '+x['key']+'\n\n'+x['copy'] for x in rows))
+ print(a.brief,'collected',len(rows),'unique actual copy',len({x['copy_hash'] for x in rows if x['copy']}),'prepared',sum(bool(x['actual_person_groups']) for x in rows),'actual groups',people,'report',str(out/(a.brief+'-实际文案.md')))
+
 def prepare(api_module,st,b,v,key,cut,d):
  td.cb=api_module;cb.CFG=api_module.CFG;cb.BASE=api_module.BASE;cfg=api_module.CFG;root=st.path.parent.parent;assets=root/'task-bulk';plan=read(assets/(b['brief_id']+'-budget.json'))
  validate_budget(plan,key,time.time())
@@ -168,5 +187,5 @@ def prepare(api_module,st,b,v,key,cut,d):
  save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']});return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold','allocate']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()

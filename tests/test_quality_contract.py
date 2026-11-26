@@ -42,6 +42,8 @@ class QualityContractTest(unittest.TestCase):
   a=self.draft();b=self.draft();b['clips'][2]['props']['text']+='，。！';self.assertEqual(q.cut_facts(a)['copy_signature'],q.cut_facts(b)['copy_signature'])
  def test_user_rejection_survives_native_review_pass(self):
   self.assertTrue(q.delivery_issues({'ai_review':'pass','customer_rework_required':'重复文案'},self.cfg))
+ def test_rejected_batch_is_rework_not_pending_media_review(self):
+  v={'ai_review':'pass','customer_rework_required':'重复文案'};self.assertFalse(q.needs_media_review(v,self.cfg));v.pop('customer_rework_required');self.assertTrue(q.needs_media_review(v,self.cfg))
  def test_delivery_needs_current_media_and_visual_proof(self):
   v={'render_job':'new','object_key':'new.mp4','media_qc':{'technical_pass':True,'render_job':'old','output_object_key':'old.mp4','visual_pass':True,'reviewer':'agent','review_note':'看图'}};self.assertTrue(q.delivery_issues(v,self.cfg));v['media_qc'].update(render_job='new',output_object_key='new.mp4');self.assertEqual(q.delivery_issues(v,self.cfg),[])
  def test_dead_asset_error_does_not_expose_query(self):
