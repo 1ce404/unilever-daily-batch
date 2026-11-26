@@ -36,4 +36,9 @@ class TaskConfigTest(unittest.TestCase):
   self.assertEqual(native_body(a,body),native_body(body,body))
   a['segments'][0]['sound_effects']['volume']=0.8
   self.assertNotEqual(native_body(a,body),native_body(body,body))
+ def test_real_native_tags_keep_whole_library_selection(self):
+  b,body=self.fixture();body['segments'][0]['visual']={'mode':'material_segment','props':{'tags':['产品外观']}}
+  self.assertEqual(validate_body(body,b,[{'id':'one','tags':['产品外观'],'ai_generated':False}]),[])
+  self.assertNotIn('segment_ids',body['segments'][0]['visual']['props'])
+  with self.assertRaises(RuntimeError):validate_body(body,b,[])
 if __name__=='__main__':unittest.main()

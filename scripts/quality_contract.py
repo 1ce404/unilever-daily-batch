@@ -29,7 +29,13 @@ def config_issues(script,b,cfg,library=(),sound_ids=None):
  meta={x['id']:x for x in library};upper=0
  for i,s in enumerate(script.get('segments',[])):
   briefseg=(b.get('segments') or [])[i] if i<len(b.get('segments') or []) else {};ai=any(str(t).startswith('AI') for t in briefseg.get('visual_tags',[]));vis=s.get('visual') or {};ids=vis.get('props',{}).get('segment_ids') or [];need=min(rules['min_ai_hooks'] if ai else rules['min_real_pool'],q) if q>1 else 1
-  if vis.get('mode')!='material_segment_ids':out.append(f"S{s.get('id')}未绑定可核验的候选素材ID池")
+  if vis.get('mode')=='material_segment':
+   tags=vis.get('props',{}).get('tags') or []
+   if not tags:out.append(f"S{s.get('id')}未配置原生素材标签")
+   elif meta:
+    candidates=[x for x in meta.values() if set(tags)&set(x.get('tags') or []) and bool(x.get('ai_generated'))==ai]
+    if len(candidates)<need:out.append(f"S{s.get('id')}标签库实际{len(candidates)}条，至少需{need}条")
+  elif vis.get('mode')!='material_segment_ids':out.append(f"S{s.get('id')}未配置原生标签随机或明确指定素材")
   elif len(set(ids))<need:out.append(f"S{s.get('id')}素材池{len(set(ids))}条，至少需{need}条")
   if ids and meta:
    missing=[x for x in ids if x not in meta]

@@ -63,8 +63,12 @@ def validate_body(body,b,library):
   v=s.get('visual') or {};ids=v.get('props',{}).get('segment_ids',[])
   if v.get('mode')=='material_segment_ids':
    if not ids or len(ids)!=len(set(ids)) or any(x not in valid for x in ids):raise RuntimeError('Invalid native footage pool '+s['id'])
-  elif v.get('mode')=='material_segment' and all(t.startswith('AI-') for t in v.get('props',{}).get('tags',[])) and v.get('props',{}).get('tags'):pending.append(s['id'])
-  else:raise RuntimeError('Only explicit native IDs or pending tagged AI allowed')
+  elif v.get('mode')=='material_segment' and v.get('props',{}).get('tags'):
+   tags=v['props']['tags']
+   if all(t.startswith('AI-') for t in tags):pending.append(s['id'])
+   elif any(t.startswith('AI-') for t in tags):raise RuntimeError('Do not mix AI and real tags')
+   elif not any(set(tags)&set(x.get('tags',[])) and not x.get('ai_generated') for x in library):raise RuntimeError('No real sources under native tags')
+  else:raise RuntimeError('Native tag selection or explicit reviewed IDs required')
  if len((body['config'].get('tts') or {}).get('voices',[]))<3:raise RuntimeError('At least3 native voices required')
  return pending
 
