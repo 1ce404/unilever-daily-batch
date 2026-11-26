@@ -130,6 +130,8 @@ def main():
    if x['id'] in entry.get('source_starts',{}):
     change=entry['source_starts'][x['id']]
     if urlparse(x['props']['src']).path!=change['source_path']:raise RuntimeError('Changed source identity')
+    if change.get('replacement_src'):
+     x['props']['src']=change['replacement_src'];x['props']['alt']=change['replacement_description']
     x['props']['startFrom']=change['startFrom']
     if x['props']['startFrom']+x['durationInFrames']>change['available_frames']:raise RuntimeError('Source overrun')
   from qc import cut_checks
