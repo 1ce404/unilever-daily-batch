@@ -77,7 +77,7 @@ def next_step(cfg, b, job, counts, lint_errs, shared, cmd):
         return "改文案", f"改 {lint_errs} 个 lint 错误 → {cmd('lint_copy.py', bid)}"
     if b.get("status") in ("draft", "changes_requested"):
         return "等脚本人审", "⏸ " + ("review_doc.py render 发给用户，等原话" if b.get("status") == "draft" else "按意见改完重新发审")
-    if not job:
+    if not job or (job.get("configuration_only") and not job.get("generation_id")):
         if approval_problem(b):
             return "等脚本人审", f"⏸ {approval_problem(b)}"
         if aigc_problem(b):

@@ -67,6 +67,14 @@ class Progress(unittest.TestCase):
             self.assertIn("缺 2 条", r4["next"])
             self.assertEqual(self.row(run, "B05")["stage"], "可交付")
 
+    def test_configuration_only_draft_never_suggests_bulk_topup(self):
+        run = make_run([self.brief("B01")], jobs={"B01":{"stage":"script_ready","configuration_only":True,"script_id":"native"}})
+        with unittest.mock.patch.object(progress, "approval_problem", lambda b: None):
+            row=self.row(run,"B01")
+        self.assertEqual(row['stage'],'可提交')
+        self.assertIn('submit --dry-run',row['next'])
+        self.assertNotIn('topup',row['next'])
+
     def test_in_flight_means_poll_not_wait(self):
         run = make_run([self.brief("B01")], videos={"B01-V01": {"brief_id": "B01", "stage": "rendering"}},
                        jobs={"B01": {"stage": "done"}})
