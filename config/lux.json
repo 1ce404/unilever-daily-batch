@@ -145,5 +145,12 @@
     "ae192496cd3840d3a601150e45a2cd80.mp4": "用户 11-19 力士：质地镜头手心泛红有少量皮屑（平台审核却判通过），QC 不要头屑画面",
     "6c37b012e9b64f3cb48b5896afe989d4.mp4": "用户 11-19 力士：平台审核判露脐暴露（厨房卷发美女展示身材），会被驳回"
   },
-  "quality_contract": "quality/lux.json"
+  "quality_contract": "quality/lux.json",
+  "source_highlight_windows": {
+    "e757d8894aff467299d244def2478649.mp4": {
+      "start_seconds": 6.5,
+      "end_seconds": 11.5,
+      "reason": "用户2026-11-26退回空盘未出液准备段；已实际核验6.5至11.5秒连续出液。未实看其他区间不可扩充。"
+    }
+  }
 }

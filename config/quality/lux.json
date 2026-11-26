@@ -22,5 +22,7 @@
     "bgm": 6,
     "upper_titles": 3
   },
-  "reject_single_frame_black": true
+  "reject_single_frame_black": true,
+  "upper_single_line": true,
+  "require_upper_title_samples": true
 }

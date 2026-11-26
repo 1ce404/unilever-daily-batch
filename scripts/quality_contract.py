@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ---------- 文件契约 ----------
-# [INPUT]: 依赖品牌质量配置、原生脚本与草稿、真实素材和成片验收凭据。
+# [INPUT]: 依赖品牌质量配置、原生脚本与草稿、真实素材和逐处花字成片验收凭据。
 # [OUTPUT]: 提供配置、单片、整组与交付质量检查；不要求开头素材数量匹配交付条数。
 # [POS]: scripts 的配置级质量契约；由 qc 与生产入口调用，不写共享资源。
 # [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -45,20 +45,28 @@ def config_issues(script,b,cfg,library=(),sound_ids=None):
   if sound_ids is not None:
    chosen=(s.get('sound_effects') or {}).get('props',{}).get('ids') or []
    if any(x not in sound_ids for x in chosen):out.append(f"S{s.get('id')}音效引用已被源库删除")
-  if (s.get('effect') or {}).get('params',{}).get('text'):upper+=1
+  text=(s.get('effect') or {}).get('params',{}).get('text','')
+  if text:
+   upper+=1
+   if rules.get('upper_single_line') and ('\n' in text or '\r' in text):out.append(f"S{s.get('id')}上方花字含换行")
  if upper<rules['min_upper_titles']:out.append(f'上方花字真实配置仅{upper}处')
  return out
 
+def upper_titles(d):
+ return [x for x in sorted(d.get('clips',[]),key=lambda x:x.get('from',0)) if (x.get('trackId')=='effect' or x.get('id','').startswith('upper-')) and x.get('props',{}).get('params',{}).get('text')]
+
 def cut_facts(d):
  clips=d.get('clips',[]);cues=sorted([x for x in clips if x.get('trackId')=='overlay'],key=lambda x:x.get('from',0));styles=[{k:v for k,v in x.get('props',{}).items() if k not in ['text','text_color','font_url']} for x in cues];sig=hashlib.sha256(json.dumps(styles[0] if styles else {},sort_keys=True).encode()).hexdigest();music=next((x for x in clips if x.get('trackId')=='audio'),{})
- upper_codes=[hashlib.sha256(x.get('props',{}).get('code','').encode()).hexdigest() for x in sorted(clips,key=lambda x:x.get('from',0)) if x.get('id','').startswith('upper-')]
+ upper_codes=[hashlib.sha256(x.get('props',{}).get('code','').encode()).hexdigest() for x in upper_titles(d)]
  upper_sig=hashlib.sha256(json.dumps(upper_codes).encode()).hexdigest() if upper_codes else None
- return {'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
+ return {'upper_title_count':len(upper_codes),'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
 
 def cut_issues(d,cfg):
  rules=contract(cfg)
  if not rules:return []
  out=[];seen={};end=0;facts=cut_facts(d)
+ for x in upper_titles(d):
+  if rules.get('upper_single_line') and any(c in x['props']['params']['text'] for c in '\n\r'):out.append('上方花字未满足单行要求')
  for x in sorted([x for x in d.get('clips',[]) if x.get('trackId')=='main'],key=lambda x:x.get('from',0)):
   path=urlparse(x.get('props',{}).get('src','')).path
   if path in seen:out.append(f"片内重复源素材：{x['id']} / {seen[path]}")
@@ -115,4 +123,5 @@ def delivery_issues(video,cfg):
  out=[];e=video.get('media_qc') or {}
  if rules.get('require_media_qc') and (not e.get('technical_pass') or e.get('render_job')!=video.get('render_job') or e.get('output_object_key')!=video.get('object_key')):out.append('当前渲染的黑帧/音频检查未完成或失败')
  if rules.get('require_visual_review') and (not e.get('visual_pass') or not e.get('reviewer') or not e.get('review_note')):out.append('当前成片空镜/抖动/遮挡等实际视觉复核未完成')
+ if rules.get('require_upper_title_samples') and e.get('upper_title_sample_count',0)<3*(video.get('quality_facts') or {}).get('upper_title_count',0):out.append('上方花字未逐处抽帧检查自动换行')
  return out

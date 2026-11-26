@@ -28,6 +28,12 @@ class QualityContractTest(unittest.TestCase):
  def test_multiline_or_overlong_cue_blocked(self):
   for text in ['头发\n光泽','这是一条明显超过了十二个字的字幕']:
    d=self.draft();d['clips'][2]['props']['text']=text;self.assertTrue(any('单行' in x for x in q.cut_issues(d,self.cfg)))
+ def test_native_upper_title_newline_blocked_in_config_and_cut(self):
+  b,s=self.script();s['segments'][0]['effect']['params']['text']='柔顺想安\n排';self.assertTrue(any('花字含换行' in x for x in q.config_issues(s,b,self.cfg)))
+  d=self.draft();d['clips'].append({'id':'3-x0','trackId':'effect','from':0,'props':{'code':'native','params':{'text':'柔顺想安\n排'}}});self.assertTrue(any('花字未满足单行' in x for x in q.cut_issues(d,self.cfg)))
+ def test_native_effect_titles_require_three_actual_samples_per_title(self):
+  d=self.draft();d['clips'].append({'id':'3-x0','trackId':'effect','from':0,'props':{'code':'native','params':{'text':'精油润养'}}});facts=q.cut_facts(d);self.assertEqual(facts['upper_title_count'],1);self.assertTrue(facts['upper_style_signature'])
+  v={'quality_facts':facts,'render_job':'j','object_key':'a','ai_review':'pass','media_qc':{'technical_pass':True,'render_job':'j','output_object_key':'a','visual_pass':True,'reviewer':'agent','review_note':'实际看图'}};self.assertTrue(any('逐处抽帧' in x for x in q.delivery_issues(v,self.cfg)));v['media_qc']['upper_title_sample_count']=3;self.assertEqual(q.delivery_issues(v,self.cfg),[])
  def test_config_variety_does_not_substitute_actual_variety(self):
   b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(10)];errors=q.batch_issues(b,v,self.cfg);self.assertEqual(len(errors),2)
  def test_delivery_needs_current_media_and_visual_proof(self):
