@@ -50,6 +50,11 @@ def spec(item,bg,src):
  params={k:copy.deepcopy(item[k]) for k in ['bounds','polygon','source_width','source_height','placement']};params['src']=src
  return {'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':CODE,'params':params,'x':0,'y':0,'scale':1}}]}
 
+def lookup_segment(pid,sid):
+ matches=[s for s in cb.list_segments(pid) if s['id']==sid]
+ if len(matches)!=1:raise RuntimeError('Expected one source segment in product library')
+ return matches[0]
+
 def selected(plan,key):
  rows=[x for x in plan['items'] if not key or x['key']==key]
  if not rows:raise RuntimeError('No selected items')
@@ -80,7 +85,7 @@ def main():
      pilot=out/(item['pilot_key']+'-inspection.json')
      check=json.loads(pilot.read_text()) if pilot.exists() else {}
      if not check.get('passed') or check.get('image_sha256')!=item['image_sha256'] or check.get('code_hash')!=hashlib.sha256(CODE.encode()).hexdigest():raise RuntimeError('Actual same-product pilot inspection required')
-    bg=cb.api('GET','/materials/segments/'+item['background_segment_id']);src=cb.api('POST','/storage/download-tokens',{'object_key':upload(item['image'],out)})['download_url']
+    bg=lookup_segment(cfg['products'][item['product']]['clipo_product_id'],item['background_segment_id']);src=cb.api('POST','/storage/download-tokens',{'object_key':upload(item['image'],out)})['download_url']
     draft=spec(item,bg['object_url'],src);save(out/(item['key']+'-draft.json'),draft)
     body={'spec':draft,'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'pack-'+digest({'item':item,'code':CODE})[:54]};save(out/(item['key']+'-intent.json'),body)
     result=cb.api('POST','/render-jobs',body,tries=1);save(r,result);print(item['key'],'render',result['id'],flush=True)
@@ -110,7 +115,7 @@ def main():
     intent=out/(item['key']+'-register-intent.json')
     if intent.exists():raise RuntimeError('Uncertain prior register outcome; reconcile, do not duplicate')
     body={'object_key':tok['object_key'],'ai_generated':True};save(intent,{'body':body,'image_sha256':item['image_sha256'],'background_segment_id':item['background_segment_id'],'render_job_id':status['id']});d=cb.api('POST','/products/'+pid+'/segments',body,tries=1);save(r,d)
-    ai_tags.add_product_tags(pid,[item['final_tag']]);ai_tags.set_tags(d['id'],[item['final_tag']]);back=cb.api('GET','/materials/segments/'+d['id']);save(out/(item['key']+'-readback.json'),back)
+    ai_tags.add_product_tags(pid,[item['final_tag']]);ai_tags.set_tags(d['id'],[item['final_tag']]);back=lookup_segment(pid,d['id']);save(out/(item['key']+'-readback.json'),back)
     if back.get('tags')!=[item['final_tag']] or not back.get('ai_generated'):raise RuntimeError('AI lineage/tag readback mismatch')
     print(item['key'],'registered',d['id'],flush=True)
 if __name__=='__main__':main()

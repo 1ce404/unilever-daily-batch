@@ -2,7 +2,8 @@
 import copy,hashlib,sys,tempfile,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from product_scene import validate,spec
+from product_scene import validate,spec,lookup_segment
+from unittest.mock import patch
 class ProductSceneTest(unittest.TestCase):
  def fixture(self,path):
   Path(path).write_bytes(b'owned-real-frame')
@@ -21,4 +22,8 @@ class ProductSceneTest(unittest.TestCase):
    self.assertEqual(s['clips'][1]['props']['params']['polygon'],i['polygon'])
    self.assertEqual(s['composition']['durationInFrames'],120)
    self.assertNotIn('Text',s['clips'][1]['props']['code'])
+ def test_source_lookup_uses_product_list_not_unsupported_get(self):
+  with patch('product_scene.cb.list_segments',return_value=[{'id':'source','object_url':'video'}]),patch('product_scene.cb.api',side_effect=AssertionError('No direct segment GET')):
+   self.assertEqual(lookup_segment('product','source')['object_url'],'video')
+   with self.assertRaises(RuntimeError):lookup_segment('product','missing')
 if __name__=='__main__':unittest.main()
