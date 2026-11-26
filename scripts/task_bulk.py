@@ -65,6 +65,10 @@ def repair(a,cfg):
   change=plan['clips'][c['id']];m=library[change['segment_id']];start=change['startFrom']
   if c['trackId']!='main' or m.get('ai_generated') or m.get('review_result')!='pass' or start+c['durationInFrames']>math.floor((m['end_ms']-m['begin_ms'])*fps/1000):raise RuntimeError('Unsafe real source replacement')
   c['props'].update(src=m['object_url'],startFrom=start,alt=m.get('description',''))
+ for cid,scale in plan.get('clip_scales',{}).items():
+  matched=[c for c in draft['clips'] if c['id']==cid]
+  if len(matched)!=1 or matched[0]['trackId']!='main' or not isinstance(scale,(int,float)) or not 1<scale<=1.05:raise RuntimeError('Only explicit small main-frame crop permitted')
+  matched[0]['props']['scale']=scale
  expected=copy.deepcopy([x for x in cut['draft']['clips'] if x['trackId']!='main']);trim_title_ends(expected,plan.get('effect_end_frames',{}));trim_title_ends(draft['clips'],plan.get('effect_end_frames',{}))
  if plan.get('remove_task_corner_label'):
   wm=cfg.get('watermark') or {}
