@@ -80,6 +80,9 @@ class Run:
     def __init__(self, cfg, plan_path):
         self.cfg, self.plan_path = cfg, Path(plan_path)
         self.plan = json.loads(self.plan_path.read_text())
+        self.max_retries = self.plan.get('max_retries', MAX_RETRIES)
+        if type(self.max_retries) is not int or not 0 <= self.max_retries <= MAX_RETRIES:
+            raise RuntimeError('max_retries must be an integer from 0 to 2')
         self.product = cfg["products"][self.plan["product"]]
         self.state_path = self.plan_path.with_name(self.plan_path.stem + "-state.json")
         self.st = json.loads(self.state_path.read_text()) if self.state_path.exists() else {"slots": {}}
@@ -180,8 +183,9 @@ class Run:
             if state == "todo":
                 prompt = slot["prompt"]
             elif state == "retry":
-                if len(slot["attempts"]) > MAX_RETRIES:
-                    slot["gave_up"] = "重试 2 次仍失败"
+                if len(slot["attempts"]) > self.max_retries:
+                    slot["gave_up"] = f"达到本计划重试上限 {self.max_retries} 次；不追加付费生成"
+                    self.save()
                     continue
                 prompt = self.next_prompt(slot)
                 if not prompt:
@@ -193,10 +197,15 @@ class Run:
                 sent.append(key)
                 inflight += 1
                 continue
-            rows = cb.api("POST", "/material-generations", self.body(prompt, slot["scene"]))
+            if self.max_retries == 0:
+                if slot.get('submit_intent'):
+                    raise RuntimeError('Uncertain generation request; do not duplicate '+key)
+                slot['submit_intent']={'prompt':prompt,'at':time.time()};self.save()
+            rows = cb.api("POST", "/material-generations", self.body(prompt, slot["scene"]), tries=1 if self.max_retries == 0 else 5)
             g = rows[0] if isinstance(rows, list) else rows
             slot["attempts"].append({"generation_id": g["id"], "prompt": prompt, "status": g["status"],
                                      "at": time.strftime("%Y-%m-%d %H:%M")})
+            slot.pop('submit_intent',None)
             self.save()
             sent.append(key)
             inflight += 1
@@ -573,8 +582,8 @@ def main():
         todo = [k for k, s in r.st["slots"].items() if r.status(s) in ("todo", "retry")]
         if args.dry_run:
             first = r.submit_free(dry=True)
-            print(f"\n(dry run) 共 {len(r.st['slots'])} 条，待提交 {len(todo)} 条（每条单独计费；被拦的每条最多再试 {MAX_RETRIES} 次，"
-                  f"最多 {len(todo) * (MAX_RETRIES + 1)} 次）。这次先提交 {len(first)} 条，其余 poll 边跑边补。确认后去掉 --dry-run")
+            print(f"\n(dry run) 共 {len(r.st['slots'])} 条，待提交 {len(todo)} 条（每条单独计费；失败的每条最多再试 {r.max_retries} 次，"
+                  f"最多 {len(todo) * (r.max_retries + 1)} 次）。这次先提交 {len(first)} 条，其余 poll 边跑边补。确认后去掉 --dry-run")
             return
         # 生成需要新增产品标签：先备份当前共享产品元数据，再添加并回读标签。
         before_path = Path(args.plan).with_name(Path(args.plan).stem + "-product-before.json")

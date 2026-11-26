@@ -75,3 +75,5 @@ task_bulk copies: 导出每条实际Clipo改写和实际已采用人物组/源�
 task_caption_repair.py: 本次LUX新批量字幕局部重排；沿用原生产快照依赖与已缓存词级时间轴，完整产品名/成分独立短cue并高亮，保护其他轨道、声音及总时长；精确dry-run、写前备份、完整回读、同cut幂等渲染，不改在跑的生产代码或新增TTS。
 
 task_variant_repair.py: 用户明确批准单条新稿及1次整篇TTS后的原cut修订；沿用原音色/1.4倍、已核整组选片计划与包装，独立修订目录保存原/新收据，不覆盖历史TTS；恢复后重新审核，不新增视频、不自动扩大预算。
+
+task_variant_repair --resume: 只在已写回草稿与原计划完整一致时续渲，不再次TTS或PUT；仅接受原生补齐的空motion/transition默认值，不放宽实际轨道差异。aigc_gen的max_retries=0模式保存请求意图，禁止网络结果不确定时重复扣费。
