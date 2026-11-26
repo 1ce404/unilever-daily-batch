@@ -2,7 +2,7 @@
 """Task-owned approved demo finishing: whole native TTS, word-timed native captions, same-cut render.
 Never expands quota, changes approved copy, bypasses AI review, or uses local final-video rendering.
 """
-import argparse,copy,hashlib,json,math,re,sys,time,random
+import argparse,copy,hashlib,json,math,re,sys,time,random,subprocess,urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -84,7 +84,7 @@ def build(b,cut,tts,script,library,cfg,key):
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','prepare','patch','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--patch-plan');p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','gain','prepare','patch','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--patch-plan');p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
  if a.revision:
   if not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}',a.revision):raise RuntimeError('Invalid revision name')
   out=out/a.revision
@@ -105,12 +105,28 @@ def main():
   save(intent,body);tts=cb.api('POST','/tts',body,tries=1);save(out/'tts.json',tts)
   if norm(tts['synthesized_text']).casefold()!=norm(spoken).casefold():raise RuntimeError('Native TTS copy mismatch')
   cb.fetch_file(tts['audio_url'],out/'voice.mp3');print(key,'continuous TTS ready',tts['audio']['duration_ms']);return
+ if a.cmd=='gain':
+  import numpy as np
+  source=out/'voice.mp3';budget={'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'target_gain_db':4,'peak_ceiling':.9,'uploads':1,'TTS':0};receipt=out/'gain-budget.json'
+  if a.dry_run:save(receipt,{**budget,'at':time.time()});print('DRY-RUN',key,'1 original-voice gain upload, 0 TTS; pitch/speed/timing unchanged');return
+  prior=load(receipt)
+  if {k:prior[k] for k in budget}!=budget or time.time()-prior['at']>3600:raise RuntimeError('Missing gain dry-run')
+  asset=out/'gain-upload.json'
+  if asset.exists():print(key,'reuse original-voice gain upload');return
+  raw=subprocess.check_output(['ffmpeg','-v','error','-i',str(source),'-ac','1','-f','f32le','-']);peak=float(np.max(np.abs(np.frombuffer(raw,dtype='<f4'))));gain=min(4,20*math.log10(.9/peak));dest=out/'voice-plus-gain.wav'
+  if gain<=0:raise RuntimeError('No peak headroom for lossless linear gain')
+  subprocess.run(['ffmpeg','-v','error','-y','-i',str(source),'-af',f'volume={gain}dB','-c:a','pcm_s16le',str(dest)],check=True)
+  tok=cb.api('POST','/storage/upload-tokens',{'filename':key+'-original-voice-gain.wav','content_type':'audio/wav','content_length':dest.stat().st_size,'purpose':'material'},tries=1)
+  request=urllib.request.Request(tok['upload_url'],data=dest.read_bytes(),method='PUT',headers=dict(tok.get('headers') or {},**{'Content-Type':'audio/wav'}));urllib.request.urlopen(request,timeout=120).read();save(asset,{'object_key':tok['object_key'],'gain_db':gain,'source_peak':peak,'source_sha256':budget['source_sha256'],'TTS':0});print(key,'original voice gain uploaded',round(gain,2),'dB');return
  if a.cmd=='patch':
   plan=load(a.patch_plan);entry=plan['videos'][key]
   if not plan.get('authorization'):raise RuntimeError('Missing user revision authorization')
   draft=copy.deepcopy(cut['draft']);save(out/('patch-before-'+digest(draft)[:12]+'.json'),cut)
   for x in draft['clips']:
-   if x['trackId']=='voiceover':x['props']['volume']=entry['voice_volume']
+   if x['trackId']=='voiceover':
+    x['props']['volume']=entry['voice_volume']
+    if entry.get('original_voice_gain'):
+     asset=load(out/'gain-upload.json');x['props']['src']=cb.api('POST','/storage/download-tokens',{'object_key':asset['object_key']})['download_url']
    if x['id'] in entry.get('source_starts',{}):
     change=entry['source_starts'][x['id']]
     if urlparse(x['props']['src']).path!=change['source_path']:raise RuntimeError('Changed source identity')
