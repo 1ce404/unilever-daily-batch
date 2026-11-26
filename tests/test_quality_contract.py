@@ -16,6 +16,13 @@ class QualityContractTest(unittest.TestCase):
   return {'composition':{'fps':30,'durationInFrames':60},'clips':[{'id':'1-0','trackId':'main','from':0,'durationInFrames':30,'props':{'src':'https://x/a.mp4?q=1'}},{'id':'2-0','trackId':'main','from':30,'durationInFrames':30,'props':{'src':'https://x/b.mp4'}},{'id':'s1','trackId':'overlay','from':0,'durationInFrames':25,'props':{'text':'力士精油香氛洗发水','font_size':36,'font_family':'f','top':78,'stroke_width':4}},{'id':'s2','trackId':'overlay','from':30,'durationInFrames':25,'props':{'text':'柔顺有光泽','font_size':36,'font_family':'f','top':78,'stroke_width':4,'text_color':'#ffd16a'}},{'id':'voice-continuous','trackId':'voiceover','props':{}},{'id':'bgm','trackId':'audio','props':{'src':'https://x/music.mp3?token=private'}}]}
  def test_valid_native_choices(self):
   b,s=self.script();self.assertEqual(q.config_issues(s,b,self.cfg),[])
+ def test_explicit_single_ai_demo_does_not_relax_bulk_or_other_pools(self):
+  b,s=self.script();s['segments'][0]['visual']['props']['segment_ids']=['approved-pilot']
+  self.assertEqual(q.config_issues(s,b,self.cfg,approved_pilot_ids=['approved-pilot']),[])
+  self.assertTrue(any('素材池1条' in x for x in q.config_issues(s,b,self.cfg)))
+  self.assertTrue(any('素材池1条' in x for x in q.config_issues(s,b,self.cfg,approved_pilot_ids=['other'])))
+  s['segments'][2]['visual']['props']['segment_ids']=['one-real']
+  self.assertTrue(any('S3素材池1条' in x for x in q.config_issues(s,b,self.cfg,approved_pilot_ids=['approved-pilot'])))
  def test_single_style_single_music_and_demo_pool_cannot_bulk(self):
   b,s=self.script();s['config']['subtitle_style']['style_ids']=['a'];s['config']['bgm']['props']['ids']=['m'];s['segments'][0]['visual']['props']['segment_ids']=['one'];s['segments'][2]['visual']['props']['segment_ids']=['x','y'];errors=';'.join(q.config_issues(s,b,self.cfg));self.assertIn('字幕样式',errors);self.assertIn('BGM',errors);self.assertIn('素材池1条',errors);self.assertIn('素材池2条',errors)
  def test_alias_ids_do_not_make_distinct_sources(self):

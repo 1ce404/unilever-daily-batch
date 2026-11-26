@@ -20,7 +20,7 @@ def contract(cfg):
  if not path.is_absolute():path=Path(__file__).resolve().parent.parent/'config'/path
  return json.loads(path.read_text())
 
-def config_issues(script,b,cfg,library=(),sound_ids=None):
+def config_issues(script,b,cfg,library=(),sound_ids=None,approved_pilot_ids=()):
  rules=contract(cfg)
  if not rules:return []
  out=[];c=script.get('config') or {};q=max(1,int(b.get('quantity',1)));style=(c.get('subtitle_style') or {}).get('style_ids') or [];music=(c.get('bgm') or {}).get('props',{}).get('ids') or [];voices=(c.get('tts') or {}).get('voices') or []
@@ -29,6 +29,7 @@ def config_issues(script,b,cfg,library=(),sound_ids=None):
  meta={x['id']:x for x in library};upper=0
  for i,s in enumerate(script.get('segments',[])):
   briefseg=(b.get('segments') or [])[i] if i<len(b.get('segments') or []) else {};ai=any(str(t).startswith('AI') for t in briefseg.get('visual_tags',[]));vis=s.get('visual') or {};ids=vis.get('props',{}).get('segment_ids') or [];need=min(rules['min_ai_hooks'] if ai else rules['min_real_pool'],q) if q>1 else 1
+  if i==0 and ai and vis.get('mode')=='material_segment_ids' and approved_pilot_ids and set(ids)==set(approved_pilot_ids):need=1
   if vis.get('mode')=='material_segment':
    tags=vis.get('props',{}).get('tags') or []
    if not tags:out.append(f"S{s.get('id')}未配置原生素材标签")
@@ -115,7 +116,10 @@ def audit(a,cfg):
    sound_catalog=cb.api('GET',f'/resource/sound-effect?limit=100&skip={skip}');page=sound_catalog if isinstance(sound_catalog,list) else sound_catalog.get('items',[]);sound_rows.extend(page)
    if len(page)<100 or isinstance(sound_catalog,list) or len(sound_rows)>=sound_catalog.get('total',len(sound_rows)):break
    skip+=len(page)
-  sound_ids={x['id'] for x in sound_rows};lib=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);issues=config_issues(script,b,cfg,lib,sound_ids);report.append({'brief':b['brief_id'],'script_id':sid,'issues':issues});print(b['brief_id'],'PASS' if not issues else 'BLOCK '+str(issues),flush=True)
+  from common import demo_first,aigc_problem
+  pilot=bool(getattr(a,'demo_pilot',False) and demo_first(cfg,b) and not st.data.get('briefs',{}).get(b['brief_id'],{}).get('generation_id') and not b.get('demo_approval') and not aigc_problem(b))
+  approved=(cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]) if pilot else []
+  sound_ids={x['id'] for x in sound_rows};lib=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);issues=config_issues(script,b,cfg,lib,sound_ids,approved_pilot_ids=approved);report.append({'brief':b['brief_id'],'script_id':sid,'issues':issues,'scope':'one approved demo' if approved else 'full batch'});print(b['brief_id'],'PASS' if not issues else 'BLOCK '+str(issues),flush=True)
  p=Path(a.run)/'clipo/quality-config-audit.json';p.write_text(json.dumps(report,ensure_ascii=False,indent=2));return int(any(x['issues'] for x in report))
 
 def main():

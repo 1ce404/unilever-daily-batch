@@ -626,7 +626,7 @@ def _submit_plan(cfg, run, probe):
 def cmd_submit(cfg, run, args):
     if cfg.get('quality_contract') and not args.scripts_only:
         from quality_contract import audit
-        audit_args=argparse.Namespace(run=run,brief=args.brief)
+        audit_args=argparse.Namespace(run=run,brief=args.brief,demo_pilot=True)
         if any(State(run).data.get('briefs',{}).get(b['brief_id'],{}).get('script_id') for b in load_briefs(run,args.brief)):
             if audit(audit_args,cfg):raise RuntimeError('真实配置未通过客户制作要求，未提交生成')
     if not args.dry_run and not args.scripts_only:  # 铁律 2：先算一遍要发多少，和 dry-run 收据对上才发
