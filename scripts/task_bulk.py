@@ -119,7 +119,7 @@ def copies(a,cfg):
  for key in budget['keys']:
   v=st.videos.get(key)
   if not v:continue
-  text=''.join(v.get('texts') or []);prepared=root/key/'prepared.json';used=[]
+  text=''.join(v.get('texts') or []);prepared=Path(v.get('task_bulk_prepared_path') or root/key/'prepared.json');used=[]
   if prepared.exists():
    evidence=read(prepared)['evidence']['source_windows'];seen=set()
    for x in evidence:
@@ -127,15 +127,19 @@ def copies(a,cfg):
     if sid in groups:seen.add(groups[sid])
    used=sorted(seen)
    for g in used:people[g]=people.get(g,0)+1
-  rows.append({'key':key,'cut_id':v.get('cut_id'),'stage':v.get('stage'),'copy':text,'copy_hash':hashlib.sha256(td.norm(text).casefold().encode()).hexdigest(),'actual_person_groups':used,'last_error':v.get('last_error'),'native_copy_source':'Clipo random_result.vo_rewrite → collected video texts'})
+  rows.append({'key':key,'cut_id':v.get('cut_id'),'stage':v.get('stage'),'copy':text,'copy_hash':hashlib.sha256(td.norm(text).casefold().encode()).hexdigest(),'actual_person_groups':used,'last_error':v.get('last_error'),'native_copy_source':v.get('copy_repair_approval') or 'Clipo random_result.vo_rewrite → collected video texts'})
  serial={k:{**v,'videos':sorted(v['videos'])} for k,v in sources.items()};out=Path(a.run)/'revisions/新批量文案与人物分配';out.mkdir(parents=True,exist_ok=True);save(out/(a.brief+'-实际改写与用料.json'),{'rows':rows,'unique_actual_copy':len({x['copy_hash'] for x in rows if x['copy']}),'actual_person_groups':people,'actual_source_frequency':serial})
  (out/(a.brief+'-实际文案.md')).write_text('\n\n'.join('### '+x['key']+'\n\n'+x['copy'] for x in rows))
  print(a.brief,'collected',len(rows),'unique actual copy',len({x['copy_hash'] for x in rows if x['copy']}),'prepared',sum(bool(x['actual_person_groups']) for x in rows),'actual groups',people,'report',str(out/(a.brief+'-实际文案.md')))
 
-def prepare(api_module,st,b,v,key,cut,d):
+def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None):
  td.cb=api_module;cb.CFG=api_module.CFG;cb.BASE=api_module.BASE;cfg=api_module.CFG;root=st.path.parent.parent;assets=root/'task-bulk';plan=read(assets/(b['brief_id']+'-budget.json'))
- validate_budget(plan,key,time.time())
- script=read(assets/(b['brief_id']+'-script.json'));library=read(assets/(b['brief_id']+'-library.json'));work=assets/key;work.mkdir(exist_ok=True);i=int(key.rsplit('-V',1)[1])-2
+ validate_budget(repair_budget or plan,key,time.time())
+ if repair_budget and (repair_budget.get('keys')!=[key] or repair_budget.get('whole_tts')!=1 or not repair_budget.get('authorization') or not repair_revision):raise RuntimeError('Only one explicitly approved same-cut speech repair')
+ if repair_revision and (not repair_budget or not td.re.fullmatch(r'[a-zA-Z0-9_-]{1,40}',repair_revision)):raise RuntimeError('Invalid repair revision')
+ script=read(assets/(b['brief_id']+'-script.json'));library=read(assets/(b['brief_id']+'-library.json'));work=assets/key
+ if repair_revision:work=work/'revisions'/repair_revision
+ work.mkdir(exist_ok=True,parents=True);i=int(key.rsplit('-V',1)[1])-2
  got=v.get('texts') or []
  if len(got)!=len(b['segments']):raise RuntimeError('Missing actual per-video native rewrite')
  spoken=''.join(got)
@@ -151,7 +155,7 @@ def prepare(api_module,st,b,v,key,cut,d):
   tts=read(receipt)
  else:
   if intent.exists():raise RuntimeError('Uncertain TTS outcome; no duplicate submit')
-  if sum((assets/k/'tts-intent.json').exists() for k in plan['keys'])>=plan['whole_tts']:raise RuntimeError('TTS budget exhausted')
+  if not repair_budget and sum((assets/k/'tts-intent.json').exists() for k in plan['keys'])>=plan['whole_tts']:raise RuntimeError('TTS budget exhausted')
   save(intent,body);tts=api_module.api('POST','/tts',body,tries=1);save(receipt,tts)
  if td.norm(tts['synthesized_text']).casefold()!=td.norm(spoken).casefold():raise RuntimeError('TTS copy mismatch')
  source=work/'voice.mp3';wav=work/'voice.wav';assetfile=work/'voice-upload.json'
@@ -184,7 +188,9 @@ def prepare(api_module,st,b,v,key,cut,d):
  prod=cfg['products'][b['product_key']];issues=[m for t in got for level,m in lint_text(t,cfg,prod) if level=='error']+[m for level,m in lint_script(got,voiced(b['segments']),b,cfg,prod) if level=='error']
  if issues:raise RuntimeError('Approved copy invalid '+str(issues))
  v.update(voice=voice['voice_type'],texts=got,copy_issues=[],voice_cmd=False,duration_s=draft['composition']['durationInFrames']/draft['composition']['fps'],native_variant={'subtitle_style_id':styleid,'bgm_id':musicid,'upper_templates':[effects[z]['id'] for z in patterns[i%len(patterns)]],'voice_gain_db':asset['gain_db']})
- save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']});return draft
+ save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']})
+ if repair_revision:v['task_bulk_prepared_path']=str((work/'prepared.json').resolve())
+ return draft
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
