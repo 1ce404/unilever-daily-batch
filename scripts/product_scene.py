@@ -61,11 +61,25 @@ def selected(plan,key):
  return rows
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['render','poll','register','inspect']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--key');p.add_argument('--dry-run',action='store_true');p.add_argument('--review-note');a=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['render','poll','register','inspect','settle']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--key');p.add_argument('--dry-run',action='store_true');p.add_argument('--review-note');a=p.parse_args()
  cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';plan=json.loads(Path(a.plan).read_text());rows=selected(plan,a.key);out=Path(a.run)/'aigc/native-product-scene';out.mkdir(exist_ok=True,parents=True)
  if not plan.get('authorization'):raise RuntimeError('Missing user instruction')
  for item in rows:validate(item)
  with exclusive(out):
+  if a.cmd=='settle':
+   byproduct={}
+   for item in rows:
+    rec=out/(item['key']+'-registered.json')
+    if not rec.exists():continue
+    product=item['product'];pid=cfg['products'][product]['clipo_product_id']
+    if product not in byproduct:byproduct[product]={s['id']:s for s in cb.list_segments(pid)}
+    sid=json.loads(rec.read_text())['id'];seg=byproduct[product].get(sid)
+    if not seg or not seg.get('ai_generated'):raise RuntimeError('Registered AI segment lineage missing')
+    if seg.get('tags')!=[item['final_tag']]:
+     ai_tags.set_tags(sid,[item['final_tag']]);seg=lookup_segment(pid,sid)
+    save(out/(item['key']+'-readback.json'),seg)
+    print(item['key'],sid,'tags',seg.get('tags'),'describe',seg.get('describe_status'),'review',seg.get('review_result'),flush=True)
+   return
   if a.cmd=='inspect':
    if not a.key or not a.review_note:raise RuntimeError('One actually-viewed key and inspection note required')
    item=rows[0];status=json.loads((out/(item['key']+'-status.json')).read_text());media=out/(item['key']+'.mp4')
