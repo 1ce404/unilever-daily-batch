@@ -81,3 +81,5 @@ task_variant_repair --resume: 只在已写回草稿与原计划完整一致时�
 字幕修复接受逐条完整caption_chunks且锁定全文；task_demo只在任务显式批准AI开头ID时允许该首段并保留AI角标。task_configuration可凭完整当前摘要只换首段visual，保留平台其他修改。rereview支持video-key且跳过客户退回旧片；source repair同步实际选片证据，可仅清除清单指定的main转场。reference_study previews只下载现有贴纸并检查原生透明画布的实际可见区域。
 
 demo_authorization.py: 用户明确先做demo、稍后检查的单条制作许可；指纹和AI标签绑定，不写任何人审通过，不允许V02或批量续产。
+
+preview_delivery.py: 单条待客户检查demo的导出清单、当前输出核验、登记与官方下载；配合delivery_share share，不伪造QC或人审通过。

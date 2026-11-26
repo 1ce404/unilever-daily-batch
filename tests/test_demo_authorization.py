@@ -21,4 +21,17 @@ class DemoPermissionTest(unittest.TestCase):
    b=self.brief();b['demo_production_authorization'][field]=value;self.assertFalse(permits_preview(b))
  def test_real_approval_must_follow_normal_path(self):
   b=self.brief();b['demo_approval']={'by':'用户','copy_hash':copy_hash(b)};self.assertFalse(permits_preview(b));self.assertIsNotNone(approval_problem(b))
+class PreviewDeliveryTest(unittest.TestCase):
+ def test_preview_output_is_exact_and_customer_pending(self):
+  from preview_delivery import checked_preview_video
+  b=DemoPermissionTest().brief();b['product_key']='p';v={'brief_id':'B','stage':'done','user_review_pending':True,'cut_id':'c','render_job':'r','object_key':'o'}
+  self.assertEqual(checked_preview_video(b,v,{'script_id':'s'})['expected_output_object_key'],'o')
+  for change in [{'stage':'rendering'},{'user_review_pending':False},{'object_key':None},{'customer_rework_required':'user rejected'}]:
+   with self.assertRaises(RuntimeError):checked_preview_video(b,{**v,**change},{'script_id':'s'})
+ def test_progress_distinguishes_production_and_customer_review(self):
+  from progress import next_step,video_bucket
+  from collections import Counter
+  b=DemoPermissionTest().brief();b['quantity']=10
+  counts=Counter({'in_flight':1});self.assertEqual(next_step({},b,{'stage':'generating'},counts,0,False,lambda *x:'cmd')[0],'demo 制作中')
+  counts=Counter({'quality_pending':1});stage,action=next_step({},b,{'demo_stage':'demo'},counts,0,False,lambda *x:'cmd');self.assertEqual(stage,'demo 待客户检查');self.assertNotIn('topup',action);self.assertEqual(video_bucket({'stage':'demo_prepare_pending'}),'in_flight')
 if __name__=='__main__':unittest.main()

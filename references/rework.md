@@ -32,6 +32,8 @@
 
 用户明确委托先选素材/钩子并制作demo、稍后再检查时，按原话在brief的`demo_production_authorization`保存`mode: demo_only_before_review`、`by: 用户`、`quantity: 1`、当前文案指纹与AI标签、`review_pending: true`。brief仍为draft，不填写脚本/AI素材/demo通过。此许可只让每组首条demo进入制作；原生成任务已存在后仍由demo人审拦住续产，新增或改稿使指纹失效。单条AI试样用任务`preview_ai_hook_ids`绑定，不能冒充人审批准池或扩为量产5条。原生剪辑先停在`demo_prepare_pending`，整篇配音与时间轴准备好才渲染；分享标为待客户检查。
 
+导出这类demo时，用`preview_delivery.py plan --config ... --run ... --out <收据目录>`生成精确清单，再以`delivery_share.py share --plan <收据目录>/preview-plan.json --out <收据目录>`先dry-run后分享；最后`preview_delivery.py finish ... --download-to <目录>`核当前输出、登记分享并下载。`progress.py`分列“demo待客户检查”，不要求追加QC或自动补齐量产。
+
 ## 交付节奏与进度
 
 - 已批准的demo及时续产；一个组的检查或修复不阻塞其他组独立的素材、demo和已授权批量。已授权范围继续执行，只有新增收费或超出用户已授权的变更范围才需要补充确认；不能重复问同一授权。

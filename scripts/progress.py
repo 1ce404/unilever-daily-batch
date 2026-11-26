@@ -23,9 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clipo_batch as cb
 from common import aigc_problem, approval_problem, demo_first, demo_problem, load_config, out_name
 from lint_copy import lint_brief
+from demo_authorization import permits_preview
 
 # ---------- 每条视频的阶段 ----------
-IN_FLIGHT = ("generated", "rendering", "rendered", "reviewing")
+IN_FLIGHT = ("generated", "rendering", "rendered", "reviewing", "demo_prepare_pending")
 
 
 def video_bucket(v):
@@ -74,12 +75,21 @@ def next_step(cfg, b, job, counts, lint_errs, shared, cmd):
         return '批量返工', '先核逐条文案与整组人物/来源分配，task_bulk.py budget --dry-run → allocate --dry-run / allocate；未复核前不补产'
     if counts["ok"] >= q:  # 够数优先：成片按当时审过的文案生产，之后新增的 lint 规则不把它打回「改文案」
         return ("已交付", "-") if shared else ("可交付", f"{cmd('qc.py', bid)} → {cmd('clipo_batch.py share', bid)}")
-    if counts.get('quality_pending'):
+    preview=permits_preview(b)
+    if counts.get('quality_pending') and not preview:
         return '成片自查', f"{cmd('qc.py', bid)} → media_qc.py --run <本批目录> --key <待检视频编号> → 实际看图/看片并记录，勿直接补产"
     if not b.get("segments"):
         return "写脚本", f"{cmd('brief_card.py', bid)} → 写 segments → {cmd('lint_copy.py', bid)}"
     if lint_errs:
         return "改文案", f"改 {lint_errs} 个 lint 错误 → {cmd('lint_copy.py', bid)}"
+    if preview:
+        if counts["failed"]:
+            return "demo 制作失败", "只修本条失败环节，不自动补产或新增TTS"
+        if counts.get("quality_pending") or counts["ok"]:
+            return "demo 待客户检查", "单条demo已完成，按用户原话交客户检查；不自动量产或追加QC"
+        if cb.generating(job or {}) or counts["in_flight"]:
+            return "demo 制作中", "仅每组1条，完成整篇配音/首渲染；客户审核仍待确认"
+        return "可制作单条demo", f"{cmd('clipo_batch.py submit --dry-run', bid)} → 仅首条demo，不能量产"
     if b.get("status") in ("draft", "changes_requested"):
         return "等脚本人审", "⏸ " + ("review_doc.py render 发给用户，等原话" if b.get("status") == "draft" else "按意见改完重新发审")
     if not job or (job.get("configuration_only") and not job.get("generation_id")):
@@ -203,6 +213,8 @@ def day_progress(cfg, run, only=None):
             "ok": counts["ok"], "in_flight": counts["in_flight"], "rejected": counts["rejected"],
             "failed": counts["failed"], "aigc_pending": counts["aigc_pending"], "quality_pending": counts["quality_pending"],
             "short": max(b["quantity"] - counts["ok"], 0), "stage": stage, "next": todo,
+            "demo_pre_review": permits_preview(b),
+            "demo_rendered": sum(bool(v.get("object_key")) and v.get("stage")=="done" for v in vids.values()),
             "reasons": dict(reasons.most_common()),
             "details": ([{"video": "文案", "why": m} for m in lint_msgs] +
                         [{"video": k, "why": why_not(v)} for k, v in sorted(vids.items())
@@ -233,7 +245,9 @@ def render(p):
     for r in rows:
         tot.update({k: r[k] for k in ("target", "ok", "short", "in_flight", "rejected")})
     out.append(f"\n合计：合格 {tot['ok']}/{tot['target']}，缺 {tot['short']}，在途 {tot['in_flight']}，驳回 {tot['rejected']}")
-    checks=sum(r.get('quality_pending',0) for r in rows)
+    previews=sum(r.get('demo_rendered',0) for r in rows if r.get('demo_pre_review'))
+    if previews:out.append(f'已完成、待客户检查demo {previews} 条；不计作客户验收通过，不自动补齐量产')
+    checks=sum(r.get('quality_pending',0) for r in rows if not r.get('demo_pre_review'))
     if checks:out.append(f"已渲染、待严格成片自查 {checks} 条；这部分先检查，不重复补产")
     why = Counter()
     for r in rows:
