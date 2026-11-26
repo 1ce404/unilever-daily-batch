@@ -18,6 +18,8 @@ def native_body(d,keys):
  out=copy.deepcopy({k:d.get(k) for k in keys})
  for segment in out.get('segments',[]):
   if segment.get('subtitle_style') is None:segment.pop('subtitle_style',None)
+  sound=segment.get('sound_effects')
+  if isinstance(sound,dict) and sound.get('volume')==0.5:sound.pop('volume')
  return out
 
 def digest(d):return hashlib.sha256(json.dumps(d,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
@@ -66,6 +68,14 @@ def validate_body(body,b,library):
  if len((body['config'].get('tts') or {}).get('voices',[]))<3:raise RuntimeError('At least3 native voices required')
  return pending
 
+def inspect(a,cfg):
+ plan=json.loads(Path(a.plan).read_text());st=cb.State(a.run);out=Path(a.run)/'clipo/task-configuration'
+ for bid,item in plan['scripts'].items():
+  sid=st.data.get('briefs',{}).get(bid,{}).get('script_id')
+  if not sid:continue
+  actual=cb.api('GET','/video-scripts/'+sid);save(out/(bid+'-current.json'),actual)
+  print(bid,sid,'matches planned',native_body(actual,item['body'])==native_body(item['body'],item['body']),flush=True)
+
 def apply(a,cfg):
  if not a.dry_run:
   from sync_skill import assert_current
@@ -109,5 +119,5 @@ def apply(a,cfg):
  save(out/'summary.json',results)
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['inventory','apply']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--covers',action='store_true');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['inventory','inspect','apply']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--covers',action='store_true');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()

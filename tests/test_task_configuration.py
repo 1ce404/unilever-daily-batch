@@ -30,4 +30,10 @@ class TaskConfigTest(unittest.TestCase):
   self.assertNotEqual(native_body(a,body),native_body(body,body))
   a=copy.deepcopy(body);a['config']['tts']['voices'].pop()
   self.assertNotEqual(native_body(a,body),native_body(body,body))
+ def test_server_default_sfx_volume_is_semantically_equal(self):
+  _,body=self.fixture();body['segments'][0]['sound_effects']={'mode':'ids','props':{'ids':['sfx']}}
+  a=copy.deepcopy(body);a['segments'][0]['sound_effects']['volume']=0.5
+  self.assertEqual(native_body(a,body),native_body(body,body))
+  a['segments'][0]['sound_effects']['volume']=0.8
+  self.assertNotEqual(native_body(a,body),native_body(body,body))
 if __name__=='__main__':unittest.main()
