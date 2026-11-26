@@ -16,11 +16,19 @@ def digest(d):return hashlib.sha256(json.dumps(d,sort_keys=True,ensure_ascii=Fal
 def filehash(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 CODE='''import React from 'react';
-import {AbsoluteFill,Img} from 'remotion';
+import {AbsoluteFill,Img,OffthreadVideo,useCurrentFrame,interpolate} from 'remotion';
 export const Composition=(props)=>{
  const p={...props,...(props.params||{})};const b=p.bounds;const k=p.placement.height/b[3];
  const w=b[2]*k,h=b[3]*k;const left=p.placement.center_x-w/2,top=p.placement.bottom-h;
+ const frame=useCurrentFrame();
  const polygon='polygon('+p.polygon.map(q=>`${q[0]/p.source_width*100}% ${q[1]/p.source_height*100}%`).join(',')+')';
+ if(p.presentation==='editorial_window'){
+  const zoom=interpolate(frame,[0,119],[0.99,1],{extrapolateRight:'clamp',extrapolateLeft:'clamp'});
+  const style={position:'absolute',left:-b[0]*k,top:-b[1]*k,width:p.source_width*k,height:p.source_height*k,maxWidth:'none'};
+  return <AbsoluteFill style={{pointerEvents:'none'}}><div style={{position:'absolute',left,top,width:w,height:h,overflow:'hidden',borderRadius:24,border:'2px solid rgba(231,207,158,.85)',boxShadow:'0 12px 34px rgba(44,28,10,.20)',transform:`scale(${zoom})`,background:'#eee6da'}}>
+  {p.source_mode==='video'?<OffthreadVideo src={p.video_src} startFrom={Math.round(p.source_start*30)} muted style={style}/>:<Img src={p.src} style={style}/>}
+  </div></AbsoluteFill>;
+ }
  return <AbsoluteFill style={{pointerEvents:'none'}}>
  <div style={{position:'absolute',left:left-w*.12,top:p.placement.bottom-h*.022,width:w*1.24,height:h*.025,borderRadius:'50%',background:'rgba(71,48,25,0.27)',filter:'blur(5px)'}}/>
  <div style={{position:'absolute',left,top,width:w,height:h,overflow:'hidden'}}>
@@ -48,6 +56,8 @@ def upload(path,out):
 
 def spec(item,bg,src):
  params={k:copy.deepcopy(item[k]) for k in ['bounds','polygon','source_width','source_height','placement']};params['src']=src
+ for key in ['presentation','source_mode','source_start','video_src']:
+  if key in item:params[key]=item[key]
  return {'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1,**item.get('background_transform',{})}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':CODE,'params':params,'x':0,'y':0,'scale':1}}]}
 
 def lookup_segment(pid,sid):
@@ -100,7 +110,13 @@ def main():
      check=json.loads(pilot.read_text()) if pilot.exists() else {}
      if not check.get('passed') or check.get('image_sha256')!=item['image_sha256'] or check.get('code_hash')!=hashlib.sha256(CODE.encode()).hexdigest():raise RuntimeError('Actual same-product pilot inspection required')
     bg=lookup_segment(cfg['products'][item['product']]['clipo_product_id'],item['background_segment_id']);src=cb.api('POST','/storage/download-tokens',{'object_key':upload(item['image'],out)})['download_url']
-    draft=spec(item,bg['object_url'],src);save(out/(item['key']+'-draft.json'),draft)
+    draft_item=copy.deepcopy(item)
+    if item.get('source_mode')=='video':
+     source=lookup_segment(cfg['products'][item['product']]['clipo_product_id'],item['source_segment_id'])
+     duration=(source.get('video_info') or {}).get('duration') or (source['end_ms']-source['begin_ms'])/1000
+     if float(item.get('source_start',0))+4>float(duration)+0.01:raise RuntimeError('Real source window exceeds duration; no freeze/loop/slowdown')
+     draft_item['video_src']=source['object_url']
+    draft=spec(draft_item,bg['object_url'],src);save(out/(item['key']+'-draft.json'),draft)
     body={'spec':draft,'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'pack-'+digest({'item':item,'code':CODE})[:54]};save(out/(item['key']+'-intent.json'),body)
     result=cb.api('POST','/render-jobs',body,tries=1);save(r,result);print(item['key'],'render',result['job_id'],flush=True)
   elif a.cmd=='poll':
