@@ -24,8 +24,10 @@ export const Composition=(props)=>{
  const polygon='polygon('+p.polygon.map(q=>`${q[0]/p.source_width*100}% ${q[1]/p.source_height*100}%`).join(',')+')';
  if(p.presentation==='editorial_window'){
   const zoom=interpolate(frame,[0,119],[0.99,1],{extrapolateRight:'clamp',extrapolateLeft:'clamp'});
+  const variants={gallery:{borderRadius:24,border:'2px solid rgba(231,207,158,.85)'},glass:{borderRadius:32,border:'1px solid rgba(255,255,255,.85)'},postcard:{borderRadius:8,border:'10px solid #f5f0e5'},arch:{borderRadius:'100px 100px 18px 18px',border:'2px solid #ded0b7'},goldline:{borderRadius:4,border:'3px solid #b79a62'}};const design=variants[p.frame_variant]||variants.gallery;
+  const rotation=interpolate(frame,[0,119],[p.frame_variant==='postcard'?-1.2:0,0],{extrapolateRight:'clamp'});
   const style={position:'absolute',left:-b[0]*k,top:-b[1]*k,width:p.source_width*k,height:p.source_height*k,maxWidth:'none'};
-  return <AbsoluteFill style={{pointerEvents:'none'}}><div style={{position:'absolute',left,top,width:w,height:h,overflow:'hidden',borderRadius:24,border:'2px solid rgba(231,207,158,.85)',boxShadow:'0 12px 34px rgba(44,28,10,.20)',transform:`scale(${zoom})`,background:'#eee6da'}}>
+  return <AbsoluteFill style={{pointerEvents:'none'}}><div style={{position:'absolute',left,top,width:w,height:h,overflow:'hidden',...design,boxSizing:'border-box',boxShadow:'0 12px 34px rgba(44,28,10,.20)',transform:`scale(${zoom}) rotate(${rotation}deg)`,background:'#eee6da'}}>
   {p.source_mode==='video'?<OffthreadVideo src={p.video_src} startFrom={Math.round(p.source_start*30)} muted style={style}/>:<Img src={p.src} style={style}/>}
   </div></AbsoluteFill>;
  }
@@ -56,7 +58,7 @@ def upload(path,out):
 
 def spec(item,bg,src):
  params={k:copy.deepcopy(item[k]) for k in ['bounds','polygon','source_width','source_height','placement']};params['src']=src
- for key in ['presentation','source_mode','source_start','video_src']:
+ for key in ['presentation','source_mode','source_start','video_src','frame_variant']:
   if key in item:params[key]=item[key]
  return {'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1,**item.get('background_transform',{})}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':CODE,'params':params,'x':0,'y':0,'scale':1}}]}
 
