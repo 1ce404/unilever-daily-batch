@@ -16,6 +16,34 @@ def read(p):return td.load(p)
 def validate_budget(plan,key,now):
  if key not in plan['keys'] or now-plan['at']>7200:raise RuntimeError('Missing current matching bulk TTS budget')
 
+def repair(a,cfg):
+ from footage_qc import stable_media
+ from qc import cut_checks
+ st=cb.State(a.run);plan=read(a.plan);key=plan['key'];v=st.videos[key];b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==v['brief_id'])
+ if not plan.get('authorization') or b['brief_id']!=a.brief:raise RuntimeError('Repair authorization or task mismatch')
+ cut=cb.api('GET','/video-cuts/'+v['cut_id']);draft=copy.deepcopy(cut['draft']);library={x['id']:x for x in cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id'])};fps=draft['composition']['fps']
+ for c in draft['clips']:
+  if c['id'] not in plan['clips']:continue
+  change=plan['clips'][c['id']];m=library[change['segment_id']];start=change['startFrom']
+  if c['trackId']!='main' or m.get('ai_generated') or m.get('review_result')!='pass' or start+c['durationInFrames']>math.floor((m['end_ms']-m['begin_ms'])*fps/1000):raise RuntimeError('Unsafe real source replacement')
+  c['props'].update(src=m['object_url'],startFrom=start,alt=m.get('description',''))
+ if [x for x in cut['draft']['clips'] if x['trackId']!='main']!=[x for x in draft['clips'] if x['trackId']!='main']:raise RuntimeError('Protected tracks changed')
+ issues=cut_checks(b,draft,v.get('voice'))
+ if issues:raise RuntimeError('Repair gate '+str(issues))
+ out=Path(a.run)/'task-bulk'/key/'source-repair';out.mkdir(exist_ok=True);sig=td.digest(stable_media(draft));budgetfile=out/'budget.json'
+ if a.dry_run:save(budgetfile,{'at':time.time(),'hash':sig,'plan':plan});print('DRY-RUN',key,'1 source-only native rerender; 0 TTS, timing/captions/packaging/audio preserved');return
+ rec=read(budgetfile)
+ if rec['hash']!=sig or rec['plan']!=plan or time.time()-rec['at']>3600:raise RuntimeError('Missing exact source repair dry-run')
+ receipt=out/(sig+'.json')
+ if receipt.exists():job=read(receipt)
+ else:
+  save(out/'before.json',cut);cb.api('PUT','/video-cuts/'+v['cut_id'],{'script_id':cut['script_id'],'draft':draft},tries=1);back=cb.api('GET','/video-cuts/'+v['cut_id'])
+  if stable_media(back['draft'])!=stable_media(draft):raise RuntimeError('Repair readback differs')
+  save(out/'after.json',back);job=cb.api('POST','/render-jobs',{'spec':back['draft'],'cut_id':v['cut_id'],'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'task-source-repair-'+v['cut_id']+'-'+sig[:16]},tries=1);save(receipt,job)
+ v.update(render_job=job['job_id'],stage='rendering',ai_review=None,ai_reason=None,qc_issues=[])
+ for k in ['error','last_error','object_key','bad_footage']:v.pop(k,None)
+ st.save();print(key,'source-only repair rendering',job['job_id'])
+
 def budget(a,cfg):
  if not a.dry_run:raise RuntimeError('Budget requires --dry-run; no paid operations here')
  st=cb.State(a.run);b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
@@ -80,5 +108,5 @@ def prepare(api_module,st,b,v,key,cut,d):
  save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']});return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,required=True);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';budget(a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
