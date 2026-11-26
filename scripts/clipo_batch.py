@@ -855,6 +855,10 @@ def cmd_topup(cfg, run, args):
     """Make sure every brief ends with `quantity` deliverable videos: regenerate more from the SAME
     approved video-script (no new copy, no new review) for whatever the AI review rejected.
     Asks for exactly the shortfall (user 11-19: no over-generation); --margin M asks for shortfall / pass rate × M."""
+    held=State(run).data.get('briefs',{})
+    if any(j.get('customer_rework_hold') for bid,j in held.items() if not args.brief or bid==args.brief):
+        print('⏸ 用户退回批量：先核逐条文案和人物来源分配，allocate完成前不补产')
+        return
     if not args.dry_run:  # 铁律 2
         probe = argparse.Namespace(**{**vars(args), "dry_run": True, "_quiet": True})
         if not dry_run_gate(run, "topup", _topup_plan(cfg, run, probe), False):

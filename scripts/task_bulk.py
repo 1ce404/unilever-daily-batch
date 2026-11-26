@@ -29,6 +29,7 @@ def hold(a,cfg):
  if receipt.exists():print('Hold already applied');return
  save(out/'before.json',st.data)
  for key in plan['keys']:st.videos[key]['customer_rework_required']=plan['reason']
+ st.data.setdefault('briefs',{}).setdefault(a.brief,{})['customer_rework_hold']=plan['reason']
  group=st.data.get('share_group');share=st.data.get('shares',{}).get(a.brief)
  if share and group:
   before=cb.api('GET','/video-share-groups/'+group['id']);save(out/'group-before.json',before)
@@ -106,7 +107,8 @@ def allocate(a,cfg):
  if not isinstance(cap,int) or cap<1 or cap>=len(budget['keys']):raise RuntimeError('A real cross-video person cap is required')
  if any(n>cap for n in counts.values()):raise RuntimeError('Reviewed person-group frequency cap exceeded')
  target=root/(a.brief+'-source-allocation.json')
- if not a.dry_run:save(target,{'plan':plan,'counts':counts,'budget_at':budget['at']})
+ if not a.dry_run:
+  save(target,{'plan':plan,'counts':counts,'budget_at':budget['at']});st=cb.State(a.run);st.data.setdefault('briefs',{}).setdefault(a.brief,{}).pop('customer_rework_hold',None);st.save()
  print('DRY-RUN' if a.dry_run else 'SAVED','reviewed source allocation',len(plan['videos']),'videos; person groups',counts)
 
 def prepare(api_module,st,b,v,key,cut,d):

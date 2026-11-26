@@ -70,6 +70,8 @@ def why_not(v):
 def next_step(cfg, b, job, counts, lint_errs, shared, cmd):
     """(阶段名, 下一条命令或要等的人)。命令可以直接复制执行；⏸ 表示停下等用户。"""
     bid, q = b["brief_id"], b["quantity"]
+    if job.get('customer_rework_hold'):
+        return '批量返工', '先核逐条文案与整组人物/来源分配，task_bulk.py budget --dry-run → allocate --dry-run / allocate；未复核前不补产'
     if counts["ok"] >= q:  # 够数优先：成片按当时审过的文案生产，之后新增的 lint 规则不把它打回「改文案」
         return ("已交付", "-") if shared else ("可交付", f"{cmd('qc.py', bid)} → {cmd('clipo_batch.py share', bid)}")
     if counts.get('quality_pending'):
