@@ -11,7 +11,7 @@ aigc-production.md: 人物 AIGC 生产与返工流程；独立源素材组、生
 aigc-standards.md: AIGC 内容标准；统一标签规则与品牌、产品画面要求。
 clipo-api.md: Clipo Remix REST 契约；建脚本、生成、渲染、复核、分享与透明特效上传和云端验证。
 new-brand.md: 品牌与产品接入路径；配置、平台提示词、范本与品线映射。
-rework.md: 返工与交付修订命令速查；从 SKILL.md 移出，主流程不再重复。
+rework.md: 返工与交付命令、明确跳过QC的任务级直接交付、批量节奏与进度沟通。
 review-blocks/: 产品线卡审库（数据）；lint 与 aigc_gen 读取；见 review-blocks/CLAUDE.md。
 qc-rules.md: 四层 QC 与规则归属；区分文案校验、人审及平台内容复核；音色选择只归产品平台提示词。
 writing.md: 团队底稿写法；固定卖点复用、开头文案保持差异；画面默认标签随机，用户指定才固定，开头切片可复用。
@@ -19,4 +19,4 @@ writing.md: 团队底稿写法；固定卖点复用、开头文案保持差异�
 法则：成员完整、一行一文件、父级链接、技术词前置。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
-- lux-production-qc.md：LUX客户2026-11-25完整反馈的执行解释；数值阈值在config/quality/lux.json。
+- lux-production-qc.md：LUX客户2026-11-25/26反馈的执行解释；文案连贯、真实多样性、音画对位、单行包装与底边小字；数值阈值在config/quality/lux.json。

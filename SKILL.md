@@ -13,7 +13,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 每次新开工先执行 `python3 -I scripts/sync_skill.py --apply`，在原安装目录更新，确认已与 GitHub main 同步后重新读本文件。不新增 skill 包，不创建旧版备份；旧版从 GitHub 历史恢复。检测到本地改动时停止，不直接覆盖。提交入口也检查版本，旧版、离线未核验版不默默生产。现有在途任务继续使用其已保存的生产版本，不能中途切换代码。
 
-LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)，阈值只在 `config/quality/lux.json`。发布前必须回读真实配置、检查每条成片和整组差异；字幕单片统一不等于整批一种，素材/BGM/AI样片展示不等于已配置。用 `quality_contract.py audit`、`qc.py`、`media_qc.py` 留证据，任何未检/失败不得写成通过或进入交付。
+LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)，阈值只在 `config/quality/lux.json`。默认发布前回读真实配置、检查每条成片和整组差异；字幕单片统一不等于整批一种，素材/BGM/AI样片展示不等于已配置。默认用 `quality_contract.py audit`、`qc.py`、`media_qc.py` 留证据，未检/失败不写成通过。用户明确要求跳过额外QC直接出片时，按 [返工与直接交付](references/rework.md#用户接管检查或直接出片) 记录本次范围并导出，不把直接交付标成质量通过。
 
 ## 流程（用户 11-22）
 
@@ -55,11 +55,11 @@ LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)�
 
 **⑥ 量产**
 1. 跑 `submit --dry-run` 报条数，再跑 `submit`：在 demo 同一个平台任务上续生成，补齐其余条数。
-2. 在后台跑 `nohup ... poll --wait 3600 &`，本轮对话结束，不在对话里等。
+2. 在后台跑 `nohup ... poll --wait 3600 &`，按用户当前要求简报或持续跟进；不把启动后台任务当成交付完成。
 3. 不够数时，跑 `topup --dry-run`，再跑 `topup`：缺几条补几条。
 
 **⑦ 交付**
-1. 跑 `qc.py --config $C --run $R`（交付闸门）。
+1. 默认跑 `qc.py --config $C --run $R`（交付闸门）；明确要求直接出片时按上述任务级授权执行。
 2. 跑 `clipo_batch.py share --download`：每 10 条一个链接，当天收进一个分组，并下载到 `本地交付/YYYYMMDD-品牌/`。
 
 回复用户：
@@ -76,8 +76,8 @@ LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)�
 - 渲染前交付闸门（`qc`、禁用画面、语音指令、改写违规）不过的直接记 failed，不渲染、不送审，`topup` 补位。
 - 只剩 ≤5 条渲染 / 审核时 10 秒轮询一次，其余 30 秒。
 - demo 算在总数里，量产只补其余条数；只按 1 倍生成，缺几条补几条。
-- 用户一次授权的范围不重复问；默认不逐条看成片，只看 `qc.py` 的结论。
-- 后台 poll 在跑时不在对话里等：`progress.py` 报完数就结束本轮。回复只写数字、阻塞点和下一步。
+- 用户一次授权的范围不重复问。按品牌约定检查当前版本；完整render凭据未变时复用既有证据，只复核改动条目，具体范围见 [交付节奏与进度](references/rework.md#交付节奏与进度)。
+- 后台 poll 在跑时，按用户当前要求持续跟进或简报；用户要求完成整批时不以后台已启动代替完成。回复给各组实数、阻塞点和下一步；已出片、检查通过、已分享、已下载分开报，不凭经验承诺完成时间。
 
 ## 铁律
 
