@@ -46,7 +46,7 @@ def timing(tts,rows,fps):
  if any(x['end']<=x['start'] for x in cues):raise RuntimeError('Invalid native cue interval')
  return total,bounds,cues
 
-def build(b,cut,tts,script,library,cfg,key):
+def build(b,cut,tts,script,library,cfg,key,allocation=None):
  d=copy.deepcopy(cut['draft']);fps=d['composition']['fps'];total,bounds,cues=timing(tts,b['segments'],fps);original=sorted([x for x in d['clips'] if x['trackId']=='main'],key=lambda x:x['from']);oldbounds=[];groups={}
  for s in b['segments']:
   group=[x for x in original if x['id'].split('-')[0]==s['id']]
@@ -55,7 +55,14 @@ def build(b,cut,tts,script,library,cfg,key):
  oldbounds.append(d['composition']['durationInFrames']);by_path={urlparse(x.get('object_url') or '').path:x for x in library};used=set();main=[];sources=[];rng=random.Random(key)
  for i,s in enumerate(b['segments']):
   begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];meta=[x for x in library if set(tag)&set(x.get('tags',[])) and not x.get('ai_generated') and x.get('review_result')=='pass' and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
-  valid={x['id'] for x in meta};preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta;count=max(len(base),math.ceil(length/60));cursor=begin
+  valid={x['id'] for x in meta}
+  if allocation is not None:
+   chosen=allocation.get(s['id']) or []
+   if not chosen or any(x not in valid for x in chosen):raise RuntimeError('Reviewed source allocation missing or incompatible '+s['id'])
+   indexed={x['id']:x for x in meta};ordered=[indexed[x] for x in chosen]
+  else:
+   preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta
+  count=max(len(base),math.ceil(length/60));cursor=begin
   for j in range(count):
    frames=length//count+(j<length%count);pick=None
    for m in ordered:

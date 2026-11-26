@@ -83,6 +83,32 @@ def budget(a,cfg):
  save(root/(a.brief+'-budget.json'),{'at':time.time(),'keys':keys,'quantity':n,'whole_tts':n,'speed':1.4,'authorization':b['demo_approval'],'source':'full current tag libraries, no fixed real pool'})
  print('DRY-RUN',a.brief,'new videos',n,'whole TTS',n,'native voice/style/music choices',len(script['config']['tts']['voices']),len(script['config']['subtitle_style']['style_ids']),len(script['config']['bgm']['props']['ids']),flush=True)
 
+def allocate(a,cfg):
+ """Register a visually reviewed whole-batch source plan; no paid calls or state fabrication."""
+ plan=read(a.plan);root=Path(a.run)/'task-bulk';budget=read(root/(a.brief+'-budget.json'));b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
+ if not plan.get('reviewer') or not plan.get('evidence') or not plan.get('authorization'):raise RuntimeError('Visual grouping evidence and task authorization required')
+ if set(plan.get('videos',{}))!=set(budget['keys']):raise RuntimeError('Allocation must cover the exact remaining video keys')
+ library={x['id']:x for x in read(root/(a.brief+'-library.json'))};groups=plan.get('source_groups',{});counts={}
+ for key,item in plan['videos'].items():
+  used=set();people=set()
+  for s in b['segments']:
+   ids=item['segments'].get(s['id'],[])
+   if not ids:raise RuntimeError('Missing role allocation '+key+'/'+s['id'])
+   for sid in ids:
+    m=library[sid];path=td.urlparse(m['object_url']).path
+    if m.get('ai_generated') or m.get('review_result')!='pass' or not set(m.get('tags',[]))&set(s['visual_tags']) or path in used:raise RuntimeError('Invalid/duplicate source in allocation')
+    used.add(path)
+    if '头发顺滑' in s['visual_tags']:
+     if not groups.get(sid):raise RuntimeError('Hair footage lacks reviewed person/appearance grouping')
+     people.add(groups[sid])
+  for person in people:counts[person]=counts.get(person,0)+1
+ cap=plan.get('max_videos_per_person_group')
+ if not isinstance(cap,int) or cap<1 or cap>=len(budget['keys']):raise RuntimeError('A real cross-video person cap is required')
+ if any(n>cap for n in counts.values()):raise RuntimeError('Reviewed person-group frequency cap exceeded')
+ target=root/(a.brief+'-source-allocation.json')
+ if not a.dry_run:save(target,{'plan':plan,'counts':counts,'budget_at':budget['at']})
+ print('DRY-RUN' if a.dry_run else 'SAVED','reviewed source allocation',len(plan['videos']),'videos; person groups',counts)
+
 def prepare(api_module,st,b,v,key,cut,d):
  td.cb=api_module;cb.CFG=api_module.CFG;cb.BASE=api_module.BASE;cfg=api_module.CFG;root=st.path.parent.parent;assets=root/'task-bulk';plan=read(assets/(b['brief_id']+'-budget.json'))
  validate_budget(plan,key,time.time())
@@ -93,7 +119,8 @@ def prepare(api_module,st,b,v,key,cut,d):
  fingerprint=lambda texts:td.norm(''.join(texts)).casefold()
  for other,item in st.videos.items():
   if other!=key and item.get('brief_id')==b['brief_id'] and not item.get('customer_rework_required') and item.get('texts') and fingerprint(item['texts'])==fingerprint(got):raise RuntimeError('Duplicate batch copy before whole TTS: '+other)
- if not v.get('source_allocation_reviewed'):raise RuntimeError('整组人物/造型与源频次分配尚未实际复核；禁止无分配直接随机生产')
+ allocation=read(assets/(b['brief_id']+'-source-allocation.json'))
+ if allocation['budget_at']!=plan['at'] or key not in allocation['plan']['videos']:raise RuntimeError('整组人物/造型与源频次分配尚未实际复核；禁止无分配直接随机生产')
  voice=script['config']['tts']['voices'][i%len(script['config']['tts']['voices'])];body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=work/'tts.json';intent=work/'tts-intent.json'
  if receipt.exists():
   if read(intent)!=body:raise RuntimeError('Bulk TTS cached input changed')
@@ -112,7 +139,7 @@ def prepare(api_module,st,b,v,key,cut,d):
  asset=read(assetfile);tts=copy.deepcopy(tts);tts['audio_url']=api_module.api('POST','/storage/download-tokens',{'object_key':asset['object_key']})['download_url']
  rows=copy.deepcopy(b)
  for s,text in zip(rows['segments'],got):s['text']=text;s.pop('caption_chunks',None)
- draft,evidence=td.build(rows,{**cut,'draft':d},tts,script,library,cfg,key)
+ draft,evidence=td.build(rows,{**cut,'draft':d},tts,script,library,cfg,key,allocation=allocation['plan']['videos'][key]['segments'])
  styles=read(assets/'styles.json');styleid=script['config']['subtitle_style']['style_ids'][i%len(script['config']['subtitle_style']['style_ids'])];style=next(x for x in styles if x['id']==styleid)
  fieldmap={'alignType':'align_type','backgroundColor':'background_color','strokeColor':'stroke_color','strokeWidth':'stroke_width','textColor':'text_color','textShadow':'text_shadow','bold':'bold','italic':'italic','underline':'underline'}
  for x in draft['clips']:
@@ -136,5 +163,5 @@ def prepare(api_module,st,b,v,key,cut,d):
  save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']});return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold','allocate']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
