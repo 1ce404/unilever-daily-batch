@@ -55,17 +55,22 @@ def build(b,cut,tts,script,library,cfg,key):
  oldbounds.append(d['composition']['durationInFrames']);by_path={urlparse(x.get('object_url') or '').path:x for x in library};used=set();main=[];sources=[];rng=random.Random(key)
  for i,s in enumerate(b['segments']):
   begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];meta=[x for x in library if set(tag)&set(x.get('tags',[])) and not x.get('ai_generated') and x.get('review_result')=='pass' and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
-  preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x]+meta;count=max(len(base),math.ceil(length/60));cursor=begin
+  valid={x['id'] for x in meta};preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta;count=max(len(base),math.ceil(length/60));cursor=begin
   for j in range(count):
    frames=length//count+(j<length%count);pick=None
    for m in ordered:
     path=urlparse(m['object_url']).path;available=math.floor((m['end_ms']-m['begin_ms'])*fps/1000)
-    if path in used or available<frames+4:continue
+    window=(cfg.get('source_highlight_windows') or {}).get(path.rsplit('/',1)[-1],{});safe_start=math.ceil(window.get('start_seconds',0)*fps);safe_end=min(available,math.floor(window.get('end_seconds',available/fps)*fps))
+    if path in used or safe_end-safe_start<frames+4:continue
     pick=m;break
    if not pick:raise RuntimeError('Insufficient original-speed unique source windows '+s['id'])
-   path=urlparse(pick['object_url']).path;used.add(path);x=copy.deepcopy(base[min(j,len(base)-1)]);x.update(id=s['id']+'-'+str(j),**{'from':cursor,'durationInFrames':frames,'motion':None,'transitionIn':base[0].get('transitionIn') if j==0 else None,'transitionOut':None});native_start=next((z['props'].get('startFrom',0) for z in base if urlparse(z['props']['src']).path==path),0);native_start=min(native_start,max(0,available-frames-2));x['props'].update(src=pick['object_url'],startFrom=native_start,playbackRate=1,volume=0,muted=True,fit='cover',scale=1,x=0,y=0,alt=pick.get('description',''));x['props'].pop('loop',None);main.append(x);sources.append({'clip':x['id'],'source_segment_id':pick['id'],'source_path':path,'source_available_frames':available,'used_frames':frames,'startFrom':native_start});cursor+=frames
+   path=urlparse(pick['object_url']).path;used.add(path);x=copy.deepcopy(base[min(j,len(base)-1)]);x.update(id=s['id']+'-'+str(j),**{'from':cursor,'durationInFrames':frames,'motion':None,'transitionIn':base[0].get('transitionIn') if j==0 else None,'transitionOut':None});native_start=next((z['props'].get('startFrom',0) for z in base if urlparse(z['props']['src']).path==path),0);native_start=max(safe_start,min(native_start,max(safe_start,safe_end-frames-2)));x['props'].update(src=pick['object_url'],startFrom=native_start,playbackRate=1,volume=0,muted=True,fit='cover',scale=1,x=0,y=0,alt=pick.get('description',''));x['props'].pop('loop',None);main.append(x);sources.append({'clip':x['id'],'source_segment_id':pick['id'],'source_path':path,'source_available_frames':available,'used_frames':frames,'startFrom':native_start});cursor+=frames
  caption=next(x for x in d['clips'] if x['trackId']=='overlay');style=copy.deepcopy(caption['props']);style.pop('text',None);style.update(font_size=36,top=78);native=[]
- for i,c in enumerate(cues):native.append({**copy.deepcopy(caption),'id':'s'+c['segment']+'-'+str(i),'from':c['start'],'durationInFrames':c['end']-c['start'],'transitionIn':None,'transitionOut':None,'motion':None,'props':{**style,'text':c['text']}})
+ for i,c in enumerate(cues):
+  props={**style,'text':c['text']};hi=cfg.get('caption_highlights') or {}
+  for rule in hi.get('rules',[]):
+   if any(word in c['text'] for word in rule['terms']):props['text_color']=rule['color'];break
+  native.append({**copy.deepcopy(caption),'id':'s'+c['segment']+'-'+str(i),'from':c['start'],'durationInFrames':c['end']-c['start'],'transitionIn':None,'transitionOut':None,'motion':None,'props':props})
  def tf(frame):
   i=min(len(b['segments'])-1,max(0,max((i for i,z in enumerate(oldbounds[:-1]) if z<=frame),default=0)));return min(total,bounds[i]+round((frame-oldbounds[i])*(bounds[i+1]-bounds[i])/max(1,oldbounds[i+1]-oldbounds[i])))
  extras=[]
@@ -123,6 +128,9 @@ def main():
   if not plan.get('authorization'):raise RuntimeError('Missing user revision authorization')
   draft=copy.deepcopy(cut['draft']);save(out/('patch-before-'+digest(draft)[:12]+'.json'),cut)
   for x in draft['clips']:
+   if x['trackId']=='overlay':
+    for rule in (cfg.get('caption_highlights') or {}).get('rules',[]):
+     if any(term in x['props']['text'] for term in rule['terms']):x['props']['text_color']=rule['color'];break
    if x['trackId']=='voiceover':
     x['props']['volume']=entry['voice_volume']
     if entry.get('original_voice_gain'):

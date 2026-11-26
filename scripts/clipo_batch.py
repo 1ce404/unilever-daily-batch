@@ -955,7 +955,10 @@ def prepare_draft(st, b, v, key, cut):
             d, v["restyle_replacements"] = replace_banned_shots(b, d, cut_id, st.path.parent / "restyle-media")
         except RuntimeError as e:
             v["replace_error"] = str(e)[:200]  # 换不了的保留，交给下面的闸门拦
-    if b['brief_id'] in (CFG.get('lux_bulk_approved_briefs') or []) and not key.endswith('-V01'):
+    if b['brief_id'] in (CFG.get('task_native_bulk_briefs') or []) and not key.endswith('-V01'):
+        import task_bulk
+        d = task_bulk.prepare(sys.modules[__name__], st, b, v, key, cut, d)
+    elif b['brief_id'] in (CFG.get('lux_bulk_approved_briefs') or []) and not key.endswith('-V01'):
         import lux_bulk_polish
         d = lux_bulk_polish.prepare(sys.modules[__name__], st, b, v, key, cut, d)
     spans = False
