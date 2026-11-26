@@ -77,3 +77,5 @@ task_caption_repair.py: 本次LUX新批量字幕局部重排；沿用原生产�
 task_variant_repair.py: 用户明确批准单条新稿及1次整篇TTS后的原cut修订；沿用原音色/1.4倍、已核整组选片计划与包装，独立修订目录保存原/新收据，不覆盖历史TTS；恢复后重新审核，不新增视频、不自动扩大预算。
 
 task_variant_repair --resume: 只在已写回草稿与原计划完整一致时续渲，不再次TTS或PUT；仅接受原生补齐的空motion/transition默认值，不放宽实际轨道差异。aigc_gen的max_retries=0模式保存请求意图，禁止网络结果不确定时重复扣费。
+
+字幕修复接受逐条完整caption_chunks且锁定全文；task_demo只在任务显式批准AI开头ID时允许该首段并保留AI角标。task_configuration可凭完整当前摘要只换首段visual，保留平台其他修改。rereview支持video-key且跳过客户退回旧片；source repair同步实际选片证据，可仅清除清单指定的main转场。reference_study previews只下载现有贴纸并检查原生透明画布的实际可见区域。

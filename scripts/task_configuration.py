@@ -23,6 +23,11 @@ def native_body(d,keys):
  return out
 
 def digest(d):return hashlib.sha256(json.dumps(d,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+def first_visual_only(current,wanted):
+ base=copy.deepcopy(current)
+ if not base.get('segments') or len(base['segments'])!=len(wanted.get('segments',[])):return False
+ base['segments'][0]['visual']=copy.deepcopy(wanted['segments'][0]['visual'])
+ return base==wanted
 def items(d):return d if isinstance(d,list) else d.get('items',[])
 def pages(path):
  rows=[]
@@ -98,7 +103,9 @@ def apply(a,cfg):
    rec=out/(bid+'-applied.json')
    if rec.exists():
     prior=json.loads(rec.read_text());current=native_body(before,body)
-    if digest(current)!=prior['body_digest'] and current!=native_body(body,body):raise RuntimeError('Task script changed externally; refusing overwrite')
+    wanted=native_body(body,body)
+    pinned_first_visual=item.get('expected_current_digest')==digest(current) and first_visual_only(current,wanted)
+    if digest(current)!=prior['body_digest'] and current!=wanted and not pinned_first_visual:raise RuntimeError('Task script changed externally; refusing overwrite')
   if a.dry_run:
    save(out/(bid+'-dryrun.json'),{'body':body,'copy_hash':copy_hash(b),'pending_ai_segments':pending});print(bid,'DRY-RUN','segments',len(body['segments']),'pending_AI',pending,flush=True);continue
   intent=out/(bid+'-create-intent.json');created=out/(bid+'-created.json')

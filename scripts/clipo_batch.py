@@ -789,6 +789,8 @@ def cmd_rereview(cfg, run, args):
         backup.write_text(json.dumps(st.data, ensure_ascii=False, indent=2))
     for vid, v in sorted(st.videos.items()):
         b = briefs.get(v["brief_id"])
+        if v.get('customer_rework_required') or (getattr(args,'video_key',None) and vid not in args.video_key):
+            continue
         if v.get("stage") != "done" or not b or (args.brief and v["brief_id"] != args.brief):
             continue
         prod = cfg["products"][b["product_key"]]
@@ -2280,6 +2282,7 @@ def main():
     ap.add_argument("--config", required=True)
     ap.add_argument("--run", required=True)
     ap.add_argument("--brief")
+    ap.add_argument("--video-key",action='append',help='rereview: only these existing video keys; never include customer-rejected versions')
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--remove-effects", action="store_true", help="restyle: 去花字但保留转场；本批后续补片也去花字")
     ap.add_argument("--replace-banned", action="store_true", help="restyle: 按原段标签替换禁用画面，下载探测后使用原速足长源片")

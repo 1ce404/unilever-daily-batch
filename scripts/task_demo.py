@@ -68,7 +68,9 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
   groups[s['id']]=group;oldbounds.append(group[0]['from'])
  oldbounds.append(d['composition']['durationInFrames']);by_path={urlparse(x.get('object_url') or '').path:x for x in library};used=set();main=[];sources=[];rng=random.Random(key)
  for i,s in enumerate(b['segments']):
-  begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];meta=[x for x in library if set(tag)&set(x.get('tags',[])) and not x.get('ai_generated') and x.get('review_result')=='pass' and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
+  begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];ai_role=bool(tag) and all(t.startswith('AI-') for t in tag);approved_ai=set((cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]))
+  if ai_role and (i!=0 or not approved_ai or aigc_problem(b)):raise RuntimeError('Only explicitly user-approved AI opening sources allowed')
+  meta=[x for x in library if set(tag)&set(x.get('tags',[])) and ((x.get('ai_generated') and x['id'] in approved_ai) if ai_role else (not x.get('ai_generated') and x.get('review_result')=='pass')) and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
   valid={x['id'] for x in meta}
   if allocation is not None:
    chosen=allocation.get(s['id']) or []
@@ -76,7 +78,7 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
    indexed={x['id']:x for x in meta};ordered=[indexed[x] for x in chosen]
   else:
    preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta
-  count=max(len(base),math.ceil(length/60));cursor=begin
+  count=1 if ai_role else max(len(base),math.ceil(length/60));cursor=begin
   if allocation is not None:count=fit_source_count(ordered,used,length,count,cfg,fps)
   for j in range(count):
    frames=length//count+(j<length%count);pick=None
@@ -108,6 +110,9 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
   if x['durationInFrames']>0:extras.append(x)
  voice=copy.deepcopy(next(x for x in d['clips'] if x['trackId']=='voiceover'));voice.update(id='voice-continuous',**{'from':0,'durationInFrames':total});voice['props'].update(src=tts['audio_url'],startFrom=0,playbackRate=1,volume=1)
  d['clips']=main+native+[voice]+extras;d['composition']['durationInFrames']=total
+ if any(all(t.startswith('AI-') for t in s['visual_tags']) for s in b['segments']):
+  from footage_qc import with_watermark
+  d=with_watermark(d,[(bounds[i],bounds[i+1]-bounds[i]) for i,s in enumerate(b['segments']) if s['visual_tags'] and all(t.startswith('AI-') for t in s['visual_tags'])])
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}
 
 def main():

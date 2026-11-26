@@ -19,7 +19,7 @@ def norm(text):
     return re.sub(r'[^\w\u4e00-\u9fff]', '', text)
 
 
-def semantic_cues(tts, texts, fps, max_units=10):
+def semantic_cues(tts, texts, fps, max_units=10, chunks=None):
     whole = ''.join(norm(t) for t in texts)
     tokens, position, punct = [], 0, set()
     for item in tts.get('timeline', {}).get('items', []):
@@ -39,11 +39,22 @@ def semantic_cues(tts, texts, fps, max_units=10):
     boundaries = {0, *[t['b'] for t in tokens]}
     if any(a not in boundaries or b not in boundaries for a, b in atoms):
         raise RuntimeError('A required name boundary bisects a native token; no guessed timing')
+    planned=[]
+    if chunks is not None:
+        if ''.join(norm(t) for t in chunks).casefold()!=whole.casefold() or any(not norm(t) or len(norm(t))>max_units for t in chunks):
+            raise RuntimeError('Explicit semantic chunks alter copy or exceed single-line limit')
+        offset=0
+        for text in chunks:
+            offset+=len(norm(text));planned.append(offset)
+        if any(z not in boundaries or any(a<z<b for a,b in atoms) for z in planned):
+            raise RuntimeError('Explicit chunk bisects a native token or required product term')
     cues, cursor = [], 0
     while cursor < len(whole):
         stop = min(len(whole), cursor + max_units)
         following = next(((a, b) for a, b in atoms if b > cursor), None)
-        if following and following[0] == cursor:
+        if planned:
+            end=next(z for z in planned if z>cursor)
+        elif following and following[0] == cursor:
             end = following[1]
         elif following and following[0] < stop:
             a, b = following
@@ -79,7 +90,7 @@ def semantic_cues(tts, texts, fps, max_units=10):
     return cues
 
 
-def reflow(draft, tts, texts, cfg):
+def reflow(draft, tts, texts, cfg, chunks=None):
     result = copy.deepcopy(draft)
     old = [c for c in draft['clips'] if c['trackId'] == 'overlay']
     if not old or norm(''.join(c['props']['text'] for c in sorted(old, key=lambda c: c['from']))).casefold() != norm(''.join(texts)).casefold():
@@ -95,7 +106,7 @@ def reflow(draft, tts, texts, cfg):
         raise RuntimeError('No ordinary native caption style available')
     base_color = ordinary['props'].get('text_color')
     captions = []
-    for i, cue in enumerate(semantic_cues(tts, texts, draft['composition']['fps'])):
+    for i, cue in enumerate(semantic_cues(tts, texts, draft['composition']['fps'], chunks=chunks)):
         c = copy.deepcopy(template)
         c.update(cue, id=f's-reflow-{i}', transitionIn=None, transitionOut=None, motion=None)
         c['props']['text'] = c.pop('text')
@@ -151,7 +162,7 @@ def main():
             raise RuntimeError('Outside authorized new-batch repair scope '+key)
         cut = cb.api('GET', '/video-cuts/'+v['cut_id'])
         tts = td.load(root/'task-bulk'/key/'tts.json')
-        draft = reflow(cut['draft'], tts, v['texts'], cfg)
+        draft = reflow(cut['draft'], tts, v['texts'], cfg, chunks=plan.get('caption_chunks',{}).get(key))
         issues = cut_checks(briefs[v['brief_id']], draft, v.get('voice'))
         if issues:
             raise RuntimeError('Caption repair gate '+key+': '+str(issues))

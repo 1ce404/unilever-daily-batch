@@ -29,6 +29,13 @@ class CaptionRepairTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             semantic_cues(tts,texts,30)
 
+    def test_reviewed_chunks_keep_complete_words_without_retiming_guesses(self):
+        text='发丝该有的照顾一样不少。'
+        tts={'timeline':{'items':[{'text':c,'start_ms':i*100,'end_ms':(i+1)*100} for i,c in enumerate(text)]}}
+        cues=semantic_cues(tts,[text],30,chunks=['发丝该有的照顾','一样不少'])
+        self.assertEqual([x['text'] for x in cues],['发丝该有的照顾','一样不少'])
+        with self.assertRaises(RuntimeError):semantic_cues(tts,[text],30,chunks=['照顾','不少'])
+
     def test_previous_sentence_tail_is_not_attached_to_ingredient(self):
         text='洗着是舒服的，发丝该有的照顾一样不少。天然鲜花精油，再配上4D玻尿酸。'
         tts={'timeline':{'items':[{'text':c,'start_ms':i*100,'end_ms':(i+1)*100} for i,c in enumerate(text)]}}

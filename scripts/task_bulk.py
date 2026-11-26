@@ -48,6 +48,10 @@ def repair(a,cfg):
  if not plan.get('authorization') or b['brief_id']!=a.brief:raise RuntimeError('Repair authorization or task mismatch')
  cut=cb.api('GET','/video-cuts/'+v['cut_id']);draft=copy.deepcopy(cut['draft']);library={x['id']:x for x in cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id'])};fps=draft['composition']['fps']
  for c in draft['clips']:
+  if c['id'] in plan.get('remove_transition_ids',[]):
+   if c['trackId']!='main':raise RuntimeError('Only selected main-shot transitions may be removed')
+   c['transitionIn']=None;c['transitionOut']=None
+ for c in draft['clips']:
   if c['id'] not in plan['clips']:continue
   change=plan['clips'][c['id']];m=library[change['segment_id']];start=change['startFrom']
   if c['trackId']!='main' or m.get('ai_generated') or m.get('review_result')!='pass' or start+c['durationInFrames']>math.floor((m['end_ms']-m['begin_ms'])*fps/1000):raise RuntimeError('Unsafe real source replacement')
@@ -65,7 +69,16 @@ def repair(a,cfg):
   save(out/'before.json',cut);cb.api('PUT','/video-cuts/'+v['cut_id'],{'script_id':cut['script_id'],'draft':draft},tries=1);back=cb.api('GET','/video-cuts/'+v['cut_id'])
   if stable_media(back['draft'])!=stable_media(draft):raise RuntimeError('Repair readback differs')
   save(out/'after.json',back);job=cb.api('POST','/render-jobs',{'spec':back['draft'],'cut_id':v['cut_id'],'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'task-source-repair-'+v['cut_id']+'-'+sig[:16]},tries=1);save(receipt,job)
- v.update(render_job=job['job_id'],stage='rendering',ai_review=None,ai_reason=None,qc_issues=[])
+ from quality_contract import cut_facts
+ prior_prepared=Path(v.get('task_bulk_prepared_path') or Path(a.run)/'task-bulk'/key/'prepared.json')
+ if prior_prepared.exists():
+  prepared=read(prior_prepared);prepared['draft']=draft
+  for x in prepared['evidence']['source_windows']:
+   change=plan['clips'].get(x['clip'])
+   if change:
+    m=library[change['segment_id']];x.update(source_segment_id=m['id'],source_path=td.urlparse(m['object_url']).path,startFrom=change['startFrom'],source_available_frames=math.floor((m['end_ms']-m['begin_ms'])*fps/1000))
+  actual=out/(sig+'-prepared.json');save(actual,prepared);v['task_bulk_prepared_path']=str(actual.resolve())
+ v.update(render_job=job['job_id'],stage='rendering',ai_review=None,ai_reason=None,qc_issues=[],quality_facts=cut_facts(draft))
  for k in ['error','last_error','object_key','bad_footage']:v.pop(k,None)
  st.save();print(key,'source-only repair rendering',job['job_id'])
 
