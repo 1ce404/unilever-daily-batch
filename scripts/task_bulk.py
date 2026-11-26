@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import clipo_batch as cb,task_demo as td
-from common import load_config,demo_problem
+from common import load_config,demo_problem,aigc_problem
 from task_configuration import pages
 
 def save(p,x):return td.save(p,x)
@@ -131,7 +131,10 @@ def allocate(a,cfg):
    if not ids:raise RuntimeError('Missing role allocation '+key+'/'+s['id'])
    for sid in ids:
     m=library[sid];path=td.urlparse(m['object_url']).path
-    if m.get('ai_generated') or m.get('review_result')!='pass' or not set(m.get('tags',[]))&set(s['visual_tags']) or path in used:raise RuntimeError('Invalid/duplicate source in allocation')
+    ai_role=s is b['segments'][0] and bool(s['visual_tags']) and all(t.startswith('AI-') for t in s['visual_tags'])
+    approved_ai=set((cfg.get('approved_ai_hook_ids') or {}).get(a.brief,[]))
+    approved_hook=ai_role and m.get('ai_generated') and sid in approved_ai and not aigc_problem(b) and len(ids)==1
+    if (not approved_hook and (m.get('ai_generated') or m.get('review_result')!='pass')) or not set(m.get('tags',[]))&set(s['visual_tags']) or path in used:raise RuntimeError('Invalid/duplicate source in allocation')
     used.add(path)
     if '头发顺滑' in s['visual_tags']:
      if not groups.get(sid):raise RuntimeError('Hair footage lacks reviewed person/appearance grouping')
@@ -174,6 +177,10 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  work.mkdir(exist_ok=True,parents=True);i=int(key.rsplit('-V',1)[1])-2
  got=v.get('texts') or []
  if len(got)!=len(b['segments']):raise RuntimeError('Missing actual per-video native rewrite')
+ from lint_copy import lint_text,lint_script
+ from common import voiced
+ prod=cfg['products'][b['product_key']];issues=[m for t in got for level,m in lint_text(t,cfg,prod) if level=='error']+[m for level,m in lint_script(got,voiced(b['segments']),b,cfg,prod) if level=='error']
+ if issues:raise RuntimeError('Actual rewrite rejected before whole TTS '+str(issues))
  spoken=''.join(got)
  fingerprint=lambda texts:td.norm(''.join(texts)).casefold()
  for other,item in st.videos.items():
