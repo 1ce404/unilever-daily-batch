@@ -124,7 +124,7 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
   if x['durationInFrames']>0:extras.append(x)
  voice=copy.deepcopy(next(x for x in d['clips'] if x['trackId']=='voiceover'));voice.update(id='voice-continuous',**{'from':0,'durationInFrames':total});voice['props'].update(src=tts['audio_url'],startFrom=0,playbackRate=1,volume=1)
  d['clips']=main+native+[voice]+extras;d['composition']['durationInFrames']=total
- if any(all(t.startswith('AI-') for t in s['visual_tags']) for s in b['segments']):
+ if (cfg.get('watermark') or {}).get('add',True) and any(all(t.startswith('AI-') for t in s['visual_tags']) for s in b['segments']):
   from footage_qc import with_watermark
   d=with_watermark(d,[(bounds[i],bounds[i+1]-bounds[i]) for i,s in enumerate(b['segments']) if s['visual_tags'] and all(t.startswith('AI-') for t in s['visual_tags'])])
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}

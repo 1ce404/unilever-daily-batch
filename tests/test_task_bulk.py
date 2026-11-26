@@ -3,7 +3,7 @@ import sys,unittest,tempfile,json,argparse
 from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from task_bulk import validate_budget,allocate
+from task_bulk import validate_budget,allocate,trim_title_ends
 class TaskBulkBudgetTest(unittest.TestCase):
  def setUp(self):self.plan={'at':100,'keys':['B-V02','B-V03']}
  def test_approved_remaining_video_is_allowed(self):validate_budget(self.plan,'B-V02',101)
@@ -12,6 +12,12 @@ class TaskBulkBudgetTest(unittest.TestCase):
    with self.assertRaises(RuntimeError):validate_budget(self.plan,key,101)
  def test_stale_budget_stops_before_paid_work(self):
   with self.assertRaises(RuntimeError):validate_budget(self.plan,'B-V02',7301)
+ def test_title_may_end_before_new_product_closeup_but_cannot_extend(self):
+  clips=[{'id':'title','trackId':'effect','from':100,'durationInFrames':66}];trim_title_ends(clips,{'title':140});self.assertEqual(clips[0]['durationInFrames'],40)
+  for end in [100,180]:
+   with self.assertRaises(RuntimeError):trim_title_ends(clips,{'title':end})
+  clips[0]['trackId']='voiceover'
+  with self.assertRaises(RuntimeError):trim_title_ends(clips,{'title':120})
  def test_cross_video_same_person_cannot_be_hidden_by_new_source_ids(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp);assets=root/'task-bulk';assets.mkdir();keys=['B-V02','B-V03'];budget={'keys':keys,'at':1};(assets/'B-budget.json').write_text(json.dumps(budget))

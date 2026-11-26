@@ -16,6 +16,14 @@ def read(p):return td.load(p)
 def validate_budget(plan,key,now):
  if key not in plan['keys'] or now-plan['at']>7200:raise RuntimeError('Missing current matching bulk TTS budget')
 
+def trim_title_ends(clips,ends):
+ for cid,end in ends.items():
+  matches=[c for c in clips if c['id']==cid]
+  if len(matches)!=1:raise RuntimeError('Exact title clip required')
+  c=matches[0]
+  if c['trackId']!='effect' or not isinstance(end,int) or not c['from']<end<=c['from']+c['durationInFrames']:raise RuntimeError('Only shortening an existing title is allowed')
+  c['durationInFrames']=end-c['from']
+
 def hold(a,cfg):
  st=cb.State(a.run);plan=read(a.plan);out=Path(a.run)/'revisions/customer-bulk-hold';out.mkdir(parents=True,exist_ok=True)
  if not plan.get('authorization') or not plan.get('reason') or not plan.get('keys'):raise RuntimeError('Missing explicit user rejection')
@@ -57,7 +65,14 @@ def repair(a,cfg):
   change=plan['clips'][c['id']];m=library[change['segment_id']];start=change['startFrom']
   if c['trackId']!='main' or m.get('ai_generated') or m.get('review_result')!='pass' or start+c['durationInFrames']>math.floor((m['end_ms']-m['begin_ms'])*fps/1000):raise RuntimeError('Unsafe real source replacement')
   c['props'].update(src=m['object_url'],startFrom=start,alt=m.get('description',''))
- if [x for x in cut['draft']['clips'] if x['trackId']!='main']!=[x for x in draft['clips'] if x['trackId']!='main']:raise RuntimeError('Protected tracks changed')
+ expected=copy.deepcopy([x for x in cut['draft']['clips'] if x['trackId']!='main']);trim_title_ends(expected,plan.get('effect_end_frames',{}));trim_title_ends(draft['clips'],plan.get('effect_end_frames',{}))
+ if plan.get('remove_task_corner_label'):
+  wm=cfg.get('watermark') or {}
+  if wm.get('add') is not False or not (wm.get('task_user_override') or {}).get('quote'):raise RuntimeError('Explicit task-level corner-label revision required')
+  marked=[c for c in draft['clips'] if c['trackId']=='watermark']
+  if any(c.get('props',{}).get('text')!='内容由AI生成' for c in marked):raise RuntimeError('Unknown watermark content; no broad removal')
+  draft['clips']=[c for c in draft['clips'] if c['trackId']!='watermark'];expected=[c for c in expected if c['trackId']!='watermark']
+ if expected!=[x for x in draft['clips'] if x['trackId']!='main']:raise RuntimeError('Protected tracks changed')
  issues=cut_checks(b,draft,v.get('voice'))
  if issues:raise RuntimeError('Repair gate '+str(issues))
  out=Path(a.run)/'task-bulk'/key/'source-repair';out.mkdir(exist_ok=True);sig=td.digest(stable_media(draft));budgetfile=out/'budget.json'
