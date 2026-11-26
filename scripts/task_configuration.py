@@ -29,6 +29,10 @@ def inventory(a,cfg):
   pid=cfg['products'][key]['clipo_product_id']
   work.extend([(key+'-product',lambda pid=pid:cb.api('GET','/products/'+pid)),(key+'-prompts',lambda pid=pid:cb.api('GET','/products/'+pid+'/prompts')),(key+'-template',lambda sid=sid:cb.api('GET','/video-scripts/'+sid)),(key+'-library',lambda pid=pid:cb.list_segments(pid))])
  for key,path in [('bgm','/resource/bgm'),('sfx','/resource/sound-effect'),('effects','/resource/remotion-effect-template')]:work.append((key,lambda path=path:pages(path)))
+ for i,q in enumerate(p.get('voice_queries',[])):
+  work.append(('voice-query-'+str(i+1),lambda q=q:cb.api('POST','/tts/speaker/search',{'query':q,'platform':'volcengine','include_disabled':False,'limit':8})))
+ for eid in p.get('effect_ids',[]):work.append(('effect-'+eid,lambda eid=eid:cb.api('GET','/resource/remotion-effect-template/'+eid)))
+ work.append(('stickers',lambda:pages('/resource/sticker')))
  def one(item):
   name,fn=item;d=fn();save(out/(name+'.json'),d);return name,len(d) if isinstance(d,list) else 'saved'
  with ThreadPoolExecutor(max_workers=4) as pool:
@@ -56,6 +60,9 @@ def validate_body(body,b,library):
  return pending
 
 def apply(a,cfg):
+ if not a.dry_run:
+  from sync_skill import assert_current
+  assert_current(Path(__file__).resolve().parent.parent)
  plan=json.loads(Path(a.plan).read_text());root=Path(a.run);out=root/'clipo/task-configuration';out.mkdir(parents=True,exist_ok=True);st=cb.State(root);briefs={b['brief_id']:b for b in cb.load_briefs(root)}
  if not plan.get('authorization'):raise RuntimeError('Missing human configuration authorization')
  results=[]
