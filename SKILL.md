@@ -11,7 +11,7 @@ description: 联合利华（清扬、力士、AHC、HC、多芬、力士沐浴�
 
 ## 开工版本与LUX自查
 
-每次新开工先执行 `python3 -I scripts/sync_skill.py --apply`，确认已与GitHub main同步后重新读本文件；本地有未备份修改时先保留，不能直接覆盖。提交入口也检查版本，旧版、离线未核验版不默默生产。现有在途任务继续使用其已保存的生产版本，不能中途切换代码。
+每次新开工先执行 `python3 -I scripts/sync_skill.py --apply`，在原安装目录更新，确认已与 GitHub main 同步后重新读本文件。不新增 skill 包，不创建旧版备份；旧版从 GitHub 历史恢复。检测到本地改动时停止，不直接覆盖。提交入口也检查版本，旧版、离线未核验版不默默生产。现有在途任务继续使用其已保存的生产版本，不能中途切换代码。
 
 LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)，阈值只在 `config/quality/lux.json`。发布前必须回读真实配置、检查每条成片和整组差异；字幕单片统一不等于整批一种，素材/BGM/AI样片展示不等于已配置。用 `quality_contract.py audit`、`qc.py`、`media_qc.py` 留证据，任何未检/失败不得写成通过或进入交付。
 

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Check/update this skill from its owning GitHub main without overwriting unbacked local changes.
-Works for both git clones and copied/archive installs. Uses Git credentials already on that machine.
-"""
+# ---------- 文件契约 ----------
+# [INPUT]: 依赖 GitHub main、Git 凭据与本地提交或文件校验清单。
+# [OUTPUT]: 核验版本并原地更新 skill；不创建旧版备份，不覆盖已识别的本地改动。
+# [POS]: scripts 的安装更新入口；生产命令调用版本校验，运行数据不进入更新范围。
+# [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+"""原地同步 Git 或复制安装；旧版从 GitHub 历史恢复，不保留本地备份包。"""
 import argparse,datetime,hashlib,json,os,shutil,subprocess,sys,tempfile,re
 from pathlib import Path
 REPO='https://github.com/1ce404/unilever-daily-batch.git'
@@ -30,7 +33,7 @@ def assert_current(root):
  else:
   manifest=root/'.skill-version.json';files=json.loads(manifest.read_text()).get('files',{}) if manifest.exists() else {}
   if not files:raise RuntimeError('复制安装缺少文件校验清单，需先更新安装。')
-  if any(not (root/rel).is_file() or hashlib.sha256((root/rel).read_bytes()).hexdigest()!=digest for rel,digest in files.items()):raise RuntimeError('本地文件与已安装提交不一致，需先备份并同步。')
+  if any(not (root/rel).is_file() or hashlib.sha256((root/rel).read_bytes()).hexdigest()!=digest for rel,digest in files.items()):raise RuntimeError('本地文件与已安装提交不一致，先确认本地改动再同步。')
  if local!=remote:raise RuntimeError('Skill未同步最新main。先执行 python3 -I scripts/sync_skill.py --apply，再重新运行；不使用旧版继续生产。')
  print('Skill版本已核验 '+remote[:12],flush=True);return remote
 
@@ -40,7 +43,7 @@ def apply(root,repo=REPO,branch=BRANCH):
   if repo==REPO and branch==BRANCH:assert_current(root)
   print('Already current '+remote);return remote
  if (root/'.git').exists():
-  if git('status','--porcelain',cwd=root):raise RuntimeError('本地有修改，先提交或备份；未覆盖任何文件。')
+  if git('status','--porcelain',cwd=root):raise RuntimeError('本地有修改，先提交或另行保存；未覆盖任何文件。')
   git('fetch',repo,branch,cwd=root);fetched=git('rev-parse','FETCH_HEAD',cwd=root)
   if fetched!=remote:raise RuntimeError('Upstream moved during update; retry a fresh check')
   git('merge','--ff-only','FETCH_HEAD',cwd=root)
@@ -50,7 +53,7 @@ def apply(root,repo=REPO,branch=BRANCH):
  for rel,digest in old.get('files',{}).items():
   p=root/rel
   if p.exists() and hashlib.sha256(p.read_bytes()).hexdigest()!=digest:changes.append(rel)
- if changes:raise RuntimeError('本地文件被修改，先备份再更新：'+', '.join(changes[:8]))
+ if changes:raise RuntimeError('本地文件被修改，先确认本地改动再更新：'+', '.join(changes[:8]))
  with tempfile.TemporaryDirectory(prefix='unilever-skill-update-') as tmp:
   checkout=Path(tmp)/'repo';git('clone','--depth','1','--branch',branch,repo,str(checkout));sha=git('rev-parse','HEAD',cwd=checkout)
   if sha!=remote:raise RuntimeError('Upstream moved during update; retry')
@@ -61,16 +64,14 @@ def apply(root,repo=REPO,branch=BRANCH):
    src=checkout/rel
    if src.is_symlink() or not src.is_file() or '..' in Path(rel).parts:raise RuntimeError('Unsupported update path '+rel)
    files[rel]=hashlib.sha256(src.read_bytes()).hexdigest()
-  stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S');backup=root.parent/(root.name+'-backup-'+stamp)
-  # Copied installs get a complete rollback copy before any tracked file is replaced.
-  shutil.copytree(root,backup,ignore=shutil.ignore_patterns('__pycache__','*.pyc'),dirs_exist_ok=False)
+  # ---------- 临时下载后原地替换；旧版恢复依赖 GitHub 历史 ----------
   for rel in tracked:
    dest=root/rel;dest.parent.mkdir(parents=True,exist_ok=True);staged=dest.with_name(dest.name+'.updating');shutil.copy2(checkout/rel,staged);os.replace(staged,dest)
   for rel in set(old.get('files',{}))-set(files):
    p=root/rel
    if p.is_file():p.unlink()
   manifest.write_text(json.dumps({'repository':repo,'branch':branch,'commit':sha,'installed_at':datetime.datetime.now().isoformat(),'files':files},ensure_ascii=False,indent=2))
-  print('Updated '+sha+'; rollback '+str(backup));return sha
+  print('Updated '+sha+' in place: '+str(root));return sha
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--apply',action='store_true');p.add_argument('--check',action='store_true');p.add_argument('--install',default=str(Path(__file__).resolve().parent.parent));a=p.parse_args()

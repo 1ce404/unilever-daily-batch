@@ -27,7 +27,8 @@
 
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
 
-- test_quality_contract.py、test_sync_skill.py：真实多样性、单片统一、片内去重与跨电脑版本门禁离线回归。
+- test_quality_contract.py: 真实多样性、单片统一与片内去重离线回归。
+- test_sync_skill.py: 真实 Git 源验证连续原地更新；不生成备份包，保留文件指纹与本地改动门禁。
 
 - test_group_rework.py: 保留原开场/整篇口播与字幕、禁用及重复源、覆盖/时长、单行与CTA音效箭头对齐；原生封面元数据及等价数值规范化。
 

@@ -38,7 +38,7 @@ git clone https://github.com/1ce404/unilever-daily-batch <你的 skills 目录>/
 python3 -I scripts/sync_skill.py --apply
 ```
 
-Git clone安装只允许干净工作树的快进更新；复制/ZIP安装先完整备份再替换仓库文件。首次给另一位同学更新旧安装时，需要先取到这版 `sync_skill.py` 或重新克隆此仓库。之后提交入口会校验GitHub main提交号，不允许未同步的版本默默生产。离线、无仓库权限或本地改动时会清楚报阻塞，不声称另一台电脑已更新。
+更新固定使用原安装目录，不新增 skill 包，不创建旧版备份。Git clone 安装只允许干净工作树快进；复制/ZIP 安装在原目录替换仓库文件并更新校验清单。旧版从 GitHub 历史恢复；检测到本地改动时停止，不直接覆盖。首次更新缺少 `sync_skill.py` 的旧安装时，先把更新脚本放入原目录，不另装一份 skill。提交入口会核对 GitHub main 提交号；离线、无仓库权限或本地改动时明确报阻塞，不声称另一台电脑已更新。
 
 依赖：Python 3.9+（只用标准库）、[`lark-cli`](https://github.com/larksuite)（读飞书文档，要先登录）、能访问 Clipo Remix；测配音（`scripts/voice_check.py`）另需 ffmpeg 和 numpy。
 
