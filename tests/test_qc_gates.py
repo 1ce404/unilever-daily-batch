@@ -1,5 +1,5 @@
 """
-[INPUT]: 依赖 clipo_batch 的 dry_run_gate、gen_quantity；依赖 qc 的 brief_checks；依赖 lint_copy 的 lint_visual_plan。
+[INPUT]: 依赖 clipo_batch 的 dry_run_gate、gen_quantity；依赖 qc 的 brief_checks；依赖 lint_copy 的画面对位与形态问答检查。
 [OUTPUT]: 验证提交门禁、单条合格素材固定、分享范围、必填剪辑编号与审核版本固定、画面计划与钩子授权；去花字保留转场，禁用画面只换原速足长源片；状态合并保持条目引用，复审拒绝旧输出与跳过受理；分享替换写前备份，保留旧链接并逐条回读新版对象。
 [POS]: tests 的交付闸门与提交门禁回归；不调用平台接口。
 [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -16,7 +16,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import clipo_batch as cb
 from qc import brief_checks
-from lint_copy import lint_visual_plan
+from lint_copy import lint_visual_plan, lint_script
 
 PRODUCT = {'full_name': '清扬控油蓬松洗发水', 'name_aliases': ['清扬控油蓬松洗发水'],
            'ingredient_terms': ['SCA'], 'intro_footage': ['产品外观']}
@@ -270,6 +270,23 @@ class GateTest(unittest.TestCase):
     def test_name_line_shows_bottle(self):
         segs = [{'id': '1', 'role': 'product', 'text': '试试清扬控油蓬松洗发水。', 'visual_tags': ['产品质地']}]
         self.assertTrue(any('产品亮相' in m for _, m in lint_visual_plan(segs, PRODUCT)))
+
+    def test_form_question_must_be_immediately_answered_by_named_product(self):
+        cfg = {'copy_limits': {'name_not_before': 2, 'combo_chars_min': 1, 'combo_chars_max': 200, 'chars_per_second': 4.2}}
+        product = {'full_name': '力士护发精油喷雾', 'name_aliases': ['力士护发精油喷雾'],
+                   'selling_points': {'全SKU': {'must_mention': ['喷']}}, 'cta_required': ['直播间']}
+        def errors(lines):
+            segs = [{'role': role, 'text': text} for role, text in lines]
+            return [m for level, m in lint_script([s['text'] for s in segs], segs,
+                    {'selling_point': '全SKU'}, cfg, product) if level == 'error' and '第一次讲卖点' in m]
+        answered = [('hook', '护发精油，还能用喷的？'),
+                    ('product', '力士护发精油喷雾，一喷化雾。'), ('cta', '进直播间看看。')]
+        self.assertEqual(errors(answered), [])
+        for hook in ['一喷就有效？', '护发精油，还能用喷的？一喷就有效。', '护发精油，一喷化雾。']:
+            with self.subTest(hook=hook):
+                self.assertTrue(errors([('hook', hook)] + answered[1:]))
+        self.assertTrue(errors([answered[0], ('effect', '清爽好用。')] + answered[1:]))
+        self.assertEqual(errors([answered[0], ('product', '力士护发精油喷雾。'), answered[2]]), [])
 
     def test_every_segment_plans_footage(self):
         segs = [{'id': '1', 'role': 'hook', 'text': '头发又塌了。'}]

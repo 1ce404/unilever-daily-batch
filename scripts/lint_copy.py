@@ -443,7 +443,13 @@ def lint_script(texts, segs, brief, cfg, product):
             issues.append(("error", f"S{prod_seg + 1} 是产品段但没说完整产品名「{product['full_name']}」（不能用「这瓶」「它」代替）"))
         sp = product["selling_points"].get(brief.get("selling_point", ""))
         first_sp = next((k for k, t in enumerate(texts) if sp and any(m in t for m in sp["must_mention"])), None)
-        if first_sp is not None and first_sp not in named and (not named or named[0] > first_sp):
+        # A short form/use question is answered immediately by the named product;
+        # the question is not itself an unbound efficacy assertion. All other claims keep this gate.
+        form_question = (first_sp == 0 and len(texts) > 1 and segs[0].get("role") == "hook"
+                         and re.fullmatch(r"[^。！？!?；;]+[，,](?:还)?(?:能|可以)(?:用|做成)[^。！？!?；;]+的[？?]", texts[0].strip())
+                         and 1 in named and segs[1].get("role") == "product"
+                         and sp and any(m in texts[1] for m in sp["must_mention"]))
+        if first_sp is not None and first_sp not in named and (not named or named[0] > first_sp) and not form_question:
             issues.append(("error", f"S{first_sp + 1} 第一次讲卖点时没带产品名：这句要说是「{product['full_name']}」的（卖点和产品名要在同一句，或产品名已在前面出现）"))
     for k, t in enumerate(texts):
         if re.search(r"(这|那)(瓶|款|个洗发水)", t) and k not in named and (not named or named[0] > k):
