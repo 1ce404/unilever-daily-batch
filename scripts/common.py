@@ -165,7 +165,10 @@ def copy_hash(brief):
 
 
 def approval_problem(brief):
-    """Why this brief may not go to Clipo, or None. Only a recorded human review counts as approved."""
+    """Why this brief may not go to Clipo. Demo-only permission never changes approval."""
+    from demo_authorization import permits_preview
+    if permits_preview(brief):
+        return None
     if brief.get("status") != "approved":
         return f"status={brief.get('status')}（未审核通过）"
     a = brief.get("approval") or {}
@@ -192,6 +195,9 @@ def aigc_tags(brief):
 def aigc_problem(brief):
     """用户 11-22：脚本要用 AIGC 素材时，素材先给人审，通过后才出 demo。None = 可以提交。
     审核凭据记住当时审过的标签；画面计划新增未审的 AI 标签要重新给人看。"""
+    from demo_authorization import permits_preview
+    if permits_preview(brief):
+        return None
     tags = aigc_tags(brief)
     if not tags:
         return None

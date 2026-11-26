@@ -81,7 +81,9 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
  oldbounds.append(d['composition']['durationInFrames']);by_path={urlparse(x.get('object_url') or '').path:x for x in library};used=set();main=[];sources=[];rng=random.Random(key)
  for i,s in enumerate(b['segments']):
   begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];ai_role=bool(tag) and all(t.startswith('AI-') for t in tag);approved_ai=set((cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]))
-  if ai_role and (i!=0 or not approved_ai or aigc_problem(b)):raise RuntimeError('Only explicitly user-approved AI opening sources allowed')
+  from demo_authorization import preview_ai_ids
+  approved_ai.update(preview_ai_ids(b,cfg,key))
+  if ai_role and (i!=0 or not approved_ai or aigc_problem(b)):raise RuntimeError('AI source needs human approval or exact demo-only permission')
   meta=[x for x in library if set(tag)&set(x.get('tags',[])) and ((x.get('ai_generated') and x['id'] in approved_ai) if ai_role else (not x.get('ai_generated') and x.get('review_result')=='pass')) and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
   valid={x['id'] for x in meta}
   if allocation is not None:

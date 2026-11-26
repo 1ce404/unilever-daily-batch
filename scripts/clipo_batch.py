@@ -1033,6 +1033,11 @@ def pull_generation(st, cfg, b, job, gen):
                 if aigc_required(b) and not v.get("aigc_material_set"):
                     v["stage"] = "aigc_pending"
                     continue
+                from demo_authorization import permits_preview
+                if permits_preview(b) and not v.get("render_job"):
+                    v["stage"] = "demo_prepare_pending"
+                    v["user_review_pending"] = True
+                    continue  # Whole-voice preparation precedes this authorized preview render.
                 # ---------- 包装、禁用画面替换与角标在渲染前一次写入并回读；保留平台随机开头 ----------
                 styled, wm_spans = prepare_draft(st, b, v, vids[-1], cut)
                 if styled != cut["draft"]:

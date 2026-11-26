@@ -51,7 +51,7 @@ LUX批量先读 [客户制作与自查要求](references/lux-production-qc.md)�
 3. 跑 `share --brief <id> --partial`，把 demo 发给用户。
 4. 用户通过后，跑 `review_doc.py approve-demo --brief <id> --by 用户 --note "<原话>"`。
 
-所有品牌都走 demo。只有用户明说「不用 demo」时，才在 brief 写 `"demo_first": false`，并记下原话。
+所有品牌都走 demo。只有用户明说「不用 demo」时，才在 brief 写 `"demo_first": false`，并记下原话。用户明确委托先做demo、稍后检查时，按 [单条demo制作许可](references/rework.md#先做demo稍后客户检查) 执行；brief保持待审，不能代填人审通过或据此量产。
 
 **⑥ 量产**
 1. 跑 `submit --dry-run` 报条数，再跑 `submit`：在 demo 同一个平台任务上续生成，补齐其余条数。

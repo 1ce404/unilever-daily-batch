@@ -119,7 +119,10 @@ def audit(a,cfg):
   from common import demo_first,aigc_problem
   pilot=bool(getattr(a,'demo_pilot',False) and demo_first(cfg,b) and not st.data.get('briefs',{}).get(b['brief_id'],{}).get('generation_id') and not b.get('demo_approval') and not aigc_problem(b))
   approved=(cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]) if pilot else []
-  sound_ids={x['id'] for x in sound_rows};lib=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);issues=config_issues(script,b,cfg,lib,sound_ids,approved_pilot_ids=approved);report.append({'brief':b['brief_id'],'script_id':sid,'issues':issues,'scope':'one approved demo' if approved else 'full batch'});print(b['brief_id'],'PASS' if not issues else 'BLOCK '+str(issues),flush=True)
+  if pilot and not approved:
+   from demo_authorization import preview_ai_ids
+   approved=preview_ai_ids(b,cfg,b['brief_id']+'-V01')
+  sound_ids={x['id'] for x in sound_rows};lib=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);issues=config_issues(script,b,cfg,lib,sound_ids,approved_pilot_ids=approved);report.append({'brief':b['brief_id'],'script_id':sid,'issues':issues,'scope':'one authorized demo' if approved else 'full batch'});print(b['brief_id'],'PASS' if not issues else 'BLOCK '+str(issues),flush=True)
  p=Path(a.run)/'clipo/quality-config-audit.json';p.write_text(json.dumps(report,ensure_ascii=False,indent=2));return int(any(x['issues'] for x in report))
 
 def main():

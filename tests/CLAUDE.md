@@ -33,3 +33,5 @@
 - test_group_rework.py: 保留原开场/整篇口播与字幕、禁用及重复源、覆盖/时长、单行与CTA音效箭头对齐；原生封面元数据及等价数值规范化。
 
 - test_task_configuration.py: 新批次配置必须绑定已审文案与真实切片ID；明确待生成AI，不把计划池当已存在，不放宽人审门。
+
+- test_demo_authorization.py: 先做demo的明确许可、单条AI绑定、改稿/改标签失效及量产仍需客户demo批准。
