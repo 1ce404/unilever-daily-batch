@@ -84,14 +84,20 @@ def build(b,cut,tts,script,library,cfg,key):
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','prepare','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key;out.mkdir(parents=True,exist_ok=True)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','prepare','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
+ if a.revision:
+  if not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}',a.revision):raise RuntimeError('Invalid revision name')
+  out=out/a.revision
+ out.mkdir(parents=True,exist_ok=True)
  if approval_problem(b) or aigc_problem(b):raise RuntimeError(approval_problem(b) or aigc_problem(b))
  if key not in st.videos:raise RuntimeError('Native cut not collected yet')
  v=st.videos[key];cut=cb.api('GET','/video-cuts/'+v['cut_id']);script=cb.api('GET','/video-scripts/'+cut['script_id']);save(out/'native-cut.json',cut)
  if a.cmd=='voice':
-  voice=script['config']['tts']['voices'][3 if a.brief.endswith('02') else 6];spoken=''.join(s['text'] for s in b['segments']);body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=out/'voice-budget.json'
+  voice=script['config']['tts']['voices'][a.voice_index if a.voice_index is not None else (3 if a.brief.endswith('02') else 6)];spoken=''.join(s['text'] for s in b['segments']);body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=out/'voice-budget.json'
   if a.dry_run:save(receipt,{'body':body,'at':time.time(),'count':1});print('DRY-RUN',key,'1 continuous native TTS',voice['voice_type'],'speed1.4');return
-  if (out/'tts.json').exists():print(key,'reuse continuous TTS');return
+  if (out/'tts.json').exists():
+   if load(out/'voice-intent.json')!=body:raise RuntimeError('Voice changed; use a new explicit revision')
+   print(key,'reuse continuous TTS');return
   budget=load(receipt)
   if budget['body']!=body or time.time()-budget['at']>3600:raise RuntimeError('Missing exact recent TTS dry-run')
   intent=out/'voice-intent.json'
