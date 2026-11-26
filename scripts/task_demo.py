@@ -28,10 +28,14 @@ def timing(tts,rows,fps):
  bounds=[];cues=[];pos=0
  for row in rows:
   stop=pos+len(norm(row['text']));hits=[t for t in tokens if t['b']>pos and t['a']<stop];bounds.append(math.floor(hits[0]['start_ms']*fps/1000));cursor=pos
+  preferred=[];hintpos=pos
+  for part in row.get('caption_chunks',[]):hintpos+=len(norm(part));preferred.append(hintpos)
+  if preferred and hintpos!=stop:raise RuntimeError('Caption plan differs from approved copy')
   while cursor<stop:
    ends=[t['b'] for t in hits if cursor<t['b']<=min(stop,cursor+12) and not any(a<t['b']<b for a,b in atomic)]
    if not ends:raise RuntimeError('Cannot split a native token within single-line width')
-   end=max(ends)
+   semantic=[z for z in preferred if z in ends]
+   end=min(semantic) if semantic else max(ends)
    if stop-end==1 and len(ends)>1:end=ends[-2]
    ts=[t for t in tokens if t['b']>cursor and t['a']<end]
    if ts[0]['a']<cursor or ts[-1]['b']>end:raise RuntimeError('Cue bisects native word')
@@ -59,7 +63,7 @@ def build(b,cut,tts,script,library,cfg,key):
     if path in used or available<frames+4:continue
     pick=m;break
    if not pick:raise RuntimeError('Insufficient original-speed unique source windows '+s['id'])
-   path=urlparse(pick['object_url']).path;used.add(path);x=copy.deepcopy(base[min(j,len(base)-1)]);x.update(id=s['id']+'-'+str(j),**{'from':cursor,'durationInFrames':frames,'motion':None,'transitionIn':base[0].get('transitionIn') if j==0 else None,'transitionOut':None});x['props'].update(src=pick['object_url'],startFrom=0,playbackRate=1,volume=0,muted=True,fit='cover',scale=1,x=0,y=0,alt=pick.get('description',''));x['props'].pop('loop',None);main.append(x);sources.append({'clip':x['id'],'source_segment_id':pick['id'],'source_path':path,'source_available_frames':available,'used_frames':frames});cursor+=frames
+   path=urlparse(pick['object_url']).path;used.add(path);x=copy.deepcopy(base[min(j,len(base)-1)]);x.update(id=s['id']+'-'+str(j),**{'from':cursor,'durationInFrames':frames,'motion':None,'transitionIn':base[0].get('transitionIn') if j==0 else None,'transitionOut':None});native_start=next((z['props'].get('startFrom',0) for z in base if urlparse(z['props']['src']).path==path),0);native_start=min(native_start,max(0,available-frames-2));x['props'].update(src=pick['object_url'],startFrom=native_start,playbackRate=1,volume=0,muted=True,fit='cover',scale=1,x=0,y=0,alt=pick.get('description',''));x['props'].pop('loop',None);main.append(x);sources.append({'clip':x['id'],'source_segment_id':pick['id'],'source_path':path,'source_available_frames':available,'used_frames':frames,'startFrom':native_start});cursor+=frames
  caption=next(x for x in d['clips'] if x['trackId']=='overlay');style=copy.deepcopy(caption['props']);style.pop('text',None);style.update(font_size=36,top=78);native=[]
  for i,c in enumerate(cues):native.append({**copy.deepcopy(caption),'id':'s'+c['segment']+'-'+str(i),'from':c['start'],'durationInFrames':c['end']-c['start'],'transitionIn':None,'transitionOut':None,'motion':None,'props':{**style,'text':c['text']}})
  def tf(frame):
@@ -96,6 +100,10 @@ def main():
   if norm(tts['synthesized_text']).casefold()!=norm(spoken).casefold():raise RuntimeError('Native TTS copy mismatch')
   cb.fetch_file(tts['audio_url'],out/'voice.mp3');print(key,'continuous TTS ready',tts['audio']['duration_ms']);return
  if a.cmd=='prepare':
+  b=copy.deepcopy(b)
+  for sg in b['segments']:
+   hints=(cfg.get('demo_caption_chunks',{}).get(b['brief_id'],{})).get(sg['id'])
+   if hints:sg['caption_chunks']=hints
   tts=load(out/'tts.json');library=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);draft,evidence=build(b,cut,tts,script,library,cfg,key)
   # Native assembly can omit an effect node; materialize every configured product/texture title.
   existing={x['id'].split('-')[0] for x in draft['clips'] if x['trackId']=='effect'}
