@@ -107,6 +107,10 @@ def main():
   tts=load(out/'tts.json');library=cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id']);draft,evidence=build(b,cut,tts,script,library,cfg,key)
   # Native assembly can omit an effect node; materialize every configured product/texture title.
   existing={x['id'].split('-')[0] for x in draft['clips'] if x['trackId']=='effect'}
+  for x in draft['clips']:
+   if x['trackId']=='effect':
+    parent=next((s for s in script['segments'] if s['id']==x['id'].split('-')[0]),None)
+    if parent and parent.get('effect'):x['props']['params']=copy.deepcopy(parent['effect'].get('params',{}))
   for i,sg in enumerate(script['segments']):
    if not sg.get('effect') or sg['id'] in existing:continue
    fx=sg['effect'];template=cb.api('GET','/resource/remotion-effect-template/'+fx['template_id']);validate_code(template['code']);start,end=evidence['segment_frames'][i:i+2];draft['clips'].append({'id':sg['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':fx.get('params',{}),'x':0,'y':0,'scale':1}})
@@ -120,11 +124,12 @@ def main():
  if a.dry_run:save(out/'render-budget.json',{'hash':digest(draft),'at':time.time(),'count':1});print('DRY-RUN',key,'1 same-cut cloud render');return
  prior=load(out/'render-budget.json')
  if prior['hash']!=digest(draft) or time.time()-prior['at']>3600:raise RuntimeError('Missing render dry-run')
- receipt=out/'render.json'
+ receipt=out/('render-'+digest(draft)[:16]+'.json')
  if receipt.exists():job=load(receipt)
  else:
   save(out/'before-write.json',cut);cb.api('PUT','/video-cuts/'+v['cut_id'],{'script_id':cut['script_id'],'draft':draft},tries=1);back=cb.api('GET','/video-cuts/'+v['cut_id']);cb.check_readback(draft,back['draft'],False);save(out/'after-write.json',back);job=cb.api('POST','/render-jobs',{'spec':back['draft'],'cut_id':v['cut_id'],'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'demo-whole-'+v['cut_id']+'-'+digest(draft)[:12]},tries=1);save(receipt,job)
- v.update(render_job=job['job_id'],stage='rendering',voice=load(out/'voice-intent.json')['voice']['voice_type'],texts=[s['text'] for s in b['segments']],voice_cmd=False,qc_issues=[],copy_issues=[],ai_review=None,ai_reason=None)
+ save(out/'render.json',job)
+ v.update(render_job=job['job_id'],stage='rendering',duration_s=draft['composition']['durationInFrames']/draft['composition']['fps'],voice=load(out/'voice-intent.json')['voice']['voice_type'],texts=[s['text'] for s in b['segments']],voice_cmd=False,qc_issues=[],copy_issues=[],ai_review=None,ai_reason=None)
  for f in ['error','last_error','object_key','bad_voice','watermark_missing']:v.pop(f,None)
  st.save();print(key,'rendering',job['job_id'])
 if __name__=='__main__':main()
