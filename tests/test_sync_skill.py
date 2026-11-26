@@ -31,4 +31,8 @@ class SyncSkillTest(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t,patch.object(s,'latest',return_value='commit'):
    Path(t,'SKILL.md').write_text('changed');Path(t,'.skill-version.json').write_text(json.dumps({'commit':'commit','files':{'SKILL.md':hashlib.sha256(b'upstream').hexdigest()}}))
    with self.assertRaisesRegex(RuntimeError,'不一致'):s.assert_current(t)
+ def test_multi_digit_release_numbers_compare_numerically(self):
+  self.assertLess(s.version_key('2026.11.26.9'),s.version_key('2026.11.26.10'))
+  self.assertGreater(s.version_key('2026.11.26.100'),s.version_key('2026.11.26.90'))
+  with self.assertRaises(RuntimeError):s.version_key('unknown')
 if __name__=='__main__':unittest.main()

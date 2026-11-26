@@ -2,7 +2,7 @@
 """Check/update this skill from its owning GitHub main without overwriting unbacked local changes.
 Works for both git clones and copied/archive installs. Uses Git credentials already on that machine.
 """
-import argparse,datetime,hashlib,json,os,shutil,subprocess,sys,tempfile
+import argparse,datetime,hashlib,json,os,shutil,subprocess,sys,tempfile,re
 from pathlib import Path
 REPO='https://github.com/1ce404/unilever-daily-batch.git'
 BRANCH='main'
@@ -10,6 +10,11 @@ def git(*args,cwd=None):
  r=subprocess.run(['git',*args],cwd=cwd,text=True,capture_output=True,timeout=120)
  if r.returncode:raise RuntimeError(r.stderr.strip() or 'Git request failed')
  return r.stdout.strip()
+def version_key(value):
+ value=value.strip()
+ if not re.fullmatch(r'\d+(?:\.\d+)*',value):raise RuntimeError('Unsupported numeric skill version '+value)
+ return tuple(int(x) for x in value.split('.'))
+
 def current(root):
  if (root/'.git').exists():return git('rev-parse','HEAD',cwd=root)
  p=root/'.skill-version.json'
@@ -50,7 +55,7 @@ def apply(root,repo=REPO,branch=BRANCH):
   checkout=Path(tmp)/'repo';git('clone','--depth','1','--branch',branch,repo,str(checkout));sha=git('rev-parse','HEAD',cwd=checkout)
   if sha!=remote:raise RuntimeError('Upstream moved during update; retry')
   local_version=root/'VERSION';upstream_version=checkout/'VERSION'
-  if local_version.exists() and (not upstream_version.exists() or local_version.read_text().strip()>upstream_version.read_text().strip()):raise RuntimeError('远端main尚未包含本机新版；未降级，先合并已提交PR。')
+  if local_version.exists() and (not upstream_version.exists() or version_key(local_version.read_text())>version_key(upstream_version.read_text())):raise RuntimeError('远端main尚未包含本机新版；未降级，先合并已提交PR。')
   tracked=git('ls-files',cwd=checkout).splitlines();files={}
   for rel in tracked:
    src=checkout/rel
