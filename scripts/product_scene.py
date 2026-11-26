@@ -74,7 +74,7 @@ def spec(item,bg,src):
 
  if item.get('source_mode')=='video':
   params['presentation']='native_video_frame'
-  result['clips'][0]={'id':'native-picture-in-picture','trackId':'main','from':0,'durationInFrames':120,'component':'SplitScreenClip','props':{'mode':'PICTURE_IN_PICTURE','items':[{'component':'VideoClip','props':{'src':bg,'startFrom':0,'muted':True,'volume':0,'fit':'cover'}},{'component':'VideoClip','props':{'src':item['video_src'],'startFrom':round(item['source_start']*30),'muted':True,'volume':0,'fit':'contain','scale':0.78,'x':0,'y':-60,'playbackRate':1}}]}}
+  result['clips'][0]={'id':'native-picture-in-picture','trackId':'main','from':0,'durationInFrames':120,'component':'SplitScreenClip','props':{'mode':'PICTURE_IN_PICTURE','items':[{'component':'VideoClip','props':{'src':bg,'startFrom':0,'muted':True,'volume':0,'fit':'cover'}},{'component':'VideoClip','props':{'src':item['video_src'],'startFrom':round(item['source_start']*30),'muted':True,'volume':0,'fit':'contain','scale':0.78,'x':0,'y':-90,'playbackRate':1}}]}}
  return result
 
 def lookup_segment(pid,sid):
