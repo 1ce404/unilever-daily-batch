@@ -125,6 +125,7 @@ def prepare(api_module,st,b,v,key,cut,d):
   if other!=key and item.get('brief_id')==b['brief_id'] and not item.get('customer_rework_required') and item.get('texts') and fingerprint(item['texts'])==fingerprint(got):raise RuntimeError('Duplicate batch copy before whole TTS: '+other)
  allocation=read(assets/(b['brief_id']+'-source-allocation.json'))
  if allocation['budget_at']!=plan['at'] or key not in allocation['plan']['videos']:raise RuntimeError('整组人物/造型与源频次分配尚未实际复核；禁止无分配直接随机生产')
+ cfg={**cfg,'source_highlight_windows':{**cfg.get('source_highlight_windows',{}),**allocation['plan'].get('source_windows',{})}}
  voice=script['config']['tts']['voices'][i%len(script['config']['tts']['voices'])];body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=work/'tts.json';intent=work/'tts-intent.json'
  if receipt.exists():
   if read(intent)!=body:raise RuntimeError('Bulk TTS cached input changed')
