@@ -3,7 +3,7 @@
 Plan -> dry-run receipt -> one representative cloud render -> inspected pilot -> remaining renders.
 Stage output is an AI-material candidate, never a user approval or finished ad.
 """
-import argparse,copy,hashlib,json,sys,time,urllib.request
+import argparse,copy,hashlib,json,sys,time,urllib.request,re
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 import clipo_batch as cb,ai_tags
@@ -16,19 +16,23 @@ def digest(d):return hashlib.sha256(json.dumps(d,sort_keys=True,ensure_ascii=Fal
 def filehash(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 CODE='''import React from 'react';
-import {AbsoluteFill,Img,OffthreadVideo,useCurrentFrame,interpolate} from 'remotion';
+import {AbsoluteFill,Img,useCurrentFrame,interpolate} from 'remotion';
 export const Composition=(props)=>{
  const p={...props,...(props.params||{})};const b=p.bounds;const k=p.placement.height/b[3];
  const w=b[2]*k,h=b[3]*k;const left=p.placement.center_x-w/2,top=p.placement.bottom-h;
  const frame=useCurrentFrame();
  const polygon='polygon('+p.polygon.map(q=>`${q[0]/p.source_width*100}% ${q[1]/p.source_height*100}%`).join(',')+')';
+ if(p.presentation==='native_video_frame'){
+  const borders={gallery:'3px solid #e7cf9e',goldline:'4px double #b79a62',postcard:'14px solid #f5f0e5',glass:'2px solid rgba(255,255,255,.9)',arch:'5px solid #ded0b7'};
+  return <AbsoluteFill style={{pointerEvents:'none'}}><div style={{position:'absolute',left:79.2,top:80.8,width:561.6,height:998.4,border:borders[p.frame_variant]||borders.gallery,boxSizing:'border-box'}}/></AbsoluteFill>;
+ }
  if(p.presentation==='editorial_window'){
   const zoom=interpolate(frame,[0,119],[0.99,1],{extrapolateRight:'clamp',extrapolateLeft:'clamp'});
   const variants={gallery:{borderRadius:24,border:'2px solid rgba(231,207,158,.85)'},glass:{borderRadius:32,border:'1px solid rgba(255,255,255,.85)'},postcard:{borderRadius:8,border:'10px solid #f5f0e5'},arch:{borderRadius:'100px 100px 18px 18px',border:'2px solid #ded0b7'},goldline:{borderRadius:4,border:'3px solid #b79a62'}};const design=variants[p.frame_variant]||variants.gallery;
   const rotation=interpolate(frame,[0,119],[p.frame_variant==='postcard'?-1.2:0,0],{extrapolateRight:'clamp'});
   const style={position:'absolute',left:-b[0]*k,top:-b[1]*k,width:p.source_width*k,height:p.source_height*k,maxWidth:'none'};
   return <AbsoluteFill style={{pointerEvents:'none'}}><div style={{position:'absolute',left,top,width:w,height:h,overflow:'hidden',...design,boxSizing:'border-box',boxShadow:'0 12px 34px rgba(44,28,10,.20)',transform:`scale(${zoom}) rotate(${rotation}deg)`,background:'#eee6da'}}>
-  {p.source_mode==='video'?<OffthreadVideo src={p.video_src} startFrom={Math.round(p.source_start*30)} muted style={style}/>:<Img src={p.src} style={style}/>}
+  <Img src={p.src} style={style}/>
   </div></AbsoluteFill>;
  }
  return <AbsoluteFill style={{pointerEvents:'none'}}>
@@ -37,6 +41,12 @@ export const Composition=(props)=>{
  <Img src={p.src} style={{position:'absolute',left:-b[0]*k,top:-b[1]*k,width:p.source_width*k,height:p.source_height*k,maxWidth:'none',clipPath:polygon}}/>
  </div></AbsoluteFill>;
 };'''
+
+def validate_code(code):
+ allowed={'AbsoluteFill','useCurrentFrame','useVideoConfig','interpolate','interpolateColors','spring','measureSpring','Easing','random','Sequence','Series','Loop','Freeze','Img','staticFile'}
+ for group in re.findall(r"import\s*\{([^}]+)\}\s*from\s*['\"]remotion['\"]",code):
+  names={x.strip().split(' as ')[0] for x in group.split(',') if x.strip()}
+  if names-allowed:raise RuntimeError('Unsupported Clipo Remotion sandbox exports: '+str(names-allowed))
 
 def validate(item):
  p=Path(item['image']);
@@ -60,7 +70,12 @@ def spec(item,bg,src):
  params={k:copy.deepcopy(item[k]) for k in ['bounds','polygon','source_width','source_height','placement']};params['src']=src
  for key in ['presentation','source_mode','source_start','video_src','frame_variant']:
   if key in item:params[key]=item[key]
- return {'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1,**item.get('background_transform',{})}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':CODE,'params':params,'x':0,'y':0,'scale':1}}]}
+ result={'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1,**item.get('background_transform',{})}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':CODE,'params':params,'x':0,'y':0,'scale':1}}]}
+
+ if item.get('source_mode')=='video':
+  params['presentation']='native_video_frame'
+  result['clips'][0]={'id':'native-picture-in-picture','trackId':'main','from':0,'durationInFrames':120,'component':'SplitScreenClip','props':{'mode':'PICTURE_IN_PICTURE','items':[{'component':'VideoClip','props':{'src':bg,'startFrom':0,'muted':True,'volume':0,'fit':'cover'}},{'component':'VideoClip','props':{'src':item['video_src'],'startFrom':round(item['source_start']*30),'muted':True,'volume':0,'fit':'contain','scale':0.78,'x':0,'y':-60,'playbackRate':1}}]}}
+ return result
 
 def lookup_segment(pid,sid):
  matches=[s for s in cb.list_segments(pid) if s['id']==sid]
@@ -76,6 +91,7 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('cmd',choices=['render','poll','register','inspect','settle']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--key');p.add_argument('--dry-run',action='store_true');p.add_argument('--review-note');a=p.parse_args()
  cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';plan=json.loads(Path(a.plan).read_text());rows=selected(plan,a.key);out=Path(a.run)/'aigc/native-product-scene';out.mkdir(exist_ok=True,parents=True)
  if not plan.get('authorization'):raise RuntimeError('Missing user instruction')
+ validate_code(CODE)
  for item in rows:validate(item)
  with exclusive(out):
   if a.cmd=='settle':
