@@ -26,7 +26,9 @@ def hold(a,cfg):
  assert_current(Path(__file__).resolve().parent.parent)
  if read(out/'plan.json')!=plan:raise RuntimeError('Hold dry-run mismatch')
  receipt=out/'applied.json'
- if receipt.exists():print('Hold already applied');return
+ if receipt.exists():
+  if any(st.videos[k].get('customer_rework_required')!=plan['reason'] for k in plan['keys']):raise RuntimeError('Previously held videos changed; do not reapply automatically')
+  st.data.setdefault('briefs',{}).setdefault(a.brief,{})['customer_rework_hold']=plan['reason'];st.save();print('Hold already applied; production stop verified');return
  save(out/'before.json',st.data)
  for key in plan['keys']:st.videos[key]['customer_rework_required']=plan['reason']
  st.data.setdefault('briefs',{}).setdefault(a.brief,{})['customer_rework_hold']=plan['reason']
