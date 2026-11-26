@@ -24,5 +24,6 @@
   },
   "reject_single_frame_black": true,
   "upper_single_line": true,
-  "require_upper_title_samples": true
+  "require_upper_title_samples": true,
+  "require_unique_batch_copy": true
 }

@@ -31,6 +31,8 @@ IN_FLIGHT = ("generated", "rendering", "rendered", "reviewing")
 def video_bucket(v):
     """把一条视频归到一个桶：合格 / 在途 / 驳回 / 失败 / 待绑 AIGC。"""
     stage = v.get("stage")
+    if v.get('customer_rework_required'):
+        return 'rejected'
     if stage == "aigc_pending":
         return "aigc_pending"
     if stage in IN_FLIGHT or stage is None:
@@ -47,6 +49,7 @@ def video_bucket(v):
 
 def why_not(v):
     """不合格的具体原因，一句话。"""
+    if v.get('customer_rework_required'):return '用户退回：'+v['customer_rework_required']
     for key, label in (("copy_issues", "改写违规"), ("qc_issues", "交付闸门"), ("bad_footage", "禁用画面"),
                        ("voice_cmd", "念出语音指令"), ("voice_drift", "音色漂移"),
                        ("watermark_missing", "缺 AI 角标")):

@@ -35,7 +35,13 @@ class QualityContractTest(unittest.TestCase):
   d=self.draft();d['clips'].append({'id':'3-x0','trackId':'effect','from':0,'props':{'code':'native','params':{'text':'精油润养'}}});facts=q.cut_facts(d);self.assertEqual(facts['upper_title_count'],1);self.assertTrue(facts['upper_style_signature'])
   v={'quality_facts':facts,'render_job':'j','object_key':'a','ai_review':'pass','media_qc':{'technical_pass':True,'render_job':'j','output_object_key':'a','visual_pass':True,'reviewer':'agent','review_note':'实际看图'}};self.assertTrue(any('逐处抽帧' in x for x in q.delivery_issues(v,self.cfg)));v['media_qc']['upper_title_sample_count']=3;self.assertEqual(q.delivery_issues(v,self.cfg),[])
  def test_config_variety_does_not_substitute_actual_variety(self):
-  b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(10)];errors=q.batch_issues(b,v,self.cfg);self.assertEqual(len(errors),2)
+  b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(10)];errors=q.batch_issues(b,v,self.cfg);self.assertEqual(len(errors),3)
+ def test_duplicate_copy_blocks_partial_batch_too(self):
+  b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(2)];self.assertTrue(any('文案重复' in x for x in q.batch_issues(b,v,self.cfg)))
+ def test_copy_fingerprint_ignores_punctuation(self):
+  a=self.draft();b=self.draft();b['clips'][2]['props']['text']+='，。！';self.assertEqual(q.cut_facts(a)['copy_signature'],q.cut_facts(b)['copy_signature'])
+ def test_user_rejection_survives_native_review_pass(self):
+  self.assertTrue(q.delivery_issues({'ai_review':'pass','customer_rework_required':'重复文案'},self.cfg))
  def test_delivery_needs_current_media_and_visual_proof(self):
   v={'render_job':'new','object_key':'new.mp4','media_qc':{'technical_pass':True,'render_job':'old','output_object_key':'old.mp4','visual_pass':True,'reviewer':'agent','review_note':'看图'}};self.assertTrue(q.delivery_issues(v,self.cfg));v['media_qc'].update(render_job='new',output_object_key='new.mp4');self.assertEqual(q.delivery_issues(v,self.cfg),[])
  def test_dead_asset_error_does_not_expose_query(self):

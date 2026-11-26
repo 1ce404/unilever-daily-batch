@@ -59,7 +59,8 @@ def cut_facts(d):
  clips=d.get('clips',[]);cues=sorted([x for x in clips if x.get('trackId')=='overlay'],key=lambda x:x.get('from',0));styles=[{k:v for k,v in x.get('props',{}).items() if k not in ['text','text_color','font_url']} for x in cues];sig=hashlib.sha256(json.dumps(styles[0] if styles else {},sort_keys=True).encode()).hexdigest();music=next((x for x in clips if x.get('trackId')=='audio'),{})
  upper_codes=[hashlib.sha256(x.get('props',{}).get('code','').encode()).hexdigest() for x in upper_titles(d)]
  upper_sig=hashlib.sha256(json.dumps(upper_codes).encode()).hexdigest() if upper_codes else None
- return {'upper_title_count':len(upper_codes),'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
+ spoken=re.sub(r'[^\w\u4e00-\u9fff]','',''.join(x.get('props',{}).get('text','') for x in cues)).lower()
+ return {'copy_signature':hashlib.sha256(spoken.encode()).hexdigest() if spoken else None,'upper_title_count':len(upper_codes),'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
 
 def cut_issues(d,cfg):
  rules=contract(cfg)
@@ -86,9 +87,14 @@ def cut_issues(d,cfg):
 
 def batch_issues(b,videos,cfg):
  rules=contract(cfg)
- if not rules or len(videos)<int(b.get('quantity',1)) or len(videos)<2:return []
+ if not rules or len(videos)<2:return []
  facts=[v.get('quality_facts') for _,v in videos];out=[]
  if any(x is None for x in facts):return ['整组真实字幕/BGM检查记录不完整']
+ if rules.get('require_unique_batch_copy'):
+  signatures=[f.get('copy_signature') for f in facts]
+  if any(not x for x in signatures):out.append('逐条实际文案指纹未核验')
+  elif len(set(signatures))!=len(signatures):out.append(f'批量文案重复：{len(signatures)}条仅{len(set(signatures))}篇，画面/音色/包装变化不能代替文案变化')
+ if len(videos)<int(b.get('quantity',1)):return out
  for label,key,need in [('字幕样式','style_signature',max(rules['min_subtitle_styles'],(cfg.get('batch_native_variants') or {}).get('required_actual_styles',0))),('BGM','bgm_source',max(rules['min_bgm'],(cfg.get('batch_native_variants') or {}).get('required_actual_bgm',0)))]:
   n=len({f[key] for f in facts})
   if n<min(len(facts),need):out.append(f'整组真实{label}仅{n}种，不能以候选配置数代替实际变化')
@@ -118,6 +124,7 @@ def main():
 if __name__=='__main__':main()
 
 def delivery_issues(video,cfg):
+ if video.get('customer_rework_required'):return ['用户要求返工：'+video['customer_rework_required']]
  rules=contract(cfg)
  if not rules:return []
  out=[];e=video.get('media_qc') or {}

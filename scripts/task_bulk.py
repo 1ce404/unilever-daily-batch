@@ -16,6 +16,28 @@ def read(p):return td.load(p)
 def validate_budget(plan,key,now):
  if key not in plan['keys'] or now-plan['at']>7200:raise RuntimeError('Missing current matching bulk TTS budget')
 
+def hold(a,cfg):
+ st=cb.State(a.run);plan=read(a.plan);out=Path(a.run)/'revisions/customer-bulk-hold';out.mkdir(parents=True,exist_ok=True)
+ if not plan.get('authorization') or not plan.get('reason') or not plan.get('keys'):raise RuntimeError('Missing explicit user rejection')
+ for key in plan['keys']:
+  if key not in st.videos or st.videos[key]['brief_id']!=a.brief:raise RuntimeError('Hold scope mismatch')
+ if a.dry_run:save(out/'plan.json',plan);print('DRY-RUN hold',len(plan['keys']),'owned videos; preserve demo, raw files and old share for audit');return
+ from sync_skill import assert_current
+ assert_current(Path(__file__).resolve().parent.parent)
+ if read(out/'plan.json')!=plan:raise RuntimeError('Hold dry-run mismatch')
+ receipt=out/'applied.json'
+ if receipt.exists():print('Hold already applied');return
+ save(out/'before.json',st.data)
+ for key in plan['keys']:st.videos[key]['customer_rework_required']=plan['reason']
+ group=st.data.get('share_group');share=st.data.get('shares',{}).get(a.brief)
+ if share and group:
+  before=cb.api('GET','/video-share-groups/'+group['id']);save(out/'group-before.json',before)
+  wanted=[x['id'] for x in before['shares'] if x['id']!=share['id']];cb.api('PATCH','/video-share-groups/'+group['id'],{'video_share_ids':wanted},tries=1)
+  after=cb.api('GET','/video-share-groups/'+group['id']);save(out/'group-after.json',after)
+  if sorted(x['id'] for x in after['shares'])!=sorted(wanted):raise RuntimeError('Group withdrawal readback mismatch')
+  st.data.setdefault('withdrawn_shares',[]).append({**share,'reason':plan['reason']});st.data['shares'].pop(a.brief,None)
+ st.save();cb.write_delivery(st,{b['brief_id']:b for b in cb.load_briefs(a.run)},a.run);save(receipt,plan);print('Held',len(plan['keys']),'videos; batch share removed from delivery group, original demo retained')
+
 def repair(a,cfg):
  from footage_qc import stable_media
  from qc import cut_checks
@@ -56,7 +78,8 @@ def budget(a,cfg):
  save(root/'effects.json',effects)
  n=a.quantity
  if n!=b['quantity']-1:raise RuntimeError('Only remaining quota after one approved demo')
- keys=[a.brief+f'-V{i:02d}' for i in range(2,b['quantity']+1)]
+ offset=max([int(k.rsplit('-V',1)[1]) for k in st.videos if k.startswith(a.brief+'-V')],default=1)
+ keys=[a.brief+f'-V{i:02d}' for i in range(offset+1,offset+n+1)]
  save(root/(a.brief+'-budget.json'),{'at':time.time(),'keys':keys,'quantity':n,'whole_tts':n,'speed':1.4,'authorization':b['demo_approval'],'source':'full current tag libraries, no fixed real pool'})
  print('DRY-RUN',a.brief,'new videos',n,'whole TTS',n,'native voice/style/music choices',len(script['config']['tts']['voices']),len(script['config']['subtitle_style']['style_ids']),len(script['config']['bgm']['props']['ids']),flush=True)
 
@@ -64,13 +87,20 @@ def prepare(api_module,st,b,v,key,cut,d):
  td.cb=api_module;cb.CFG=api_module.CFG;cb.BASE=api_module.BASE;cfg=api_module.CFG;root=st.path.parent.parent;assets=root/'task-bulk';plan=read(assets/(b['brief_id']+'-budget.json'))
  validate_budget(plan,key,time.time())
  script=read(assets/(b['brief_id']+'-script.json'));library=read(assets/(b['brief_id']+'-library.json'));work=assets/key;work.mkdir(exist_ok=True);i=int(key.rsplit('-V',1)[1])-2
- voice=script['config']['tts']['voices'][i%len(script['config']['tts']['voices'])];spoken=''.join(s['text'] for s in b['segments']);body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=work/'tts.json';intent=work/'tts-intent.json'
+ got=v.get('texts') or []
+ if len(got)!=len(b['segments']):raise RuntimeError('Missing actual per-video native rewrite')
+ spoken=''.join(got)
+ fingerprint=lambda texts:td.norm(''.join(texts)).casefold()
+ for other,item in st.videos.items():
+  if other!=key and item.get('brief_id')==b['brief_id'] and not item.get('customer_rework_required') and item.get('texts') and fingerprint(item['texts'])==fingerprint(got):raise RuntimeError('Duplicate batch copy before whole TTS: '+other)
+ if not v.get('source_allocation_reviewed'):raise RuntimeError('整组人物/造型与源频次分配尚未实际复核；禁止无分配直接随机生产')
+ voice=script['config']['tts']['voices'][i%len(script['config']['tts']['voices'])];body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=work/'tts.json';intent=work/'tts-intent.json'
  if receipt.exists():
   if read(intent)!=body:raise RuntimeError('Bulk TTS cached input changed')
   tts=read(receipt)
  else:
   if intent.exists():raise RuntimeError('Uncertain TTS outcome; no duplicate submit')
-  if sum(1 for p in assets.glob(b['brief_id']+'-V*/tts-intent.json'))>=plan['whole_tts']:raise RuntimeError('TTS budget exhausted')
+  if sum((assets/k/'tts-intent.json').exists() for k in plan['keys'])>=plan['whole_tts']:raise RuntimeError('TTS budget exhausted')
   save(intent,body);tts=api_module.api('POST','/tts',body,tries=1);save(receipt,tts)
  if td.norm(tts['synthesized_text']).casefold()!=td.norm(spoken).casefold():raise RuntimeError('TTS copy mismatch')
  source=work/'voice.mp3';wav=work/'voice.wav';assetfile=work/'voice-upload.json'
@@ -81,9 +111,7 @@ def prepare(api_module,st,b,v,key,cut,d):
   tok=api_module.api('POST','/storage/upload-tokens',{'filename':key+'-continuous.wav','content_type':'audio/wav','content_length':wav.stat().st_size,'purpose':'material'},tries=1);req=urllib.request.Request(tok['upload_url'],data=wav.read_bytes(),method='PUT',headers=dict(tok.get('headers') or {},**{'Content-Type':'audio/wav'}));urllib.request.urlopen(req,timeout=120).read();save(assetfile,{'object_key':tok['object_key'],'gain_db':gain,'source_peak':peak})
  asset=read(assetfile);tts=copy.deepcopy(tts);tts['audio_url']=api_module.api('POST','/storage/download-tokens',{'object_key':asset['object_key']})['download_url']
  rows=copy.deepcopy(b)
- for s in rows['segments']:
-  hints=(cfg.get('demo_caption_chunks',{}).get(b['brief_id'],{})).get(s['id'])
-  if hints:s['caption_chunks']=hints
+ for s,text in zip(rows['segments'],got):s['text']=text;s.pop('caption_chunks',None)
  draft,evidence=td.build(rows,{**cut,'draft':d},tts,script,library,cfg,key)
  styles=read(assets/'styles.json');styleid=script['config']['subtitle_style']['style_ids'][i%len(script['config']['subtitle_style']['style_ids'])];style=next(x for x in styles if x['id']==styleid)
  fieldmap={'alignType':'align_type','backgroundColor':'background_color','strokeColor':'stroke_color','strokeWidth':'stroke_width','textColor':'text_color','textShadow':'text_shadow','bold':'bold','italic':'italic','underline':'underline'}
@@ -102,11 +130,11 @@ def prepare(api_module,st,b,v,key,cut,d):
   template=effects[patterns[i%len(patterns)][j%3]];td.validate_code(template['code']);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':s['effect']['params'],'x':0,'y':0,'scale':1}})
  from lint_copy import lint_text,lint_script
  from common import voiced
- got=[s['text'] for s in b['segments']];prod=cfg['products'][b['product_key']];issues=[m for t in got for level,m in lint_text(t,cfg,prod) if level=='error']+[m for level,m in lint_script(got,voiced(b['segments']),b,cfg,prod) if level=='error']
+ prod=cfg['products'][b['product_key']];issues=[m for t in got for level,m in lint_text(t,cfg,prod) if level=='error']+[m for level,m in lint_script(got,voiced(b['segments']),b,cfg,prod) if level=='error']
  if issues:raise RuntimeError('Approved copy invalid '+str(issues))
  v.update(voice=voice['voice_type'],texts=got,copy_issues=[],voice_cmd=False,duration_s=draft['composition']['durationInFrames']/draft['composition']['fps'],native_variant={'subtitle_style_id':styleid,'bgm_id':musicid,'upper_templates':[effects[z]['id'] for z in patterns[i%len(patterns)]],'voice_gain_db':asset['gain_db']})
  save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']});return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','hold']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
