@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-[INPUT]: 依赖 clipo_batch 的配置、素材索引与 AI 镜头时段；读取剪辑草稿与审核状态。
+[INPUT]: 依赖 clipo_batch 的配置、素材索引与 AI 镜头时段；读取剪辑草稿、已核动作高光窗口与审核状态。
 [OUTPUT]: 提供单片与整组质量检查；开头切片可复用，不按素材重复拦截。
 [POS]: scripts 的交付闸门。poll 检查草稿，share 检查已配置的整组质量要求。
        独立命令汇总成片验收凭据；不改草稿、不调写接口。
@@ -42,6 +42,12 @@ def cut_checks(brief, draft, voice=None):
     out = []
     clips = draft.get("clips", [])
     main = sorted((c for c in clips if c.get("trackId") == "main"), key=lambda c: c["from"])
+    for c in main:
+        window=(cfg.get('source_highlight_windows') or {}).get(_name(c))
+        if window:
+            fps=draft['composition']['fps'];start=c['props'].get('startFrom',0)/fps;end=start+c['durationInFrames']/fps
+            if start<window['start_seconds'] or end>window['end_seconds']:
+                out.append(f"非高光准备帧/超出已核高光区间：{c['id']}")
     idx = cb.footage_index(pk)
     if cfg.get('forbid_repeated_main_source'):
         from urllib.parse import urlparse

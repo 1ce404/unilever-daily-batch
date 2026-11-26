@@ -84,7 +84,7 @@ def build(b,cut,tts,script,library,cfg,key):
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','prepare','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','prepare','patch','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--patch-plan');p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
  if a.revision:
   if not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}',a.revision):raise RuntimeError('Invalid revision name')
   out=out/a.revision
@@ -105,6 +105,21 @@ def main():
   save(intent,body);tts=cb.api('POST','/tts',body,tries=1);save(out/'tts.json',tts)
   if norm(tts['synthesized_text']).casefold()!=norm(spoken).casefold():raise RuntimeError('Native TTS copy mismatch')
   cb.fetch_file(tts['audio_url'],out/'voice.mp3');print(key,'continuous TTS ready',tts['audio']['duration_ms']);return
+ if a.cmd=='patch':
+  plan=load(a.patch_plan);entry=plan['videos'][key]
+  if not plan.get('authorization'):raise RuntimeError('Missing user revision authorization')
+  draft=copy.deepcopy(cut['draft']);save(out/('patch-before-'+digest(draft)[:12]+'.json'),cut)
+  for x in draft['clips']:
+   if x['trackId']=='voiceover':x['props']['volume']=entry['voice_volume']
+   if x['id'] in entry.get('source_starts',{}):
+    change=entry['source_starts'][x['id']]
+    if urlparse(x['props']['src']).path!=change['source_path']:raise RuntimeError('Changed source identity')
+    x['props']['startFrom']=change['startFrom']
+    if x['props']['startFrom']+x['durationInFrames']>change['available_frames']:raise RuntimeError('Source overrun')
+  from qc import cut_checks
+  issues=cut_checks(b,draft,load(out/'voice-intent.json')['voice']['voice_type']);save(out/'draft.json',draft);save(out/'preflight.json',{'issues':issues,'draft_hash':digest(draft),'patch_plan':plan})
+  if issues:raise RuntimeError('Patch gate: '+str(issues))
+  print(key,'prepared volume/source-window patch; voice, speed, copy and all timing preserved');return
  if a.cmd=='prepare':
   b=copy.deepcopy(b)
   for sg in b['segments']:
