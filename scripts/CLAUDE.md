@@ -103,3 +103,5 @@ delivery_share consolidate以现有品牌组作唯一总入口，写前核全部
 task_demo snow仅给用户已确认的雪吻首5秒添加顶部背景轻雪；绑定当前render/object及新增原话，保留其余轨道，不再生成AI。
 
 delegated_review_resolution.py仅在用户明确委托先检查后批量时逐条复核平台误报，绑定当前render/object/实际媒体SHA/原驳回及看图证据，保留AI原结论与人审字段，不适用未检/真问题。
+
+task_voice_revision按新整篇真实词轴重定时已确认demo，不重新随机选源；只接受精确换源/去特效计划，保留前5秒与轻雪，验证所有源足时。可用已审原画面的最后实帧作8帧匹配叠化，不补长AI主镜头。
