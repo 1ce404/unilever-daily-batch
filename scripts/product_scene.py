@@ -48,6 +48,12 @@ def validate_code(code):
   names={x.strip().split(' as ')[0] for x in group.split(',') if x.strip()}
   if names-allowed:raise RuntimeError('Unsupported Clipo Remotion sandbox exports: '+str(names-allowed))
 
+def code_for(item):
+ if not item.get('native_code_file'):return CODE
+ path=Path(item['native_code_file'])
+ if not path.is_absolute() or not path.is_file() or filehash(path)!=item.get('native_code_sha256'):raise RuntimeError('Native real-pixel composition code changed')
+ code=path.read_text();validate_code(code);return code
+
 def validate(item):
  p=Path(item['image']);
  if not p.is_file() or filehash(p)!=item['image_sha256']:raise RuntimeError('Real-pack image bytes changed')
@@ -59,6 +65,10 @@ def validate(item):
  place=item['placement']
  if not(0<place['height']<=1000 and 0<place['bottom']<=1200 and 0<place['center_x']<720):raise RuntimeError('Invalid placement')
  if not item['final_tag'].startswith('AI-'):raise RuntimeError('Composite must keep AI lineage')
+ frames=item.get('duration_frames',120)
+ if type(frames) is not int or not 1<=frames<=180:raise RuntimeError('One native preview is limited to six seconds')
+ if 'src' in item.get('native_params',{}):raise RuntimeError('Real image binding cannot be overridden')
+ code_for(item)
 
 def upload(path,out):
  p=Path(path);sha=filehash(p);receipt=out/('upload-'+sha+'.json')
@@ -67,14 +77,20 @@ def upload(path,out):
  req=urllib.request.Request(tok['upload_url'],data=p.read_bytes(),method='PUT',headers=dict(tok.get('headers') or {},**{'Content-Type':'image/png'}));urllib.request.urlopen(req,timeout=180).read();save(receipt,{'object_key':tok['object_key'],'sha256':sha});return tok['object_key']
 
 def spec(item,bg,src):
- params={k:copy.deepcopy(item[k]) for k in ['bounds','polygon','source_width','source_height','placement']};params['src']=src
+ params={k:copy.deepcopy(item[k]) for k in ['bounds','polygon','source_width','source_height','placement']};params.update(copy.deepcopy(item.get('native_params') or {}));params['src']=src
  for key in ['presentation','source_mode','source_start','video_src','frame_variant']:
   if key in item:params[key]=item[key]
- result={'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1,**item.get('background_transform',{})}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':CODE,'params':params,'x':0,'y':0,'scale':1}}]}
+ result={'composition':{'id':'pack-scene-'+item['key'],'name':item['key'],'width':720,'height':1280,'fps':30,'durationInFrames':120},'tracks':[{'id':'main','name':'AI布景','enabled':True},{'id':'effect','name':'真实包装原像素','enabled':True}], 'clips':[{'id':'background','trackId':'main','from':0,'durationInFrames':120,'component':'VideoClip','props':{'src':bg,'startFrom':0,'volume':0,'muted':True,'fit':'cover','playbackRate':1,**item.get('background_transform',{})}},{'id':'real-pack','trackId':'effect','from':0,'durationInFrames':120,'component':'RemotionClip','props':{'code':code_for(item),'params':params,'x':0,'y':0,'scale':1}}]}
 
  if item.get('source_mode')=='video':
   params['presentation']='native_video_frame'
   result['clips'][0]={'id':'native-picture-in-picture','trackId':'main','from':0,'durationInFrames':120,'component':'SplitScreenClip','props':{'mode':'PICTURE_IN_PICTURE','items':[{'component':'VideoClip','props':{'src':bg,'startFrom':0,'muted':True,'volume':0,'fit':'cover'}},{'component':'VideoClip','props':{'src':item['video_src'],'startFrom':round(item['source_start']*30),'muted':True,'volume':0,'fit':'contain','scale':0.78,'x':0,'y':-90,'playbackRate':1}}]}}
+ frames=item.get('duration_frames',120)
+ result['composition']['durationInFrames']=frames
+ for clip in result['clips']:clip['durationInFrames']=frames
+ if item.get('retain_background_audio'):
+  if item.get('source_mode')=='video':raise RuntimeError('Audio retention requires one explicit background video')
+  result['clips'][0]['props'].update(volume=1,muted=False)
  return result
 
 def lookup_segment(pid,sid):
@@ -112,11 +128,11 @@ def main():
    if not a.key or not a.review_note:raise RuntimeError('One actually-viewed key and inspection note required')
    item=rows[0];status=json.loads((out/(item['key']+'-status.json')).read_text());media=out/(item['key']+'.mp4')
    if status['status']!='success' or not media.exists():raise RuntimeError('No completed local composite')
-   save(out/(item['key']+'-inspection.json'),{'passed':True,'item_hash':digest(item),'image_sha256':item['image_sha256'],'code_hash':hashlib.sha256(CODE.encode()).hexdigest(),'render_job_id':status['job_id'],'media_sha256':filehash(media),'reviewer':'Agent','review_note':a.review_note,'human_approved':False});print('Agent inspection recorded, human approval pending',item['key']);return
+   save(out/(item['key']+'-inspection.json'),{'passed':True,'item_hash':digest(item),'image_sha256':item['image_sha256'],'code_hash':hashlib.sha256(code_for(item).encode()).hexdigest(),'render_job_id':status['job_id'],'media_sha256':filehash(media),'reviewer':'Agent','review_note':a.review_note,'human_approved':False});print('Agent inspection recorded, human approval pending',item['key']);return
   if a.cmd=='render':
    from sync_skill import assert_current
    if not a.dry_run:assert_current(Path(__file__).resolve().parents[1])
-   receipt=out/('dryrun-'+digest([x['key'] for x in rows])[:12]+'.json');payload={'plan_hash':digest(plan),'keys':[x['key'] for x in rows],'code_hash':hashlib.sha256(CODE.encode()).hexdigest()}
+   receipt=out/('dryrun-'+digest([x['key'] for x in rows])[:12]+'.json');payload={'plan_hash':digest(plan),'keys':[x['key'] for x in rows],'code_hashes':{x['key']:hashlib.sha256(code_for(x).encode()).hexdigest() for x in rows}}
    if a.dry_run:save(receipt,{**payload,'at':time.time()});print('DRY-RUN cloud AI material composites',len(rows),payload['keys']);return
    prev=json.loads(receipt.read_text()) if receipt.exists() else {}
    if any(prev.get(k)!=v for k,v in payload.items()) or time.time()-prev.get('at',0)>3600:raise RuntimeError('Need matching dry-run')
@@ -126,7 +142,7 @@ def main():
     if not item.get('pilot'):
      pilot=out/(item['pilot_key']+'-inspection.json')
      check=json.loads(pilot.read_text()) if pilot.exists() else {}
-     if not check.get('passed') or check.get('image_sha256')!=item['image_sha256'] or check.get('code_hash')!=hashlib.sha256(CODE.encode()).hexdigest():raise RuntimeError('Actual same-product pilot inspection required')
+     if not check.get('passed') or check.get('image_sha256')!=item['image_sha256'] or check.get('code_hash')!=hashlib.sha256(code_for(item).encode()).hexdigest():raise RuntimeError('Actual same-product pilot inspection required')
     bg=lookup_segment(cfg['products'][item['product']]['clipo_product_id'],item['background_segment_id']);src=cb.api('POST','/storage/download-tokens',{'object_key':upload(item['image'],out)})['download_url']
     draft_item=copy.deepcopy(item)
     if item.get('source_mode')=='video':
@@ -135,7 +151,7 @@ def main():
      if float(item.get('source_start',0))+4>float(duration)+0.01:raise RuntimeError('Real source window exceeds duration; no freeze/loop/slowdown')
      draft_item['video_src']=source['object_url']
     draft=spec(draft_item,bg['object_url'],src);save(out/(item['key']+'-draft.json'),draft)
-    body={'spec':draft,'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'pack-'+digest({'item':item,'code':CODE})[:54]};save(out/(item['key']+'-intent.json'),body)
+    body={'spec':draft,'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'pack-'+digest({'item':item,'code':code_for(item)})[:54]};save(out/(item['key']+'-intent.json'),body)
     result=cb.api('POST','/render-jobs',body,tries=1);save(r,result);print(item['key'],'render',result['job_id'],flush=True)
   elif a.cmd=='poll':
    for item in rows:

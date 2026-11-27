@@ -109,3 +109,5 @@ task_voice_revision按新整篇真实词轴重定时已确认demo，不重新随
 既有新分享已在总组时，replace按分享ID去重替换旧demo；consolidate重跑核实际组名并同步拥有State的总入口名，不新建组。
 
 已批准连续开箱批量保留首5秒完整动作，第二语义段只分配5秒后实际可见时长；每个AI源绑定独立核查证据。continuous_batch_visuals只加已授权轻雪/8帧匹配叠化及精确CTA主画面构图，字幕字体/原生花字保持批量轮换。仅换朗读人时固定既有叠化出场，不随新声音移动。
+
+product_scene 的任务级 native_code_file 绑定源码SHA和真实图SHA；单条最多6秒，可保留明确AI背景原声，跟随参数不得覆盖真实图绑定。

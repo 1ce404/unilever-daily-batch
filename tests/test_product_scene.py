@@ -29,6 +29,15 @@ class ProductSceneTest(unittest.TestCase):
  def test_unsupported_sandbox_export_stops_before_render(self):
   validate_code(CODE)
   with self.assertRaises(RuntimeError):validate_code("import {OffthreadVideo} from 'remotion';")
+ def test_six_second_hash_bound_code_keeps_true_image_and_source_audio(self):
+  with tempfile.TemporaryDirectory() as d:
+   i=self.fixture(Path(d)/'real.png');code=Path(d)/'owned.tsx';code.write_text(CODE);i.update(native_code_file=str(code),native_code_sha256=hashlib.sha256(code.read_bytes()).hexdigest(),native_params={'track':[]},duration_frames=180,retain_background_audio=True);validate(i)
+   draft=spec(i,'ai-with-dialogue','real-pack');self.assertEqual(draft['composition']['durationInFrames'],180);self.assertEqual(draft['clips'][0]['props']['volume'],1);self.assertFalse(draft['clips'][0]['props']['muted']);self.assertEqual(draft['clips'][1]['props']['params']['src'],'real-pack')
+   code.write_text('changed')
+   with self.assertRaises(RuntimeError):validate(i)
+   i['native_params']['src']='wrong-pack'
+   with self.assertRaises(RuntimeError):validate(i)
+
  def test_real_video_uses_builtin_picture_in_picture(self):
   with tempfile.TemporaryDirectory() as d:
    i=self.fixture(Path(d)/'real.png');i.update(source_mode='video',source_start=3.8,video_src='real-video')
