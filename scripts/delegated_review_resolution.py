@@ -2,8 +2,9 @@
 """Resolve an individually evidenced platform false positive under delegated batch QC.
 Preserves raw AI verdict and customer approval fields; no platform writes or generation.
 """
-import argparse,hashlib,json
+import argparse,hashlib,json,sys
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 def evidence(ref):
  p=Path(ref['path'])
