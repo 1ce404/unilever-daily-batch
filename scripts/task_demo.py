@@ -162,8 +162,10 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
   d=with_watermark(d,[(x['from'],x['durationInFrames']) for x in main if (by_path.get(urlparse(x['props']['src']).path) or {}).get('ai_generated')])
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}
 
+SNOW_CODE='import React from \'react\';\nimport {AbsoluteFill,useCurrentFrame,useVideoConfig} from \'remotion\';\nexport const Composition=()=>{const f=useCurrentFrame(),{fps,width,height}=useVideoConfig();const t=f/fps;\nreturn <AbsoluteFill style={{pointerEvents:\'none\',overflow:\'hidden\'}}><svg width={width} height={height} viewBox="0 0 1080 1920" style={{position:\'absolute\',inset:0}}>{Array.from({length:18},(_,i)=>{const x=(i*173+61)%1080+Math.sin(t*.7+i)*9;const y=((i*83+20)+t*(22+i%4*5))%470;const a=.22+(i%4)*.08;const rad=1.8+i%3;return <g key={i} transform={`translate(${x} ${y}) rotate(${i*23+t*8})`} opacity={a} stroke="white" strokeWidth="1.4" strokeLinecap="round">{i%4===0?<g><path d="M-4 0H4M0-4V4M-3-3L3 3M-3 3L3-3"/></g>:<circle r={rad} fill="white" stroke="none"/>}</g>})}</svg></AbsoluteFill>};'
+
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','gain','prepare','patch','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--patch-plan');p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['voice','gain','prepare','patch','snow','render']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--patch-plan');p.add_argument('--revision',default='');p.add_argument('--voice-index',type=int);p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';r=Path(a.run);st=cb.State(r);b=next(x for x in cb.load_briefs(r) if x['brief_id']==a.brief);key=a.brief+'-V01';out=r/'demo-native'/key
  if a.revision:
   if not re.fullmatch(r'[a-zA-Z0-9_-]{1,40}',a.revision):raise RuntimeError('Invalid revision name')
   out=out/a.revision
@@ -171,6 +173,18 @@ def main():
  if approval_problem(b) or aigc_problem(b):raise RuntimeError(approval_problem(b) or aigc_problem(b))
  if key not in st.videos:raise RuntimeError('Native cut not collected yet')
  v=st.videos[key];cut=cb.api('GET','/video-cuts/'+v['cut_id']);script=cb.api('GET','/video-scripts/'+cut['script_id']);save(out/'native-cut.json',cut)
+ if a.cmd=='snow':
+  plan=load(a.patch_plan)
+  if plan.get('by')!='用户' or not plan.get('instruction') or plan.get('key')!=key or plan.get('expected_render_job')!=v.get('render_job') or plan.get('expected_object_key')!=v.get('object_key'):raise RuntimeError('Exact customer snow-overlay revision required')
+  frames=plan['durationInFrames']
+  if type(frames) is not int or frames!=150 or key!='1127-L04-V01':raise RuntimeError('Snow overlay is bounded to this confirmed five-second opening')
+  draft=copy.deepcopy(cut['draft']);validate_code(SNOW_CODE)
+  if any(c['id']=='snowkiss-soft-snow' for c in draft['clips']):raise RuntimeError('Snow already present; inspect current render, do not stack twice')
+  draft['clips'].append({'id':'snowkiss-soft-snow','trackId':'effect','from':0,'durationInFrames':frames,'component':'RemotionClip','props':{'code':SNOW_CODE,'params':{},'x':0,'y':0,'scale':1}})
+  from qc import cut_checks
+  issues=cut_checks(b,draft,v['voice']);save(out/'snow-before.json',cut);save(out/'snow-authorization.json',plan);save(out/'draft.json',draft);save(out/'preflight.json',{'issues':issues,'draft_hash':digest(draft)})
+  if issues:raise RuntimeError('Snow overlay gate '+str(issues))
+  print(key,'prepared gentle native snow, frames0..149, background y0..470; source/voice/captions/packaging unchanged');return
  if a.cmd=='voice':
   voice=script['config']['tts']['voices'][a.voice_index if a.voice_index is not None else (3 if a.brief.endswith('02') else 6)];spoken=''.join(s['text'] for s in b['segments']);body={'text':spoken,'voice':{'platform':voice['platform'],'voice_type':voice['voice_type'],'resource_id':voice['config']['resource_id'],'speed_ratio':1.4},'force':False};receipt=out/'voice-budget.json'
   if a.dry_run:save(receipt,{'body':body,'at':time.time(),'count':1});print('DRY-RUN',key,'1 continuous native TTS',voice['voice_type'],'speed1.4');return
