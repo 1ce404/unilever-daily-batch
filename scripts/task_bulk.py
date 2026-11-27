@@ -241,6 +241,10 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  effects=read(assets/'effects.json');patterns=[(1,2,3),(2,3,1),(3,1,2),(0,2,1),(1,0,3),(3,2,0),(0,1,2),(2,0,3),(3,0,1)];fxrows=[(j,s) for j,s in enumerate(script['segments']) if s.get('effect')];draft['clips']=[x for x in draft['clips'] if x['trackId']!='effect']
  for j,(segment_index,s) in enumerate(fxrows):
   template=effects[patterns[i%len(patterns)][j%3]];td.validate_code(template['code']);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':s['effect']['params'],'x':0,'y':0,'scale':1}})
+ from quality_contract import contract
+ if contract(cfg).get('require_title_entry_sound'):
+  from title_audio import from_inventory
+  draft=from_inventory(draft,st.path.parent.parent,key)
  from lint_copy import lint_text,lint_script
  from common import voiced
  prod=cfg['products'][b['product_key']];issues=[m for t in got for level,m in lint_text(t,cfg,prod) if level=='error']+[m for level,m in lint_script(got,voiced(b['segments']),b,cfg,prod) if level=='error']

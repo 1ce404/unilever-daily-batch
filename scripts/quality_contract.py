@@ -67,6 +67,10 @@ def cut_issues(d,cfg):
  rules=contract(cfg)
  if not rules:return []
  out=[];seen={};end=0;facts=cut_facts(d)
+ if facts['upper_title_count']<rules['min_upper_titles']:out.append('整条视频没有足够的花字特效')
+ if rules.get('require_title_entry_sound'):
+  from title_audio import missing_title_sounds
+  for title in missing_title_sounds(d,rules.get('title_sound_onset_tolerance_frames',1)):out.append('花字出场缺同步音效：'+title['id'])
  for x in upper_titles(d):
   if rules.get('upper_single_line') and any(c in x['props']['params']['text'] for c in '\n\r'):out.append('上方花字未满足单行要求')
  for x in sorted([x for x in d.get('clips',[]) if x.get('trackId')=='main'],key=lambda x:x.get('from',0)):

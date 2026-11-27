@@ -27,7 +27,9 @@ class QualityContractTest(unittest.TestCase):
   b,s=self.script();s['config']['subtitle_style']['style_ids']=['a'];s['config']['bgm']['props']['ids']=['m'];s['segments'][0]['visual']['props']['segment_ids']=['one'];s['segments'][2]['visual']['props']['segment_ids']=['x','y'];errors=';'.join(q.config_issues(s,b,self.cfg));self.assertIn('字幕样式',errors);self.assertIn('BGM',errors);self.assertIn('素材池1条',errors);self.assertIn('素材池2条',errors)
  def test_alias_ids_do_not_make_distinct_sources(self):
   b,s=self.script();ids=s['segments'][0]['visual']['props']['segment_ids'];library=[{'id':x,'object_url':'https://x/same.mp4?signature='+x} for x in ids];self.assertTrue(any('同一源素材' in x for x in q.config_issues(s,b,self.cfg,library)))
- def test_uniform_cues_can_highlight_product(self):self.assertEqual(q.cut_issues(self.draft(),self.cfg),[])
+ def test_uniform_cues_can_highlight_product(self):
+  from title_audio import attach
+  d=self.draft();d['clips'].append({'id':'title','trackId':'effect','from':0,'props':{'params':{'text':'柔顺'}}});d,_=attach(d,[{'id':'s','url':'https://x/s.mp3','duration':.5,'categories':['产品出场']}],'test');self.assertEqual(q.cut_issues(d,self.cfg),[])
  def test_duplicate_file_despite_fresh_signed_url_is_blocked(self):
   d=self.draft();d['clips'][1]['props']['src']='https://x/a.mp4?q=other';self.assertTrue(any('重复源素材' in x for x in q.cut_issues(d,self.cfg)))
  def test_changed_font_or_size_within_video_is_blocked(self):

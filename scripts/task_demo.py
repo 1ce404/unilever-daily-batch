@@ -206,6 +206,10 @@ def main():
   for i,sg in enumerate(script['segments']):
    if not sg.get('effect') or sg['id'] in existing:continue
    fx=sg['effect'];template=effect_template(fx['template_id'],r);validate_code(template['code']);start,end=evidence['segment_frames'][i:i+2];draft['clips'].append({'id':sg['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':fx.get('params',{}),'x':0,'y':0,'scale':1}})
+  from quality_contract import contract
+  if contract(cfg).get('require_title_entry_sound'):
+   from title_audio import from_inventory
+   draft=from_inventory(draft,r,key)
   save(out/'draft.json',draft);save(out/'timing-and-sources.json',evidence)
   from qc import cut_checks
   issues=cut_checks(b,draft,load(out/'voice-intent.json')['voice']['voice_type']);save(out/'preflight.json',{'issues':issues,'draft_hash':digest(draft)})
