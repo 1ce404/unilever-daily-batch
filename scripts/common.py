@@ -166,6 +166,9 @@ def copy_hash(brief):
 
 def approval_problem(brief):
     """Why this brief may not go to Clipo. Demo-only permission never changes approval."""
+    from checked_batch_authorization import permits_checked_batch
+    if permits_checked_batch(brief):
+        return None
     from demo_authorization import permits_preview
     if permits_preview(brief):
         return None
@@ -195,6 +198,9 @@ def aigc_tags(brief):
 def aigc_problem(brief):
     """用户 11-22：脚本要用 AIGC 素材时，素材先给人审，通过后才出 demo。None = 可以提交。
     审核凭据记住当时审过的标签；画面计划新增未审的 AI 标签要重新给人看。"""
+    from checked_batch_authorization import permits_checked_batch
+    if permits_checked_batch(brief):
+        return None
     from demo_authorization import permits_preview
     if permits_preview(brief):
         return None
@@ -213,6 +219,9 @@ def aigc_problem(brief):
 def demo_problem(brief):
     """Why this demo-first brief may not go to bulk yet, or None. Only a person's recorded OK of the demo counts,
     and it must be for the copy the platform script was built from."""
+    from checked_batch_authorization import permits_checked_batch
+    if permits_checked_batch(brief):
+        return None
     a = brief.get("demo_approval") or {}
     if not a.get("by"):
         return "demo 还没人审过（review_doc.py approve-demo）"

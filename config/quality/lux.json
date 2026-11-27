@@ -20,7 +20,8 @@
   "recommended_task_choices": {
     "subtitle_styles": 5,
     "bgm": 6,
-    "upper_titles": 3
+    "upper_titles": 3,
+    "fonts": 3
   },
   "reject_single_frame_black": true,
   "upper_single_line": true,
@@ -31,5 +32,6 @@
   "caption_protected_terms": [
     "发丝",
     "洗个头"
-  ]
+  ],
+  "min_fonts": 3
 }

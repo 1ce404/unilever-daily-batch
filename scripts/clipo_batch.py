@@ -141,7 +141,17 @@ class State:
 
 
 def load_briefs(run, only=None):
-    return [b for b in day_briefs(run, CFG) if not only or b["brief_id"] == only]
+    result=[b for b in day_briefs(run, CFG) if not only or b["brief_id"] == only]
+    if any(b.get('checked_batch_authorization') for b in result):
+        import hashlib
+        st=State(run)
+        for b in result:
+            if not b.get('checked_batch_authorization'):continue
+            bid=b['brief_id'];v=st.videos.get(bid+'-V01',{});evidence={}
+            for name,paths in (b.get('checked_batch_evidence_paths') or {}).items():
+                evidence[name]=[{'path':str(Path(p).resolve()),'sha256':hashlib.sha256(Path(p).read_bytes()).hexdigest()} for p in paths if Path(p).is_file()]
+            b['checked_batch_context']={'current_demo':{'video_key':bid+'-V01','render_job':v.get('render_job'),'object_key':v.get('object_key')},'requested_new':b['quantity']-1,'requested_video_keys':[bid+f'-V{i:02d}' for i in range(2,b['quantity']+1)],'current_evidence':evidence}
+    return result
 
 
 # ---------- preflight ----------
@@ -1034,7 +1044,7 @@ def pull_generation(st, cfg, b, job, gen):
                     v["stage"] = "aigc_pending"
                     continue
                 from demo_authorization import permits_preview
-                if permits_preview(b) and not v.get("render_job"):
+                if permits_preview(b) and vids[-1].endswith("-V01") and not v.get("render_job"):
                     v["stage"] = "demo_prepare_pending"
                     v["user_review_pending"] = True
                     continue  # Whole-voice preparation precedes this authorized preview render.

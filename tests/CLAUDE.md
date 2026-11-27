@@ -37,3 +37,6 @@
 - test_demo_authorization.py: 先做demo的明确许可、单条AI绑定、改稿/改标签失效及量产仍需客户demo批准。
 
 - test_caption_semantics.py: “洗个头 / 发丝”真实字幕边界保护，阻止跨句词错分。
+
+- test_checked_batch_authorization.py: 条件生产许可绑定当前demo/文案/AI标签和7类实际证据，拒绝过期或扩大范围。
+- test_font_variation.py: 字体候选与真实字体家族计数独立于字幕配色样式。

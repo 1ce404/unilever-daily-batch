@@ -10,7 +10,7 @@ class QualityContractTest(unittest.TestCase):
  def setUp(self):self.cfg={'quality_contract':'quality/lux.json'}
  def script(self):
   b={'quantity':10,'segments':[{'visual_tags':['AI-1111-追光']}]+[{'visual_tags':['头发顺滑']} for _ in range(5)]}
-  s={'config':{'subtitle_style':{'style_ids':list('abcde')},'bgm':{'props':{'ids':list('abcdef')}},'tts':{'voices':[{'id':x} for x in 'abc']}},'segments':[{'id':str(i+1),'visual':{'mode':'material_segment_ids','props':{'segment_ids':[str(i)+'-'+str(j) for j in range(5 if i==0 else 9)]}},'effect':{'params':{'text':'花字'}} if i in [0,2,5] else None} for i in range(6)]}
+  s={'config':{'subtitle_style':{'style_ids':list('abcde'),'font_ids':list('fgh')},'bgm':{'props':{'ids':list('abcdef')}},'tts':{'voices':[{'id':x} for x in 'abc']}},'segments':[{'id':str(i+1),'visual':{'mode':'material_segment_ids','props':{'segment_ids':[str(i)+'-'+str(j) for j in range(5 if i==0 else 9)]}},'effect':{'params':{'text':'花字'}} if i in [0,2,5] else None} for i in range(6)]}
   return b,s
  def draft(self):
   return {'composition':{'fps':30,'durationInFrames':60},'clips':[{'id':'1-0','trackId':'main','from':0,'durationInFrames':30,'props':{'src':'https://x/a.mp4?q=1'}},{'id':'2-0','trackId':'main','from':30,'durationInFrames':30,'props':{'src':'https://x/b.mp4'}},{'id':'s1','trackId':'overlay','from':0,'durationInFrames':25,'props':{'text':'力士精油香氛洗发水','font_size':36,'font_family':'f','top':78,'stroke_width':4}},{'id':'s2','trackId':'overlay','from':30,'durationInFrames':25,'props':{'text':'柔顺有光泽','font_size':36,'font_family':'f','top':78,'stroke_width':4,'text_color':'#ffd16a'}},{'id':'voice-continuous','trackId':'voiceover','props':{}},{'id':'bgm','trackId':'audio','props':{'src':'https://x/music.mp3?token=private'}}]}
@@ -44,7 +44,7 @@ class QualityContractTest(unittest.TestCase):
   d=self.draft();d['clips'].append({'id':'3-x0','trackId':'effect','from':0,'props':{'code':'native','params':{'text':'精油润养'}}});facts=q.cut_facts(d);self.assertEqual(facts['upper_title_count'],1);self.assertTrue(facts['upper_style_signature'])
   v={'quality_facts':facts,'render_job':'j','object_key':'a','ai_review':'pass','media_qc':{'technical_pass':True,'render_job':'j','output_object_key':'a','visual_pass':True,'reviewer':'agent','review_note':'实际看图'}};self.assertTrue(any('逐处抽帧' in x for x in q.delivery_issues(v,self.cfg)));v['media_qc']['upper_title_sample_count']=3;self.assertEqual(q.delivery_issues(v,self.cfg),[])
  def test_config_variety_does_not_substitute_actual_variety(self):
-  b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(10)];errors=q.batch_issues(b,v,self.cfg);self.assertEqual(len(errors),3)
+  b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(10)];errors=q.batch_issues(b,v,self.cfg);self.assertEqual(len(errors),4)
  def test_duplicate_copy_blocks_partial_batch_too(self):
   b,_=self.script();v=[(str(i),{'quality_facts':q.cut_facts(self.draft())}) for i in range(2)];self.assertTrue(any('文案重复' in x for x in q.batch_issues(b,v,self.cfg)))
  def test_copy_fingerprint_ignores_punctuation(self):

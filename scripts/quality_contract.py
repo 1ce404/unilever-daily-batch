@@ -24,7 +24,7 @@ def config_issues(script,b,cfg,library=(),sound_ids=None,approved_pilot_ids=()):
  rules=contract(cfg)
  if not rules:return []
  out=[];c=script.get('config') or {};q=max(1,int(b.get('quantity',1)));style=(c.get('subtitle_style') or {}).get('style_ids') or [];music=(c.get('bgm') or {}).get('props',{}).get('ids') or [];voices=(c.get('tts') or {}).get('voices') or []
- for label,have,need in [('原生字幕样式',len(set(style)),rules['min_subtitle_styles']),('BGM',len(set(music)),rules['min_bgm']),('音色候选',len({x.get('id') or x.get('voice_type') for x in voices}),rules['min_voice_choices'])]:
+ for label,have,need in [('原生字体',len(set((c.get('subtitle_style') or {}).get('font_ids') or [])),rules.get('min_fonts',1)),('原生字幕样式',len(set(style)),rules['min_subtitle_styles']),('BGM',len(set(music)),rules['min_bgm']),('音色候选',len({x.get('id') or x.get('voice_type') for x in voices}),rules['min_voice_choices'])]:
   if q>1 and have<need:out.append(f'{label}实际只绑定{have}个，批量要求至少{need}个')
  meta={x['id']:x for x in library};upper=0
  for i,s in enumerate(script.get('segments',[])):
@@ -61,7 +61,7 @@ def cut_facts(d):
  upper_codes=[hashlib.sha256(x.get('props',{}).get('code','').encode()).hexdigest() for x in upper_titles(d)]
  upper_sig=hashlib.sha256(json.dumps(upper_codes).encode()).hexdigest() if upper_codes else None
  spoken=re.sub(r'[^\w\u4e00-\u9fff]','',''.join(x.get('props',{}).get('text','') for x in cues)).lower()
- return {'copy_signature':hashlib.sha256(spoken.encode()).hexdigest() if spoken else None,'upper_title_count':len(upper_codes),'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
+ return {'font_family':cues[0].get('props',{}).get('font_family') if cues else None,'copy_signature':hashlib.sha256(spoken.encode()).hexdigest() if spoken else None,'upper_title_count':len(upper_codes),'upper_style_signature':upper_sig,'style_signature':sig,'uniform':bool(styles) and all(x==styles[0] for x in styles),'bgm_source':urlparse(music.get('props',{}).get('src','')).path,'voice_tracks':sum(x.get('trackId')=='voiceover' for x in clips)}
 
 def cut_issues(d,cfg):
  rules=contract(cfg)
@@ -104,8 +104,8 @@ def batch_issues(b,videos,cfg):
   if any(not x for x in signatures):out.append('逐条实际文案指纹未核验')
   elif len(set(signatures))!=len(signatures):out.append(f'批量文案重复：{len(signatures)}条仅{len(set(signatures))}篇，画面/音色/包装变化不能代替文案变化')
  if len(videos)<int(b.get('quantity',1)):return out
- for label,key,need in [('字幕样式','style_signature',max(rules['min_subtitle_styles'],(cfg.get('batch_native_variants') or {}).get('required_actual_styles',0))),('BGM','bgm_source',max(rules['min_bgm'],(cfg.get('batch_native_variants') or {}).get('required_actual_bgm',0)))]:
-  n=len({f[key] for f in facts})
+ for label,key,need in [('字体','font_family',max(rules.get('min_fonts',1),(cfg.get('batch_native_variants') or {}).get('required_actual_fonts',0))),('字幕样式','style_signature',max(rules['min_subtitle_styles'],(cfg.get('batch_native_variants') or {}).get('required_actual_styles',0))),('BGM','bgm_source',max(rules['min_bgm'],(cfg.get('batch_native_variants') or {}).get('required_actual_bgm',0)))]:
+  n=len({f.get(key) for f in facts if f.get(key)})
   if n<min(len(facts),need):out.append(f'整组真实{label}仅{n}种，不能以候选配置数代替实际变化')
  need=(b.get('upper_title_variation') or {}).get('min_actual_sets',0)
  if need:

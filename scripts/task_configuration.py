@@ -42,7 +42,7 @@ def inventory(a,cfg):
  for key,sid in p['templates'].items():
   pid=cfg['products'][key]['clipo_product_id']
   work.extend([(key+'-product',lambda pid=pid:cb.api('GET','/products/'+pid)),(key+'-prompts',lambda pid=pid:cb.api('GET','/products/'+pid+'/prompts')),(key+'-template',lambda sid=sid:cb.api('GET','/video-scripts/'+sid)),(key+'-library',lambda pid=pid:cb.list_segments(pid))])
- for key,path in [('bgm','/resource/bgm'),('sfx','/resource/sound-effect'),('effects','/resource/remotion-effect-template')]:work.append((key,lambda path=path:pages(path)))
+ for key,path in [('bgm','/resource/bgm'),('sfx','/resource/sound-effect'),('effects','/resource/remotion-effect-template'),('fonts','/resource/font')]:work.append((key,lambda path=path:pages(path)))
  for i,q in enumerate(p.get('voice_queries',[])):
   work.append(('voice-query-'+str(i+1),lambda q=q:cb.api('POST','/tts/speaker/search',{'query':q,'platform':'volcengine','include_disabled':False,'limit':8})))
  for eid in p.get('effect_ids',[]):work.append(('effect-'+eid,lambda eid=eid:cb.api('GET','/resource/remotion-effect-template/'+eid)))

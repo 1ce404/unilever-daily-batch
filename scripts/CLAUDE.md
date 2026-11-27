@@ -85,3 +85,5 @@ demo_authorization.py: 用户明确先做demo、稍后检查的单条制作许�
 preview_delivery.py: 单条待客户检查demo的导出清单、当前输出核验、登记与官方下载；配合delivery_share share，不伪造QC或人审通过。
 
 title_audio.py: 从当次真实短音效库逐处同步花字出场，随机轮换并保留原轨；原生demo/batch准备接入，quality_contract检查至少一处花字及每处可发声的同步音效。
+
+checked_batch_authorization.py: 用户明确委托检查后量产的纯本地条件校验，不写人审通过；当前demo、实际证据和数量范围每次从权威状态重新绑定。

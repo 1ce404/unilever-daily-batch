@@ -72,7 +72,7 @@ def timing(tts,rows,fps):
  if any(x['end']<=x['start'] for x in cues):raise RuntimeError('Invalid native cue interval')
  return total,bounds,cues
 
-def build(b,cut,tts,script,library,cfg,key,allocation=None):
+def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=None):
  d=copy.deepcopy(cut['draft']);fps=d['composition']['fps'];total,bounds,cues=timing(tts,b['segments'],fps);original=sorted([x for x in d['clips'] if x['trackId']=='main'],key=lambda x:x['from']);oldbounds=[];groups={}
  for s in b['segments']:
   group=[x for x in original if x['id'].split('-')[0]==s['id']]
@@ -83,7 +83,13 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None):
   begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];ai_role=bool(tag) and all(t.startswith('AI-') for t in tag);approved_ai=set((cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]))
   from demo_authorization import preview_ai_ids
   approved_ai.update(preview_ai_ids(b,cfg,key))
-  if ai_role and (i!=0 or not approved_ai or aigc_problem(b)):raise RuntimeError('AI source needs human approval or exact demo-only permission')
+  material_brief=authorization_brief or b
+  if authorization_brief is not None:
+   from checked_batch_authorization import permits_checked_batch
+   from common import aigc_tags
+   a=authorization_brief.get('checked_batch_authorization') or {}
+   if not permits_checked_batch(authorization_brief) or key not in a.get('exact_video_keys',[]) or any(b.get(k)!=authorization_brief.get(k) for k in ['brief_id','product_key']) or aigc_tags(b)!=aigc_tags(authorization_brief):raise RuntimeError('Checked batch source permission mismatch')
+  if ai_role and (i!=0 or not approved_ai or aigc_problem(material_brief)):raise RuntimeError('AI source needs human approval or exact delegated production permission')
   meta=[x for x in library if set(tag)&set(x.get('tags',[])) and ((x.get('ai_generated') and x['id'] in approved_ai) if ai_role else (not x.get('ai_generated') and x.get('review_result')=='pass')) and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
   valid={x['id'] for x in meta}
   if allocation is not None:
