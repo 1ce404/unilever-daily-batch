@@ -112,6 +112,7 @@ def repair(a,cfg):
   marked=[c for c in draft['clips'] if c['trackId']=='watermark']
   if any(c.get('props',{}).get('text')!='内容由AI生成' for c in marked):raise RuntimeError('Unknown watermark content; no broad removal')
   draft['clips']=[c for c in draft['clips'] if c['trackId']!='watermark'];expected=[c for c in expected if c['trackId']!='watermark']
+ if hook:next(c for c in expected if c['id']=='opening-match-dissolve')['props']['params']['src']=hook['match_dissolve_src']
  if expected!=[x for x in draft['clips'] if x['trackId']!='main']:raise RuntimeError('Protected tracks changed')
  issues=cut_checks(b,draft,v.get('voice'))
  if issues:raise RuntimeError('Repair gate '+str(issues))
@@ -133,6 +134,8 @@ def repair(a,cfg):
    change=plan['clips'].get(x['clip'])
    if change:
     m=library[change['segment_id']];x.update(source_segment_id=m['id'],source_path=td.urlparse(m['object_url']).path,startFrom=change['startFrom'],source_available_frames=math.floor((m['end_ms']-m['begin_ms'])*fps/1000))
+  if hook:
+   m=library[hook['segment_id']];x=next(x for x in prepared['evidence']['source_windows'] if x['clip']=='1-0');x.update(source_segment_id=m['id'],source_path=td.urlparse(m['object_url']).path,startFrom=0,source_available_frames=math.floor((m['end_ms']-m['begin_ms'])*fps/1000))
   if plan.get('main_framing'):prepared['evidence']['reviewed_main_framing']=plan['main_framing']
   actual=out/(sig+'-prepared.json');save(actual,prepared);v['task_bulk_prepared_path']=str(actual.resolve())
  v.update(render_job=job['job_id'],stage='rendering',ai_review=None,ai_reason=None,qc_issues=[],quality_facts=cut_facts(draft))
