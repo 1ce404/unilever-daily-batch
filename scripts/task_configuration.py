@@ -77,6 +77,13 @@ def validate_body(body,b,library):
  if len((body['config'].get('tts') or {}).get('voices',[]))<3:raise RuntimeError('At least3 native voices required')
  return pending
 
+def permits_demo_revision(item,b,current):
+ from demo_authorization import permits_preview
+ a=item.get('revision_authorization') or {}
+ return (permits_preview(b) and a.get('by')=='用户' and bool(a.get('instruction'))
+  and a.get('brief_id')==b['brief_id'] and type(a.get('quantity')) is int and a['quantity']==1
+  and a.get('previous_body_digest')==digest(current) and a.get('new_copy_hash')==copy_hash(b))
+
 def inspect(a,cfg):
  plan=json.loads(Path(a.plan).read_text());st=cb.State(a.run);out=Path(a.run)/'clipo/task-configuration'
  for bid,item in plan['scripts'].items():
@@ -110,7 +117,7 @@ def apply(a,cfg):
     prior=json.loads(rec.read_text());current=native_body(before,body)
     wanted=native_body(body,body)
     pinned_first_visual=item.get('expected_current_digest')==digest(current) and first_visual_only(current,wanted)
-    if digest(current)!=prior['body_digest'] and current!=wanted and not pinned_first_visual:raise RuntimeError('Task script changed externally; refusing overwrite')
+    if digest(current)!=prior['body_digest'] and current!=wanted and not pinned_first_visual and not permits_demo_revision(item,b,current):raise RuntimeError('Task script changed externally; refusing overwrite')
   if a.dry_run:
    save(out/(bid+'-dryrun.json'),{'body':body,'copy_hash':copy_hash(b),'pending_ai_segments':pending});print(bid,'DRY-RUN','segments',len(body['segments']),'pending_AI',pending,flush=True);continue
   intent=out/(bid+'-create-intent.json');created=out/(bid+'-created.json')

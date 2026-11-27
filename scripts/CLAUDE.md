@@ -93,3 +93,5 @@ checked_batch_authorization.py: 用户明确委托检查后量产的纯本地条
 renderer_inspect.py: 只读抓当前Clipo剪辑页同源前端模块与SHA，用真实VideoClip变换源码核参数，不写平台/State，不把本地裁图当云端验收。
 
 明确main_framing返工仅改指定VideoClip的scale/x/y，绑定已核renderer证据SHA并拒绝露出画布边缘；保留箭头、声音、字幕与所有其他轨道。
+
+单条被退demo改稿需绑定当前原生脚本指纹、用户重做原话和新文案指纹；连续开箱可跨字幕句保持一个源，足时原速，不沿用客户批准。

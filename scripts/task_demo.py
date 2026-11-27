@@ -72,6 +72,26 @@ def timing(tts,rows,fps):
  if any(x['end']<=x['start'] for x in cues):raise RuntimeError('Invalid native cue interval')
  return total,bounds,cues
 
+def continuous_demo_hook(main,sources,rule,fps,key):
+ """One reviewed source continues across subtitle boundaries; never loop or slow it."""
+ if not rule:return main,sources
+ from demo_authorization import permits_preview
+ proof=Path(rule['evidence_path']);frames=rule['durationInFrames']
+ if (rule.get('key')!=key or type(frames) is not int or not 1<=frames<=6*fps
+  or not proof.is_file() or hashlib.sha256(proof.read_bytes()).hexdigest()!=rule['evidence_sha256']):raise RuntimeError('Continuous demo hook evidence/scope mismatch')
+ first=next(x for x in main if x['id']=='1-0');source=next(x for x in sources if x['clip']=='1-0')
+ if first['from']!=0 or source['source_segment_id']!=rule['segment_id'] or first['props']['startFrom']+frames>source['source_available_frames']:raise RuntimeError('Continuous demo source identity/length mismatch')
+ frames=max(frames,first['durationInFrames'])
+ if first['props']['startFrom']+frames>source['source_available_frames']:raise RuntimeError('Hook speech exceeds safe source')
+ first=copy.deepcopy(first);first.update(durationInFrames=frames,transitionIn=None,transitionOut=None,motion=None)
+ result=[first];records=[dict(source,used_frames=frames)]
+ for old in main:
+  if old['id']=='1-0' or old['from']+old['durationInFrames']<=frames:continue
+  x=copy.deepcopy(old);delta=max(0,frames-x['from']);x['from']+=delta;x['durationInFrames']-=delta;x['props']['startFrom']+=delta
+  if delta:x['transitionIn']=None
+  result.append(x);prior=next(z for z in sources if z['clip']==x['id']);records.append(dict(prior,startFrom=x['props']['startFrom'],used_frames=x['durationInFrames']))
+ return result,records
+
 def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=None):
  d=copy.deepcopy(cut['draft']);fps=d['composition']['fps'];total,bounds,cues=timing(tts,b['segments'],fps);original=sorted([x for x in d['clips'] if x['trackId']=='main'],key=lambda x:x['from']);oldbounds=[];groups={}
  for s in b['segments']:
@@ -111,6 +131,11 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
    path=urlparse(pick['object_url']).path;used.add(path);x=copy.deepcopy(base[min(j,len(base)-1)]);x.update(id=s['id']+'-'+str(j),**{'from':cursor,'durationInFrames':frames,'motion':None,'transitionIn':base[0].get('transitionIn') if j==0 else None,'transitionOut':None})
    if (x.get('transitionIn') or {}).get('type') in cfg.get('task_remove_black_reveal_transitions',[]):x['transitionIn']=None
    native_start=next((z['props'].get('startFrom',0) for z in base if urlparse(z['props']['src']).path==path),0);native_start=max(safe_start,min(native_start,max(safe_start,safe_end-frames-2)));x['props'].update(src=pick['object_url'],startFrom=native_start,playbackRate=1,volume=0,muted=True,fit='cover',scale=cfg.get('task_ai_footer_crop_scale',1) if ai_role else 1,x=0,y=0,alt=pick.get('description',''));x['props'].pop('loop',None);main.append(x);sources.append({'clip':x['id'],'source_segment_id':pick['id'],'source_path':path,'source_available_frames':available,'used_frames':frames,'startFrom':native_start});cursor+=frames
+ hook_rule=(cfg.get('continuous_demo_hooks') or {}).get(key)
+ if hook_rule:
+  from demo_authorization import permits_preview
+  if not permits_preview(b) or authorization_brief is not None:raise RuntimeError('Continuous hook is single delegated demo only')
+  main,sources=continuous_demo_hook(main,sources,hook_rule,fps,key)
  caption=next(x for x in d['clips'] if x['trackId']=='overlay');style=copy.deepcopy(caption['props']);style.pop('text',None);style.update(font_size=36,top=78);native=[]
  for i,c in enumerate(cues):
   props={**style,'text':c['text']};hi=cfg.get('caption_highlights') or {}
@@ -231,6 +256,10 @@ def main():
  else:
   save(out/'before-write.json',cut);cb.api('PUT','/video-cuts/'+v['cut_id'],{'script_id':cut['script_id'],'draft':draft},tries=1);back=cb.api('GET','/video-cuts/'+v['cut_id']);cb.check_readback(draft,back['draft'],False);save(out/'after-write.json',back);job=cb.api('POST','/render-jobs',{'spec':back['draft'],'cut_id':v['cut_id'],'options':{'codec':'h264','quality':'high','scale':1},'idempotency_key':'demo-whole-'+v['cut_id']+'-'+digest(draft)[:12]},tries=1);save(receipt,job)
  save(out/'render.json',job)
+ if v.get('customer_rework_required'):
+  from demo_authorization import permits_preview
+  if not permits_preview(b) or not b.get('demo_rework_instruction'):raise RuntimeError('Explicit new demo revision instruction required')
+  v.setdefault('customer_rework_history',[]).append({'reason':v.pop('customer_rework_required'),'resumed_by':b['demo_rework_instruction'],'new_render_job':job['job_id']})
  v.update(render_job=job['job_id'],stage='rendering',duration_s=draft['composition']['durationInFrames']/draft['composition']['fps'],voice=load(out/'voice-intent.json')['voice']['voice_type'],texts=[s['text'] for s in b['segments']],voice_cmd=False,qc_issues=[],copy_issues=[],ai_review=None,ai_reason=None)
  for f in ['error','last_error','object_key','bad_voice','watermark_missing']:v.pop(f,None)
  st.save();print(key,'rendering',job['job_id'])
