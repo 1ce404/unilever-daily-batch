@@ -146,6 +146,31 @@ def patch_reviewed_sources(draft,changes,library,brief):
     if len(paths)!=len(set(paths)):raise RuntimeError('Reviewed replacement duplicates an existing source')
     return result
 
+def fit_native_effect_instances(draft,transforms):
+    """Move an entire native 3D+text instance together; retain its original recipe."""
+    result=copy.deepcopy(draft);clips={c['id']:c for c in result['clips']}
+    for cid,rule in transforms.items():
+        c=clips[cid];code=c['props']['code'];scale=rule['scale'];x=rule['translate_x'];y=rule['translate_y']
+        if (c['trackId']!='effect' or hashlib.sha256(code.encode()).hexdigest()!=rule['source_code_sha256']
+            or not .4<=scale<=1 or not -400<=x<=400 or not -400<=y<=400):
+            raise RuntimeError('Uninspected native effect instance transform')
+        named=re.search(r'export\s+default\s+function\s+([A-Za-z_$][\w$]*)',code)
+        if named:
+            component=named.group(1);code=code[:named.start()]+code[named.start():].replace('export default','',1)
+        else:
+            named=re.search(r'export\s+default\s+([A-Za-z_$][\w$]*)\s*;',code)
+            if named:
+                component=named.group(1);code=code[:named.start()]+code[named.end():]
+            else:
+                named=re.search(r'export\s+(?:const|function)\s+([A-Za-z_$][\w$]*)',code)
+                if not named or len(re.findall(r'\bexport\b',code))!=1:raise RuntimeError('Native effect export cannot be safely wrapped')
+                component=named.group(1);code=code[:named.start()]+code[named.start():].replace('export ','',1)
+        if component=='Composition':raise RuntimeError('Native Composition export needs an explicit adapter')
+        transform=f'translate({x}px, {y}px) scale({scale})'
+        wrapper='\nexport const Composition = (props) => React.createElement("div", {style: {position: "absolute", inset: 0, transform: '+json.dumps(transform)+', transformOrigin: "50% 0%", pointerEvents: "none"}}, React.createElement('+component+', props));\n'
+        c['props']['code']=code+wrapper
+    return result
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
@@ -201,6 +226,10 @@ def main():
             pk=briefs[v['brief_id']]['product_key']
             if pk not in libraries:libraries[pk]={x['id']:x for x in cb.list_segments(cfg['products'][pk]['clipo_product_id'])}
             source_base=patch_reviewed_sources(source_base,changes,libraries[pk],briefs[v['brief_id']])
+        source_base=fit_native_effect_instances(source_base,(plan.get('effect_instance_transforms') or {}).get(key,{}))
+        from product_scene import validate_code
+        for c in source_base['clips']:
+            if c.get('component')=='RemotionClip':validate_code(c['props']['code'])
         draft = reflow(source_base, tts, v['texts'], cfg, chunks=plan.get('caption_chunks',{}).get(key))
         issues = cut_checks(briefs[v['brief_id']], draft, v.get('voice'))
         if issues:

@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from task_caption_repair import semantic_cues, norm, reflow, patch_reviewed_sources
+from task_caption_repair import semantic_cues, norm, reflow, patch_reviewed_sources, fit_native_effect_instances
 
 
 class CaptionRepairTest(unittest.TestCase):
@@ -84,3 +84,11 @@ class ReviewedSourceRepairTest(unittest.TestCase):
             self.assertEqual(result['clips'][1],voice);self.assertEqual(draft['clips'][0]['props']['src'],'https://x/old.mp4');self.assertEqual(result['clips'][0]['props']['src'],'https://x/new.mp4')
             proof.write_text('changed')
             with self.assertRaises(RuntimeError):patch_reviewed_sources(draft,changes,library,brief)
+
+class NativeInstanceFitTest(unittest.TestCase):
+    def test_native_recipe_kept_and_only_one_default_export_remains(self):
+        code='import React from "react"; export default function NativeTitle(props) {return null;}'
+        draft={'clips':[{'id':'3-x0','trackId':'effect','props':{'code':code,'params':{'text':'花香出场'}}}]}
+        rule={'3-x0':{'source_code_sha256':hashlib.sha256(code.encode()).hexdigest(),'scale':.5,'translate_x':240,'translate_y':-40}}
+        actual=fit_native_effect_instances(draft,rule)
+        self.assertIn('function NativeTitle(props)',actual['clips'][0]['props']['code']);self.assertEqual(actual['clips'][0]['props']['code'].count('export const Composition'),1);self.assertEqual(actual['clips'][0]['props']['params'],draft['clips'][0]['props']['params']);self.assertEqual(draft['clips'][0]['props']['code'],code)
