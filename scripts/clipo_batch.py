@@ -853,7 +853,8 @@ def deliverable(v):
     (copy, voice, footage, watermark) still apply either way."""
     from quality_contract import delivery_issues
     if delivery_issues(v,CFG):return False
-    return ((v.get("ai_review") == "pass" or bool(v.get("review_waived"))) and not v.get("copy_issues") and not v.get("watermark_missing")
+    from delegated_review_resolution import valid as delegated_resolution
+    return ((v.get("ai_review") == "pass" or bool(v.get("review_waived")) or delegated_resolution(v)) and not v.get("copy_issues") and not v.get("watermark_missing")
             and not v.get("voice_cmd") and not v.get("voice_drift")
             and not v.get("bad_footage") and not v.get("qc_issues"))
 

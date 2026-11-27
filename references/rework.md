@@ -52,3 +52,5 @@
 用户明确立即重做被退demo时，用task_configuration精确revision_authorization绑定当前脚本指纹与新待审文案；task_demo只恢复该首条，历史退回原因留档，续产仍拦。continuous_demo_hooks绑定已看素材ID/证据与完整动作帧数，允许一镜跨字幕句，不循环或慢放补时。
 
 用户要求Clipo内统一品牌入口时，delivery_share consolidate --dry-run / consolidate复用指定已有group_id，source_group_ids逐个现读，name为总入口；保留日期brief标题及旧独立分享，不用本地文件夹冒充。
+
+在有效check_then_bulk委托下，已实际检查的单条平台误报可用delegated_review_resolution记录独立Agent结论；必须逐条绑定当前媒体、原驳回和真实证据，技术/视觉先通过。不得改AI结果或伪装用户看过，不因模板随机就豁免真实遮挡/断词/音画问题。

@@ -101,3 +101,5 @@ renderer_inspect.py: 只读抓当前Clipo剪辑页同源前端模块与SHA，用
 delivery_share consolidate以现有品牌组作唯一总入口，写前核全部成员、拒绝跨品牌，PATCH后回读并核原分享内容不变；不新建总组、不删视频。
 
 task_demo snow仅给用户已确认的雪吻首5秒添加顶部背景轻雪；绑定当前render/object及新增原话，保留其余轨道，不再生成AI。
+
+delegated_review_resolution.py仅在用户明确委托先检查后批量时逐条复核平台误报，绑定当前render/object/实际媒体SHA/原驳回及看图证据，保留AI原结论与人审字段，不适用未检/真问题。

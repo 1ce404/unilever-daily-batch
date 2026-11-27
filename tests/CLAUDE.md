@@ -44,3 +44,5 @@
 - test_task_caption_repair.py: 保留真实词级配音、整词字幕、绑定源窗证据；原生主画面构图只改指定镜头，拒绝来源证据篡改、非有限值和露边。
 
 - test_demo_revision.py: 单条重做绑定原脚本/新待审稿；连续动作跨字幕保留来源、足时和后续真实片段，不改源音轨。
+
+- test_delegated_review_resolution.py: 独立Agent误报判定不改AI原值，旧render/object/原驳回变化、未过视觉或证据篡改全部拒绝。
