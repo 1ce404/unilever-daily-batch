@@ -185,6 +185,12 @@ def approved_copy_variants(b,key,plan,ref):
   if segment.get('role')=='product' and text!=segment['text']:raise RuntimeError('Product full name must remain exact')
  return texts
 
+def resume(a,cfg):
+ root=Path(a.run)/'task-bulk';plan=read(root/(a.brief+'-budget.json'));st=cb.State(a.run);job=st.data['briefs'][a.brief]
+ if not job.get('generation_id') or any(key not in st.videos or not st.videos[key].get('cut_id') for key in plan['keys']):raise RuntimeError('Resume requires all existing budgeted cuts')
+ if a.dry_run:print('DRY-RUN resume same native generation/cuts; zero new video generations');return
+ job['stage']='generating';st.save();print('Resumed existing generation collection only, zero generation submission')
+
 def refresh(a,cfg):
  """Refresh current owned native packaging before consuming the same nine speech slots."""
  root=Path(a.run)/'task-bulk';plan=read(root/(a.brief+'-budget.json'));st=cb.State(a.run);b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
@@ -374,5 +380,5 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','refresh','repair','repair_batch','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','refresh','resume','repair','repair_batch','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()

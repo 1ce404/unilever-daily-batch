@@ -136,7 +136,8 @@ def apply(a,cfg):
     save(out/(bid+'-before-'+digest(before)[:12]+'.json'),before);cb.api('PUT','/video-scripts/'+sid,body,tries=1)
   after=cb.api('GET','/video-scripts/'+sid);save(out/(bid+'-after.json'),after)
   if native_body(after,body)!=native_body(body,body):raise RuntimeError('Native script readback mismatch '+bid)
-  job.update(script_id=sid,texts=[s['text'] for s in b['segments']],configuration_only=True,stage='script_ready',pending_ai_segments=pending)
+  job.update(script_id=sid,texts=[s['text'] for s in b['segments']],configuration_only=True,pending_ai_segments=pending)
+  if not job.get('generation_id'):job['stage']='script_ready'
   st.save();save(out/(bid+'-applied.json'),{'script_id':sid,'body_digest':digest(native_body(body,body)),'copy_hash':copy_hash(b),'pending_ai_segments':pending})
   c=after['config'];result={'brief':bid,'script_id':sid,'pending_ai_segments':pending,'styles':len(c.get('subtitle_style',{}).get('style_ids',[])),'BGM':len(c.get('bgm',{}).get('props',{}).get('ids',[])),'voices':len(c.get('tts',{}).get('voices',[]))};results.append(result);print(json.dumps(result,ensure_ascii=False),flush=True)
  save(out/'summary.json',results)
