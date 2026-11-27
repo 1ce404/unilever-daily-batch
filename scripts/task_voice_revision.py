@@ -21,7 +21,7 @@ def retime(draft,oldtts,newtts,b,cfg):
   return min(total,bounds[i]+round((frame-oldbounds[i])*(bounds[i+1]-bounds[i])/(oldbounds[i+1]-oldbounds[i])))
  for c in result['clips']:
   start,end=c['from'],c['from']+c['durationInFrames']
-  if c['id']=='1-0' or c['id']=='snowkiss-soft-snow' or c['trackId']=='watermark':continue
+  if c['id']=='1-0' or c['id']=='snowkiss-soft-snow' or c['id']=='opening-match-dissolve' or c['trackId']=='watermark':continue
   if c['trackId']=='voiceover':c.update(**{'from':0,'durationInFrames':total});c['props'].update(src=newtts['audio_url'],startFrom=0,playbackRate=1,volume=1);continue
   if c['trackId']=='audio':c.update(**{'from':0,'durationInFrames':total});continue
   c['from']=tf(start);c['durationInFrames']=max(1,tf(end)-c['from'])

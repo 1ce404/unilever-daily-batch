@@ -98,9 +98,14 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
   group=[x for x in original if x['id'].split('-')[0]==s['id']]
   if not group:raise RuntimeError('No native main shots for segment '+s['id'])
   groups[s['id']]=group;oldbounds.append(group[0]['from'])
- oldbounds.append(d['composition']['durationInFrames']);by_path={urlparse(x.get('object_url') or '').path:x for x in library};used=set();main=[];sources=[];rng=random.Random(key)
+ oldbounds.append(d['composition']['durationInFrames']);by_path={urlparse(x.get('object_url') or '').path:x for x in library};used=set();main=[];sources=[];rng=random.Random(key);hook_rule=(cfg.get('continuous_demo_hooks') or {}).get(key)
  for i,s in enumerate(b['segments']):
-  begin,end=bounds[i:i+2];length=end-begin;tag=s['visual_tags'];base=groups[s['id']];ai_role=bool(tag) and all(t.startswith('AI-') for t in tag);approved_ai=set((cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]))
+  begin,end=bounds[i:i+2]
+  if hook_rule and i==0:end=hook_rule['durationInFrames']
+  if hook_rule and i==1:begin=hook_rule['durationInFrames']
+  length=end-begin
+  if length<=0:raise RuntimeError('Whole voice is too short for continuous opening')
+  tag=s['visual_tags'];base=groups[s['id']];ai_role=bool(tag) and all(t.startswith('AI-') for t in tag);approved_ai=set((cfg.get('approved_ai_hook_ids') or {}).get(b['brief_id'],[]))
   from demo_authorization import preview_ai_ids
   approved_ai.update(preview_ai_ids(b,cfg,key))
   material_brief=authorization_brief or b
@@ -108,7 +113,10 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
    from checked_batch_authorization import permits_checked_batch
    from common import aigc_tags
    a=authorization_brief.get('checked_batch_authorization') or {}
-   if not permits_checked_batch(authorization_brief) or key not in a.get('exact_video_keys',[]) or any(b.get(k)!=authorization_brief.get(k) for k in ['brief_id','product_key']) or aigc_tags(b)!=aigc_tags(authorization_brief):raise RuntimeError('Checked batch source permission mismatch')
+   delegated=permits_checked_batch(authorization_brief) and key in a.get('exact_video_keys',[])
+   from common import demo_problem
+   approved=(not approval_problem(authorization_brief) and not demo_problem(authorization_brief) and not aigc_problem(authorization_brief) and key.startswith(authorization_brief['brief_id']+'-V') and 2<=int(key.rsplit('-V',1)[1])<=authorization_brief['quantity'])
+   if not (delegated or approved) or any(b.get(k)!=authorization_brief.get(k) for k in ['brief_id','product_key']) or aigc_tags(b)!=aigc_tags(authorization_brief):raise RuntimeError('Batch source permission mismatch')
   if ai_role and (i!=0 or not approved_ai or aigc_problem(material_brief)):raise RuntimeError('AI source needs human approval or exact delegated production permission')
   meta=[x for x in library if set(tag)&set(x.get('tags',[])) and ((x.get('ai_generated') and x['id'] in approved_ai) if ai_role else (not x.get('ai_generated') and x.get('review_result')=='pass')) and x.get('object_url') and x['object_url'].split('?')[0].rsplit('/',1)[-1] not in (cfg.get('banned_footage_files') or {}) and not any(w in x.get('description','') for w in cb.banned_words_for(b['product_key']))];rng.shuffle(meta)
   valid={x['id'] for x in meta}
@@ -118,7 +126,7 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
    indexed={x['id']:x for x in meta};ordered=[indexed[x] for x in chosen]
   else:
    preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta
-  count=1 if ai_role or bool((cfg.get('continuous_demo_hooks') or {}).get(key)) and s.get('role')=='product' else max(len(base),math.ceil(length/60));cursor=begin
+  count=(1 if ai_role or hook_rule and (i==1 or s.get('role')=='product') else (max(1,math.ceil(length/60)) if hook_rule else max(len(base),math.ceil(length/60))));cursor=begin
   if allocation is not None:count=fit_source_count(ordered,used,length,count,cfg,fps)
   for j in range(count):
    frames=length//count+(j<length%count);pick=None
@@ -134,7 +142,9 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
  hook_rule=(cfg.get('continuous_demo_hooks') or {}).get(key)
  if hook_rule:
   from demo_authorization import permits_preview
-  if not permits_preview(b) or authorization_brief is not None:raise RuntimeError('Continuous hook is single delegated demo only')
+  from common import demo_problem
+  allowed=permits_preview(b) if authorization_brief is None else (not demo_problem(authorization_brief) or permits_checked_batch(authorization_brief))
+  if not allowed:raise RuntimeError('Continuous hook lacks current demo or batch permission')
   main,sources=continuous_demo_hook(main,sources,hook_rule,fps,key)
  caption=next(x for x in d['clips'] if x['trackId']=='overlay');style=copy.deepcopy(caption['props']);style.pop('text',None);style.update(font_size=36,top=78);native=[]
  for i,c in enumerate(cues):

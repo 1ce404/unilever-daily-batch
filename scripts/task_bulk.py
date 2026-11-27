@@ -274,7 +274,7 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  asset=read(assetfile);tts=copy.deepcopy(tts);tts['audio_url']=api_module.api('POST','/storage/download-tokens',{'object_key':asset['object_key']})['download_url']
  rows=copy.deepcopy(b)
  for s,text in zip(rows['segments'],got):s['text']=text;s.pop('caption_chunks',None)
- draft,evidence=td.build(rows,{**cut,'draft':d},tts,script,library,cfg,key,allocation=allocation['plan']['videos'][key]['segments'],authorization_brief=b if conditional else None)
+ draft,evidence=td.build(rows,{**cut,'draft':d},tts,script,library,cfg,key,allocation=allocation['plan']['videos'][key]['segments'],authorization_brief=b)
  styles=read(assets/'styles.json');styleid=script['config']['subtitle_style']['style_ids'][i%len(script['config']['subtitle_style']['style_ids'])];style=next(x for x in styles if x['id']==styleid)
  fieldmap={'alignType':'align_type','backgroundColor':'background_color','strokeColor':'stroke_color','strokeWidth':'stroke_width','textColor':'text_color','textShadow':'text_shadow','bold':'bold','italic':'italic','underline':'underline'}
  for x in draft['clips']:
@@ -300,6 +300,19 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  effects=read(assets/'effects.json');fxrows=[(j,s) for j,s in enumerate(script['segments']) if s.get('effect')];chosen_titles=random_title_templates(effects,key,len(fxrows));draft['clips']=[x for x in draft['clips'] if x['trackId']!='effect']
  for j,(segment_index,s) in enumerate(fxrows):
   template=chosen_titles[j];code,params=title_template_instance(template,s['effect']['params'],cfg);td.validate_code(code);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':code,'params':params,'x':0,'y':0,'scale':1}})
+ visuals=(cfg.get('continuous_batch_visuals') or {}).get(key)
+ if visuals:
+  from task_caption_repair import frame_main
+  draft=frame_main(draft,visuals.get('main_framing',{}))
+  if visuals.get('snow'):
+   draft['clips'].append({'id':'snowkiss-soft-snow','trackId':'effect','from':0,'durationInFrames':150,'component':'RemotionClip','props':{'code':td.SNOW_CODE,'params':{},'x':0,'y':0,'scale':1}})
+  if visuals.get('dissolve_image'):
+   from product_scene import upload
+   from task_voice_revision import DISSOLVE
+   image=Path(visuals['dissolve_image'])
+   if hashlib.sha256(image.read_bytes()).hexdigest()!=visuals['dissolve_sha256']:raise RuntimeError('Continuous match frame changed')
+   obj=upload(image,work);url=api_module.api('POST','/storage/download-tokens',{'object_key':obj})['download_url']
+   draft['clips'].append({'id':'opening-match-dissolve','trackId':'effect','from':150,'durationInFrames':8,'component':'RemotionClip','props':{'code':DISSOLVE,'params':{'src':url},'x':0,'y':0,'scale':1}})
  from quality_contract import contract
  if contract(cfg).get('require_title_entry_sound'):
   from title_audio import from_inventory
