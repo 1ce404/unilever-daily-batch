@@ -37,7 +37,7 @@ def semantic_cues(tts, texts, fps, max_units=10, chunks=None):
     atoms = sorted((m.start(), m.end()) for term in TERMS
                    for m in re.finditer(re.escape(term), whole))
     boundaries = {0, *[t['b'] for t in tokens]}
-    if any(a not in boundaries or b not in boundaries for a, b in atoms):
+    if chunks is None and any(a not in boundaries or b not in boundaries for a, b in atoms):
         raise RuntimeError('A required name boundary bisects a native token; no guessed timing')
     planned=[]
     if chunks is not None:
@@ -127,6 +127,25 @@ def reflow(draft, tts, texts, cfg, chunks=None):
     return result
 
 
+def patch_reviewed_sources(draft,changes,library,brief):
+    """Only explicit real-source substitutions in already owned main clips."""
+    from urllib.parse import urlparse
+    result=copy.deepcopy(draft);fps=result['composition']['fps'];clips={c['id']:c for c in result['clips']};segments={x['id']:x for x in brief['segments']}
+    for cid,rule in changes.items():
+        c=clips[cid];m=library[rule['segment_id']];role=segments[cid.split('-')[0]]
+        start=rule['startFrom'];finish=start+c['durationInFrames'];proof=Path(rule['evidence_path'])
+        if (c['trackId']!='main' or m.get('ai_generated') or m.get('review_result')!='pass'
+            or not set(m.get('tags') or [])&set(role['visual_tags']) or type(start) is not int
+            or not rule['safe_start_frame']<=start<finish<=rule['safe_end_frame']
+            or finish>int((m['end_ms']-m['begin_ms'])*fps/1000)
+            or not proof.is_absolute() or not proof.is_file()
+            or hashlib.sha256(proof.read_bytes()).hexdigest()!=rule['evidence_sha256']):
+            raise RuntimeError('Unreviewed or out-of-window source replacement '+cid)
+        c['props'].update(src=m['object_url'],alt=m.get('description',''),startFrom=start)
+    paths=[urlparse(c['props']['src']).path for c in result['clips'] if c['trackId']=='main']
+    if len(paths)!=len(set(paths)):raise RuntimeError('Reviewed replacement duplicates an existing source')
+    return result
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
@@ -169,13 +188,20 @@ def main():
     out = root/'caption-repair'/plan['revision']
     out.mkdir(parents=True, exist_ok=True)
     prepared = []
+    libraries = {}
     for key in plan['keys']:
         v = st.videos[key]
         if v.get('customer_rework_required') or v['brief_id'] not in set(cfg.get('task_native_bulk_briefs') or ('1126-L02', '1126-L03')) or key.endswith('V01'):
             raise RuntimeError('Outside authorized new-batch repair scope '+key)
         cut = cb.api('GET', '/video-cuts/'+v['cut_id'])
         tts = td.load(root/'task-bulk'/key/'tts.json')
-        draft = reflow(cut['draft'], tts, v['texts'], cfg, chunks=plan.get('caption_chunks',{}).get(key))
+        changes=(plan.get('source_replacements') or {}).get(key,{})
+        source_base=cut['draft']
+        if changes:
+            pk=briefs[v['brief_id']]['product_key']
+            if pk not in libraries:libraries[pk]={x['id']:x for x in cb.list_segments(cfg['products'][pk]['clipo_product_id'])}
+            source_base=patch_reviewed_sources(source_base,changes,libraries[pk],briefs[v['brief_id']])
+        draft = reflow(source_base, tts, v['texts'], cfg, chunks=plan.get('caption_chunks',{}).get(key))
         issues = cut_checks(briefs[v['brief_id']], draft, v.get('voice'))
         if issues:
             raise RuntimeError('Caption repair gate '+key+': '+str(issues))
@@ -210,8 +236,17 @@ def main():
         v.update(render_job=job['job_id'], stage='rendering', ai_review=None, ai_reason=None, qc_issues=[], quality_facts=cut_facts(back['draft']), caption_repair=str(receipt))
         for field in ('object_key','error','last_error','media_qc','visual_review','review_waived'):
             v.pop(field, None)
+        original=Path(v.get('task_bulk_prepared_path') or root/'task-bulk'/key/'prepared.json')
+        if original.exists():
+            actual=td.load(original);actual['draft']=draft
+            for row in actual['evidence']['source_windows']:
+                change=(plan.get('source_replacements') or {}).get(key,{}).get(row['clip'])
+                if change:
+                    pk=briefs[v['brief_id']]['product_key'];m=libraries[pk][change['segment_id']]
+                    row.update(source_segment_id=m['id'],source_path=__import__('urllib.parse',fromlist=['urlparse']).urlparse(m['object_url']).path,startFrom=change['startFrom'],source_available_frames=int((m['end_ms']-m['begin_ms'])*draft['composition']['fps']/1000))
+            target=out/(key+'-prepared.json');td.save(target,actual);v['task_bulk_prepared_path']=str(target.resolve())
         st.save()
-        print(key,'caption repair rendering',job['job_id'],flush=True)
+        print(key,'caption/source repair rendering',job['job_id'],flush=True)
 
 
 if __name__ == '__main__':

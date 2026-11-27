@@ -1,9 +1,11 @@
 import copy
+import tempfile
+import hashlib
 import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from task_caption_repair import semantic_cues, norm, reflow
+from task_caption_repair import semantic_cues, norm, reflow, patch_reviewed_sources
 
 
 class CaptionRepairTest(unittest.TestCase):
@@ -68,3 +70,17 @@ class ExplicitDisplayChunksTest(unittest.TestCase):
 
 if __name__=='__main__':
     unittest.main()
+
+class ReviewedSourceRepairTest(unittest.TestCase):
+    def test_safe_substitution_preserves_audio_and_rejects_changed_proof(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proof=Path(tmp)/'proof.json';proof.write_text('actual source frames')
+            voice={'id':'voice','trackId':'voiceover','props':{'src':'voice.wav'}}
+            draft={'composition':{'fps':30},'clips':[{'id':'4-0','trackId':'main','durationInFrames':30,'props':{'src':'https://x/old.mp4'}},voice]}
+            brief={'segments':[{'id':'4','visual_tags':['texture']} ]}
+            library={'new':{'id':'new','tags':['texture'],'review_result':'pass','ai_generated':False,'begin_ms':0,'end_ms':3000,'object_url':'https://x/new.mp4'}}
+            changes={'4-0':{'segment_id':'new','startFrom':15,'safe_start_frame':10,'safe_end_frame':60,'evidence_path':str(proof),'evidence_sha256':hashlib.sha256(proof.read_bytes()).hexdigest()}}
+            result=patch_reviewed_sources(draft,changes,library,brief)
+            self.assertEqual(result['clips'][1],voice);self.assertEqual(draft['clips'][0]['props']['src'],'https://x/old.mp4');self.assertEqual(result['clips'][0]['props']['src'],'https://x/new.mp4')
+            proof.write_text('changed')
+            with self.assertRaises(RuntimeError):patch_reviewed_sources(draft,changes,library,brief)

@@ -84,6 +84,11 @@ def inspect(a,cfg):
   if not sid:continue
   actual=cb.api('GET','/video-scripts/'+sid);save(out/(bid+'-current.json'),actual)
   print(bid,sid,'matches planned',native_body(actual,item['body'])==native_body(item['body'],item['body']),flush=True)
+  if getattr(a,'generations',False):
+   gid=st.data.get('briefs',{}).get(bid,{}).get('generation_id')
+   if gid:
+    generation=cb.api('GET','/video-cut-generations/'+gid);save(out/(bid+'-generation-current.json'),generation)
+    print(bid,'native generation',gid,generation.get('status'),'cut records',len(generation.get('cut_ids') or []),'error',generation.get('error_message'),flush=True)
 
 def apply(a,cfg):
  if not a.dry_run:
@@ -130,5 +135,5 @@ def apply(a,cfg):
  save(out/'summary.json',results)
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['inventory','inspect','apply']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--covers',action='store_true');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['inventory','inspect','apply']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--plan',required=True);p.add_argument('--covers',action='store_true');p.add_argument('--generations',action='store_true');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
