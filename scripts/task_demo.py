@@ -118,7 +118,7 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
    indexed={x['id']:x for x in meta};ordered=[indexed[x] for x in chosen]
   else:
    preferred=[by_path.get(urlparse(x['props']['src']).path) for x in base];ordered=[x for x in preferred if x and x['id'] in valid]+meta
-  count=1 if ai_role else max(len(base),math.ceil(length/60));cursor=begin
+  count=1 if ai_role or bool((cfg.get('continuous_demo_hooks') or {}).get(key)) and s.get('role')=='product' else max(len(base),math.ceil(length/60));cursor=begin
   if allocation is not None:count=fit_source_count(ordered,used,length,count,cfg,fps)
   for j in range(count):
    frames=length//count+(j<length%count);pick=None
@@ -159,7 +159,7 @@ def build(b,cut,tts,script,library,cfg,key,allocation=None,authorization_brief=N
  d['clips']=main+native+[voice]+extras;d['composition']['durationInFrames']=total
  if (cfg.get('watermark') or {}).get('add',True) and any(all(t.startswith('AI-') for t in s['visual_tags']) for s in b['segments']):
   from footage_qc import with_watermark
-  d=with_watermark(d,[(bounds[i],bounds[i+1]-bounds[i]) for i,s in enumerate(b['segments']) if s['visual_tags'] and all(t.startswith('AI-') for t in s['visual_tags'])])
+  d=with_watermark(d,[(x['from'],x['durationInFrames']) for x in main if (by_path.get(urlparse(x['props']['src']).path) or {}).get('ai_generated')])
  return d,{'segment_frames':bounds,'source_windows':sources,'native_word_cues':cues,'whole_voice_tracks':1}
 
 def main():
