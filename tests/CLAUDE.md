@@ -35,3 +35,5 @@
 - test_task_configuration.py: 新批次配置必须绑定已审文案与真实切片ID；明确待生成AI，不把计划池当已存在，不放宽人审门。
 
 - test_demo_authorization.py: 先做demo的明确许可、单条AI绑定、改稿/改标签失效及量产仍需客户demo批准。
+
+- test_caption_semantics.py: “洗个头 / 发丝”真实字幕边界保护，阻止跨句词错分。

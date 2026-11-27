@@ -27,5 +27,9 @@
   "require_upper_title_samples": true,
   "require_unique_batch_copy": true,
   "require_title_entry_sound": true,
-  "title_sound_onset_tolerance_frames": 1
+  "title_sound_onset_tolerance_frames": 1,
+  "caption_protected_terms": [
+    "发丝",
+    "洗个头"
+  ]
 }

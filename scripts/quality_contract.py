@@ -67,6 +67,10 @@ def cut_issues(d,cfg):
  rules=contract(cfg)
  if not rules:return []
  out=[];seen={};end=0;facts=cut_facts(d)
+ cues=sorted([x for x in d.get('clips',[]) if x.get('trackId')=='overlay'],key=lambda x:x.get('from',0));words=[re.sub(r'[^\w\u4e00-\u9fff]','',x.get('props',{}).get('text','')) for x in cues];whole=''.join(words);boundaries=[];offset=0
+ for word in words[:-1]:offset+=len(word);boundaries.append(offset)
+ for term in rules.get('caption_protected_terms',[]):
+  if any(m.start()<z<m.end() for m in re.finditer(re.escape(term),whole) for z in boundaries):out.append('字幕语义词组被切断：'+term)
  if facts['upper_title_count']<rules['min_upper_titles']:out.append('整条视频没有足够的花字特效')
  if rules.get('require_title_entry_sound'):
   from title_audio import missing_title_sounds
