@@ -5,7 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
-from task_caption_repair import semantic_cues, norm, reflow, patch_reviewed_sources, fit_native_effect_instances
+from task_caption_repair import semantic_cues, norm, reflow, patch_reviewed_sources, fit_native_effect_instances, frame_main
 
 
 class CaptionRepairTest(unittest.TestCase):
@@ -92,3 +92,45 @@ class NativeInstanceFitTest(unittest.TestCase):
         rule={'3-x0':{'source_code_sha256':hashlib.sha256(code.encode()).hexdigest(),'scale':.5,'translate_x':240,'translate_y':-40}}
         actual=fit_native_effect_instances(draft,rule)
         self.assertIn('function NativeTitle(props)',actual['clips'][0]['props']['code']);self.assertEqual(actual['clips'][0]['props']['code'].count('export const Composition'),1);self.assertEqual(actual['clips'][0]['props']['params'],draft['clips'][0]['props']['params']);self.assertEqual(draft['clips'][0]['props']['code'],code)
+
+
+class NativeMainFramingTest(unittest.TestCase):
+    def setup_case(self,tmp,width=1080,height=1920):
+        proof=Path(tmp)/'renderer.json';proof.write_text('inspected unit=min(width,height)/1080; translate then scale')
+        draft={'composition':{'width':width,'height':height},'clips':[
+            {'id':'7-0','trackId':'main','component':'VideoClip','props':{'src':'same.mp4','startFrom':9,'muted':True}},
+            {'id':'voice','trackId':'voiceover','component':'AudioClip','props':{'src':'same-whole.wav'}}]}
+        rules={'7-0':{'scale':1.3,'x':-140,'y':170,'renderer_evidence_path':str(proof),'renderer_evidence_sha256':hashlib.sha256(proof.read_bytes()).hexdigest()}}
+        return draft,rules,proof
+
+    def test_valid_center_transform_retains_source_timing_and_audio(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft,rules,_=self.setup_case(tmp);original=copy.deepcopy(draft);out=frame_main(draft,rules)
+            self.assertEqual(draft,original);self.assertEqual(out['clips'][1],original['clips'][1])
+            self.assertEqual(out['clips'][0]['props'],dict(original['clips'][0]['props'],scale=1.3,x=-140,y=170))
+
+    def test_scaled_canvas_uses_renderer_unit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft,rules,_=self.setup_case(tmp,540,960)
+            self.assertEqual(frame_main(draft,rules)['clips'][0]['props']['y'],170)
+            rules['7-0']['x']=163
+            with self.assertRaises(RuntimeError):frame_main(draft,rules)
+
+    def test_changed_evidence_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft,rules,proof=self.setup_case(tmp);proof.write_text('changed')
+            with self.assertRaises(RuntimeError):frame_main(draft,rules)
+
+    def test_non_main_or_motion_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft,rules,_=self.setup_case(tmp);draft['clips'][0]['trackId']='effect'
+            with self.assertRaises(RuntimeError):frame_main(draft,rules)
+            draft['clips'][0]['trackId']='main';draft['clips'][0]['motion']={'type':'zoom'}
+            with self.assertRaises(RuntimeError):frame_main(draft,rules)
+
+    def test_non_finite_bool_and_exposed_edges_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            draft,rules,_=self.setup_case(tmp)
+            for field,value in [('x',float('nan')),('scale',True),('scale',1.6),('x',163),('y',289)]:
+                candidate=copy.deepcopy(rules);candidate['7-0'][field]=value
+                with self.subTest(field=field,value=value),self.assertRaises(RuntimeError):frame_main(draft,candidate)

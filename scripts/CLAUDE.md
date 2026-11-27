@@ -89,3 +89,7 @@ title_audio.py: 从当次真实短音效库逐处同步花字出场，随机轮�
 checked_batch_authorization.py: 用户明确委托检查后量产的纯本地条件校验，不写人审通过；当前demo、实际证据和数量范围每次从权威状态重新绑定。
 
 独立字幕修复可合并明确已核实拍源替换：校验同角色、源窗、证据SHA、片内去重，保留配音/其他包装并更新实际来源凭据；原生产快照不变。
+
+renderer_inspect.py: 只读抓当前Clipo剪辑页同源前端模块与SHA，用真实VideoClip变换源码核参数，不写平台/State，不把本地裁图当云端验收。
+
+明确main_framing返工仅改指定VideoClip的scale/x/y，绑定已核renderer证据SHA并拒绝露出画布边缘；保留箭头、声音、字幕与所有其他轨道。

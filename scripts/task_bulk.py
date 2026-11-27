@@ -69,6 +69,8 @@ def repair(a,cfg):
   matched=[c for c in draft['clips'] if c['id']==cid]
   if len(matched)!=1 or matched[0]['trackId']!='main' or not isinstance(scale,(int,float)) or not 1<scale<=1.05:raise RuntimeError('Only explicit small main-frame crop permitted')
   matched[0]['props']['scale']=scale
+ from task_caption_repair import frame_main
+ draft=frame_main(draft,plan.get('main_framing',{}))
  expected=copy.deepcopy([x for x in cut['draft']['clips'] if x['trackId']!='main']);trim_title_ends(expected,plan.get('effect_end_frames',{}));trim_title_ends(draft['clips'],plan.get('effect_end_frames',{}))
  if plan.get('remove_task_corner_label'):
   wm=cfg.get('watermark') or {}
@@ -97,6 +99,7 @@ def repair(a,cfg):
    change=plan['clips'].get(x['clip'])
    if change:
     m=library[change['segment_id']];x.update(source_segment_id=m['id'],source_path=td.urlparse(m['object_url']).path,startFrom=change['startFrom'],source_available_frames=math.floor((m['end_ms']-m['begin_ms'])*fps/1000))
+  if plan.get('main_framing'):prepared['evidence']['reviewed_main_framing']=plan['main_framing']
   actual=out/(sig+'-prepared.json');save(actual,prepared);v['task_bulk_prepared_path']=str(actual.resolve())
  v.update(render_job=job['job_id'],stage='rendering',ai_review=None,ai_reason=None,qc_issues=[],quality_facts=cut_facts(draft))
  for k in ['error','last_error','object_key','bad_footage']:v.pop(k,None)

@@ -171,6 +171,24 @@ def fit_native_effect_instances(draft,transforms):
         c['props']['code']=code+wrapper
     return result
 
+
+def frame_main(draft, changes):
+    """Apply evidence-bound native framing to explicit main clips, without exposing edges."""
+    import math
+    result=copy.deepcopy(draft);clips={c['id']:c for c in result['clips']}
+    width=result['composition']['width'];height=result['composition']['height'];unit=min(width,height)/1080
+    for cid, rule in changes.items():
+        c=clips[cid];proof=Path(rule['renderer_evidence_path']);scale=rule['scale'];x=rule['x'];y=rule['y']
+        if (c['trackId']!='main' or c['component']!='VideoClip' or c.get('motion')
+            or not proof.is_absolute() or not proof.is_file()
+            or hashlib.sha256(proof.read_bytes()).hexdigest()!=rule['renderer_evidence_sha256']
+            or any(type(z) not in (int,float) or not math.isfinite(z) for z in (scale,x,y))
+            or not 1<=scale<=1.5 or abs(x*unit)>width*(scale-1)/2 or abs(y*unit)>height*(scale-1)/2):
+            raise RuntimeError('Unreviewed main framing or exposed canvas edge '+cid)
+        c['props'].update(scale=scale,x=x,y=y)
+    return result
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--config', required=True)
@@ -226,6 +244,7 @@ def main():
             pk=briefs[v['brief_id']]['product_key']
             if pk not in libraries:libraries[pk]={x['id']:x for x in cb.list_segments(cfg['products'][pk]['clipo_product_id'])}
             source_base=patch_reviewed_sources(source_base,changes,libraries[pk],briefs[v['brief_id']])
+        source_base=frame_main(source_base,(plan.get('main_framing') or {}).get(key,{}))
         source_base=fit_native_effect_instances(source_base,(plan.get('effect_instance_transforms') or {}).get(key,{}))
         from product_scene import validate_code
         for c in source_base['clips']:
@@ -268,6 +287,7 @@ def main():
         original=Path(v.get('task_bulk_prepared_path') or root/'task-bulk'/key/'prepared.json')
         if original.exists():
             actual=td.load(original);actual['draft']=draft
+            if (plan.get('main_framing') or {}).get(key):actual['evidence']['reviewed_main_framing']=plan['main_framing'][key]
             for row in actual['evidence']['source_windows']:
                 change=(plan.get('source_replacements') or {}).get(key,{}).get(row['clip'])
                 if change:

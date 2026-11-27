@@ -40,3 +40,5 @@
 
 - test_checked_batch_authorization.py: 条件生产许可绑定当前demo/文案/AI标签和7类实际证据，拒绝过期或扩大范围。
 - test_font_variation.py: 字体候选与真实字体家族计数独立于字幕配色样式。
+
+- test_task_caption_repair.py: 保留真实词级配音、整词字幕、绑定源窗证据；原生主画面构图只改指定镜头，拒绝来源证据篡改、非有限值和露边。
