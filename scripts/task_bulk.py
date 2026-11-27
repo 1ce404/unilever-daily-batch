@@ -120,6 +120,24 @@ def repair_batch(a,cfg):
  finally:cb.list_segments=original
  print('DRY-RUN' if a.dry_run else 'APPLIED','explicit existing-cut repairs',len(rows),'TTS0 new-videos0',flush=True)
 
+def random_title_templates(effects,key,count):
+ """Draw from the current inspected catalog without a style/category whitelist.
+ Two-title batches traverse a seeded shuffle of distinct ordered pairs, so nearby
+ videos vary while re-running a video preserves its exact packaging choices.
+ """
+ import random
+ if count<1:return []
+ if len({x.get('id') for x in effects})!=len(effects) or len(effects)<count:raise RuntimeError('Insufficient distinct current title templates')
+ bid,number=key.rsplit('-V',1);index=int(number)-2
+ if index<0:raise RuntimeError('Bulk title selection requires a remaining video key')
+ seed=bid+'|current-title-catalog|'+'|'.join(x['id'] for x in effects)
+ if count==2:
+  pairs=[(a,b) for a in range(len(effects)) for b in range(len(effects)) if a!=b];random.Random(seed).shuffle(pairs)
+  return [effects[j] for j in pairs[index%len(pairs)]]
+ if count==1:
+  order=list(effects);random.Random(seed).shuffle(order);return [order[index%len(order)]]
+ return random.Random(seed+'|'+key).sample(effects,count)
+
 def budget(a,cfg):
  if not a.dry_run:raise RuntimeError('Budget requires --dry-run; no paid operations here')
  st=cb.State(a.run);b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
@@ -127,8 +145,8 @@ def budget(a,cfg):
  sid=st.data['briefs'][a.brief]['script_id'];script=cb.api('GET','/video-scripts/'+sid);root=Path(a.run)/'task-bulk';root.mkdir(exist_ok=True)
  save(root/(a.brief+'-script.json'),script);save(root/(a.brief+'-library.json'),cb.list_segments(script['product_id']));save(root/'styles.json',pages('/resource/subtitle-style'))
  music=read(Path(a.run)/'clipo/task-inventory/bgm.json');save(root/'music.json',music)
- ids=(cfg.get('batch_native_variants') or {}).get('upper_effect_ids') or ['6afd05026af35ab34a0a5cb4','6afd05026af35ab34a0a5cb5','6afd05026af35ab34a0a5cb7','6afd05026af35ab34a0a5cb9']
- if len(ids)!=4 or len(set(ids))!=4:raise RuntimeError('Four distinct current upper-effect templates required')
+ ids=(cfg.get('batch_native_variants') or {}).get('upper_effect_ids') or []
+ if len(ids)<3 or len(set(ids))!=len(ids):raise RuntimeError('At least three distinct current inspected title templates required')
  save(root/'fonts.json',read(Path(a.run)/'clipo/task-inventory/fonts.json'))
  with ThreadPoolExecutor(max_workers=4) as pool:effects=list(pool.map(lambda x:cb.api('GET','/resource/remotion-effect-template/'+x),ids))
  save(root/'effects.json',effects)
@@ -261,9 +279,9 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
   for rule in (cfg.get('caption_highlights') or {}).get('rules',[]):
    if any(term in text for term in rule['terms']):p['text_color']=('#8F5700' if rule['color']=='#FFD36A' else '#944868') if p.get('text_color')=='#000000' else rule['color'];break
   x['component']='SubtitleClip';x['props']=p
- effects=read(assets/'effects.json');patterns=[(1,2,3),(2,3,1),(3,1,2),(0,2,1),(1,0,3),(3,2,0),(0,1,2),(2,0,3),(3,0,1)];fxrows=[(j,s) for j,s in enumerate(script['segments']) if s.get('effect')];draft['clips']=[x for x in draft['clips'] if x['trackId']!='effect']
+ effects=read(assets/'effects.json');fxrows=[(j,s) for j,s in enumerate(script['segments']) if s.get('effect')];chosen_titles=random_title_templates(effects,key,len(fxrows));draft['clips']=[x for x in draft['clips'] if x['trackId']!='effect']
  for j,(segment_index,s) in enumerate(fxrows):
-  template=effects[patterns[i%len(patterns)][j%3]];td.validate_code(template['code']);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':s['effect']['params'],'x':0,'y':0,'scale':1}})
+  template=chosen_titles[j];td.validate_code(template['code']);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':s['effect']['params'],'x':0,'y':0,'scale':1}})
  from quality_contract import contract
  if contract(cfg).get('require_title_entry_sound'):
   from title_audio import from_inventory
@@ -272,7 +290,7 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  from common import voiced
  prod=cfg['products'][b['product_key']];issues=[m for t in got for level,m in lint_text(t,cfg,prod) if level=='error']+[m for level,m in lint_script(got,voiced(b['segments']),b,cfg,prod) if level=='error']
  if issues:raise RuntimeError('Approved copy invalid '+str(issues))
- v.update(voice=voice['voice_type'],texts=got,copy_issues=[],voice_cmd=False,duration_s=draft['composition']['durationInFrames']/draft['composition']['fps'],native_variant={'subtitle_style_id':styleid,'font_id':fontid,'font_family':font['name'],'bgm_id':musicid,'upper_templates':[effects[z]['id'] for z in patterns[i%len(patterns)]],'voice_gain_db':asset['gain_db']})
+ v.update(voice=voice['voice_type'],texts=got,copy_issues=[],voice_cmd=False,duration_s=draft['composition']['durationInFrames']/draft['composition']['fps'],native_variant={'subtitle_style_id':styleid,'font_id':fontid,'font_family':font['name'],'bgm_id':musicid,'upper_templates':[x['id'] for x in chosen_titles],'voice_gain_db':asset['gain_db']})
  save(work/'prepared.json',{'draft':draft,'evidence':evidence,'variant':v['native_variant'],'voice':v['voice']})
  if repair_revision:v['task_bulk_prepared_path']=str((work/'prepared.json').resolve())
  return draft

@@ -3,7 +3,7 @@ import sys,unittest,tempfile,json,argparse
 from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from task_bulk import validate_budget,allocate,trim_title_ends
+from task_bulk import validate_budget,allocate,trim_title_ends,random_title_templates
 class TaskBulkBudgetTest(unittest.TestCase):
  def setUp(self):self.plan={'at':100,'keys':['B-V02','B-V03']}
  def test_approved_remaining_video_is_allowed(self):validate_budget(self.plan,'B-V02',101)
@@ -26,4 +26,18 @@ class TaskBulkBudgetTest(unittest.TestCase):
    with patch('task_bulk.cb.load_briefs',return_value=[{'brief_id':'B','segments':[{'id':'1','visual_tags':['头发顺滑']}]}]):
     with self.assertRaisesRegex(RuntimeError,'frequency cap'):allocate(args,{})
     plan['source_groups']['b']='second-person';p.write_text(json.dumps(plan));allocate(args,{})
+class RandomTitleSelectionTest(unittest.TestCase):
+ def test_any_current_style_can_be_selected_without_named_type_filter(self):
+  rows=[{'id':str(i),'name':name} for i,name in enumerate(['漫画','电商','新闻','蓝金','日常','综艺'])]
+  chosen=[random_title_templates(rows,'B-V%02d'%i,2) for i in range(2,32)]
+  self.assertEqual({x['id'] for pair in chosen for x in pair},{x['id'] for x in rows})
+  self.assertEqual(len({tuple(x['id'] for x in p) for p in chosen}),30)
+  for pair in chosen:self.assertEqual(len({x['id'] for x in pair}),2)
+ def test_same_video_is_stable_and_catalog_is_not_mutated(self):
+  rows=[{'id':str(i)} for i in range(5)];before=json.dumps(rows)
+  self.assertEqual(random_title_templates(rows,'B-V02',2),random_title_templates(rows,'B-V02',2));self.assertEqual(json.dumps(rows),before)
+ def test_missing_and_duplicate_templates_are_rejected(self):
+  for rows in [[{'id':'a'}],[{'id':'a'},{'id':'a'}]]:
+   with self.assertRaises(RuntimeError):random_title_templates(rows,'B-V02',2)
+
 if __name__=='__main__':unittest.main()
