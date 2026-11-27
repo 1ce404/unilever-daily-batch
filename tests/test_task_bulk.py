@@ -4,6 +4,15 @@ from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from task_bulk import validate_budget,allocate,trim_title_ends,random_title_templates,title_template_instance
+class ContinuousFramingTest(unittest.TestCase):
+ def test_variable_shot_count_uses_actual_source_identity(self):
+  from task_bulk import continuous_source_framing
+  d={'clips':[{'id':'8-0','trackId':'main'},{'id':'8-1','trackId':'main'}]};e={'source_windows':[{'clip':'8-0','source_segment_id':'a'},{'clip':'8-1','source_segment_id':'b'}]};v={'framing_segment_id':'8','source_framing':{'a':{'scale':1.3},'b':{'scale':1.2},'unused':{'scale':1.4}}}
+  with patch('task_caption_repair.frame_main',return_value=d) as fn:
+   continuous_source_framing(d,e,v);self.assertEqual(fn.call_args.args[1],{'8-0':{'scale':1.3},'8-1':{'scale':1.2}})
+  e['source_windows'][0]['clip']='3-0'
+  with self.assertRaisesRegex(RuntimeError,'outside explicit'):continuous_source_framing(d,e,v)
+
 class TaskBulkBudgetTest(unittest.TestCase):
  def setUp(self):self.plan={'at':100,'keys':['B-V02','B-V03']}
  def test_approved_remaining_video_is_allowed(self):validate_budget(self.plan,'B-V02',101)

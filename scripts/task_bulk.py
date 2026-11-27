@@ -24,6 +24,23 @@ def trim_title_ends(clips,ends):
   if c['trackId']!='effect' or not isinstance(end,int) or not c['from']<end<=c['from']+c['durationInFrames']:raise RuntimeError('Only shortening an existing title is allowed')
   c['durationInFrames']=end-c['from']
 
+def continuous_source_framing(draft,evidence,visuals):
+ """Bind task-only source transforms to actual variable-count CTA clips."""
+ from task_caption_repair import frame_main
+ changes=copy.deepcopy(visuals.get('main_framing',{}));rules=visuals.get('source_framing',{})
+ for row in evidence['source_windows']:
+  rule=rules.get(row['source_segment_id'])
+  if rule:
+   if row['clip'].split('-')[0] != visuals.get('framing_segment_id'):raise RuntimeError('Source framing outside explicit segment')
+   if row['clip'] in changes:raise RuntimeError('Ambiguous source and clip framing')
+   changes[row['clip']]=rule
+ result=frame_main(draft,changes)
+ for cid in visuals.get('title_end_at_first_main_ids',[]):
+  title=next(c for c in result['clips'] if c['id']==cid and c['trackId']=='effect')
+  shot=next(c for c in result['clips'] if c['trackId']=='main' and c['id']==cid.split('-')[0]+'-0')
+  trim_title_ends(result['clips'],{cid:min(title['from']+title['durationInFrames'],shot['from']+shot['durationInFrames'])})
+ return result
+
 def hold(a,cfg):
  st=cb.State(a.run);plan=read(a.plan);out=Path(a.run)/'revisions/customer-bulk-hold';out.mkdir(parents=True,exist_ok=True)
  if not plan.get('authorization') or not plan.get('reason') or not plan.get('keys'):raise RuntimeError('Missing explicit user rejection')
@@ -302,8 +319,7 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
   template=chosen_titles[j];code,params=title_template_instance(template,s['effect']['params'],cfg);td.validate_code(code);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':code,'params':params,'x':0,'y':0,'scale':1}})
  visuals=(cfg.get('continuous_batch_visuals') or {}).get(key)
  if visuals:
-  from task_caption_repair import frame_main
-  draft=frame_main(draft,visuals.get('main_framing',{}))
+  draft=continuous_source_framing(draft,evidence,visuals)
   if visuals.get('snow'):
    draft['clips'].append({'id':'snowkiss-soft-snow','trackId':'effect','from':0,'durationInFrames':150,'component':'RemotionClip','props':{'code':td.SNOW_CODE,'params':{},'x':0,'y':0,'scale':1}})
   if visuals.get('dissolve_image'):
