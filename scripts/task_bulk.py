@@ -172,6 +172,28 @@ def title_template_instance(template,params,cfg):
   code=code.replace(before,after)
  return code,out
 
+def approved_copy_variants(b,key,plan,ref):
+ from common import copy_hash,approval_problem
+ if approval_problem(b) or demo_problem(b):raise RuntimeError('Actual mother-script/demo approval required')
+ source=Path(ref['path'])
+ if hashlib.sha256(source.read_bytes()).hexdigest()!=ref['sha256']:raise RuntimeError('Reviewed rewrite plan changed')
+ reviewed=read(source)
+ if reviewed.get('base_copy_hash')!=copy_hash(b) or not reviewed.get('instruction') or reviewed.get('reviewer')!='Agent' or set(reviewed['videos'])!=set(plan['keys']):raise RuntimeError('Rewrite scope mismatch')
+ row=reviewed['videos'][key];texts=row['texts']
+ if row['texts_sha256']!=td.digest(texts) or len(texts)!=len(b['segments']) or any(not isinstance(x,str) or not x for x in texts):raise RuntimeError('Rewrite content mismatch')
+ for text,segment in zip(texts,b['segments']):
+  if segment.get('role')=='product' and text!=segment['text']:raise RuntimeError('Product full name must remain exact')
+ return texts
+
+def refresh(a,cfg):
+ """Refresh current owned native packaging before consuming the same nine speech slots."""
+ root=Path(a.run)/'task-bulk';plan=read(root/(a.brief+'-budget.json'));st=cb.State(a.run);b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
+ if demo_problem(b) or any((root/key/'tts-intent.json').exists() for key in plan['keys']):raise RuntimeError('Cannot change bulk resources after speech consumption')
+ sid=st.data['briefs'][a.brief]['script_id'];actual=cb.api('GET','/video-scripts/'+sid)
+ if [x['content'] for x in actual['segments']]!=[x['text'] for x in b['segments']]:raise RuntimeError('Mother copy changed')
+ if not a.dry_run:save(root/(a.brief+'-script-before-resource-refresh.json'),read(root/(a.brief+'-script.json')));save(root/(a.brief+'-script.json'),actual)
+ print('DRY-RUN' if a.dry_run else 'SAVED','current native packaging; same budget keys/time, zero generation/TTS')
+
 def budget(a,cfg):
  if not a.dry_run:raise RuntimeError('Budget requires --dry-run; no paid operations here')
  st=cb.State(a.run);b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
@@ -259,6 +281,9 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
   texts=row.get('texts');signature=td.digest(texts)
   if key not in a['exact_video_keys'] or not texts or row.get('texts_sha256')!=signature:raise RuntimeError('Actual per-video rewrite not pinned in inspected plan')
   v['native_platform_texts_before_override']=got;got=texts;v['texts']=got;v['whole_voice_copy_source']={'source':'Agent inspected per-video rewrite plan','file':refs[0]['path'],'sha256':signature}
+ ref=(cfg.get('task_batch_copy_variants') or {}).get(b['brief_id'])
+ if ref:
+  v['native_platform_texts_before_override']=got;got=approved_copy_variants(b,key,plan,ref);v['texts']=got;v['whole_voice_copy_source']={'source':'Agent-reviewed batch rewrite of approved mother script','file':ref['path'],'sha256':td.digest(got)}
  if len(got)!=len(b['segments']):raise RuntimeError('Missing actual per-video native rewrite')
  from lint_copy import lint_text,lint_script
  from common import voiced
@@ -320,6 +345,12 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  visuals=(cfg.get('continuous_batch_visuals') or {}).get(key)
  if visuals:
   draft=continuous_source_framing(draft,evidence,visuals)
+  if visuals.get('cta_sticker_category'):
+   stickers=read(root/'clipo/task-inventory/stickers.json');pool=sorted([x for x in stickers if visuals['cta_sticker_category'] in x.get('categories',[])],key=lambda x:x['id'])
+   if not pool:raise RuntimeError('No current native CTA sticker')
+   selected=pool[i%len(pool)];draft['clips']=[c for c in draft['clips'] if c['trackId']!='sticker'];start,end=evidence['segment_frames'][-2:]
+   draft['clips'].append({'id':'8-k0','trackId':'sticker','from':start,'durationInFrames':end-start,'component':'StickerClip','props':{'src':selected['url'],'width':1080,'height':1920,'x':0,'y':0,'scale':1,'rotation':0,'opacity':1,'z_index':1,'loop':True}})
+   evidence['cta_sticker']={'id':selected['id'],'name':selected['name'],'source':'current native sticker catalog'}
   if visuals.get('snow'):
    draft['clips'].append({'id':'snowkiss-soft-snow','trackId':'effect','from':0,'durationInFrames':150,'component':'RemotionClip','props':{'code':td.SNOW_CODE,'params':{},'x':0,'y':0,'scale':1}})
   if visuals.get('dissolve_image'):
@@ -343,5 +374,5 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
  return draft
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','repair','repair_batch','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
+ p=argparse.ArgumentParser();p.add_argument('cmd',choices=['budget','refresh','repair','repair_batch','hold','allocate','copies']);p.add_argument('--config',required=True);p.add_argument('--run',required=True);p.add_argument('--brief',required=True);p.add_argument('--quantity',type=int,default=9);p.add_argument('--plan');p.add_argument('--dry-run',action='store_true');a=p.parse_args();cfg=load_config(a.config);cb.CFG=cfg;cb.BASE=cfg['clipo']['base_url'].rstrip('/')+'/api/v1';globals()[a.cmd](a,cfg)
 if __name__=='__main__':main()
