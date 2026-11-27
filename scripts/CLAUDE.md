@@ -34,7 +34,7 @@ qc.py: 交付闸门；按草稿查角标、音量、禁用画面和标签；shar
 quality_contract.py: 配置级质量契约；检查原生配置、单片、整组及当前输出凭据；开头素材不按交付条数补池。
 opener_refresh.py: 已交付分组返工；固定分享成员与文案人审，逐条独立新开头，显式调音与 AI 角标；不写共享 state，下载只取指定组，旧本地交付保留恢复目录。
 parse_schedule.py: 品牌日排期拆为 brief 空稿；支持周结构与固定日配额。
-progress.py: 唯一进度入口，只读离线；每个 brief 的合格/目标、在途、驳回原因、交付（含 delivery_share 收据）、AIGC 计划、dry-run 收据、poll 存活与下一条完整命令；--json 给 agent，--brief 列逐条原因；clipo_batch status 调用它。
+progress.py: 唯一进度入口，区分条件授权批量与待客户demo并显示生成任务错误，只读离线；每个 brief 的合格/目标、在途、驳回原因、交付（含 delivery_share 收据）、AIGC 计划、dry-run 收据、poll 存活与下一条完整命令；--json 给 agent，--brief 列逐条原因；clipo_batch status 调用它。
 review_doc.py: 人审文档生成与飞书结果同步；approve / approve-aigc / approve-demo 按顺序记录审核者、原话与文案指纹或素材标签。
 voice_check.py: 只读查询分段配音，依赖 NumPy 与 ffmpeg 记录音高比；不维护音色名单或修改交付状态；输出可指定路径，不替代听审。
 

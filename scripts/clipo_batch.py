@@ -759,7 +759,8 @@ def cmd_submit(cfg, run, args):
                 next_round(job)
             st.save()
             submitted += 1
-            print(f"🚀 {b['brief_id']} demo 已通过（{b['demo_approval']['by']}），量产 {n} 条，接在同一个任务上")
+            basis = '按用户委托检查后续产' if b.get('checked_batch_authorization') else 'demo 已通过（'+b['demo_approval']['by']+'）'
+            print(f"🚀 {b['brief_id']} {basis}，量产 {n} 条，接在同一个任务上")
             continue
         if not job.get("generation_id"):
             chunks = split_quantity(n, cfg.get("generate_chunk") or n)

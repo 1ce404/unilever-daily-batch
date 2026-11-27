@@ -82,7 +82,7 @@ def semantic_cues(tts, texts, fps, max_units=10, chunks=None):
         finish = int(selected[-1]['end_ms'] * fps // 1000)
         if finish <= start:
             raise RuntimeError('Invalid caption interval')
-        cues.append({'text': whole[cursor:end], 'from': start,
+        cues.append({'text': chunks[len(cues)] if chunks is not None else whole[cursor:end], 'from': start,
                      'durationInFrames': finish - start})
         cursor = end
     for left, right in zip(cues, cues[1:]):
@@ -106,7 +106,9 @@ def reflow(draft, tts, texts, cfg, chunks=None):
         raise RuntimeError('No ordinary native caption style available')
     base_color = ordinary['props'].get('text_color')
     captions = []
-    for i, cue in enumerate(semantic_cues(tts, texts, draft['composition']['fps'], chunks=chunks)):
+    from quality_contract import contract
+    maximum = contract(cfg).get('subtitle_max_units', 10)
+    for i, cue in enumerate(semantic_cues(tts, texts, draft['composition']['fps'], max_units=maximum, chunks=chunks)):
         c = copy.deepcopy(template)
         c.update(cue, id=f's-reflow-{i}', transitionIn=None, transitionOut=None, motion=None)
         c['props']['text'] = c.pop('text')
@@ -135,9 +137,20 @@ def main():
     a = p.parse_args()
     root = Path(a.run).resolve()
     snapshot = Path(a.production_skill).resolve()
-    background = json.loads((root/'clipo/18条返工与量产-后台收据.json').read_text())
+    plan = json.loads(Path(a.plan).read_text())
+    manifest = Path(plan.get('production_manifest') or root/'clipo/18条返工与量产-后台收据.json')
+    background = json.loads(manifest.read_text())
     if str(snapshot) != background['production_snapshot']:
         raise RuntimeError('Repair must use the saved original production snapshot')
+    if background.get('production_commit'):
+        installed = json.loads((snapshot/'.skill-version.json').read_text())
+        if installed.get('commit') != background['production_commit']:
+            raise RuntimeError('Original production version has changed')
+        for name,expected in installed['files'].items():
+            if hashlib.sha256((snapshot/name).read_bytes()).hexdigest()!=expected:
+                raise RuntimeError('Original production file changed: '+name)
+    if background.get('video_keys') and not set(plan.get('keys') or []).issubset(background['video_keys']):
+        raise RuntimeError('Caption repair keys exceed the original production manifest')
     sys.path.insert(0, str(snapshot/'scripts'))
     import clipo_batch as cb
     import task_demo as td
@@ -158,7 +171,7 @@ def main():
     prepared = []
     for key in plan['keys']:
         v = st.videos[key]
-        if v.get('customer_rework_required') or v['brief_id'] not in ('1126-L02', '1126-L03') or key.endswith('V01'):
+        if v.get('customer_rework_required') or v['brief_id'] not in set(cfg.get('task_native_bulk_briefs') or ('1126-L02', '1126-L03')) or key.endswith('V01'):
             raise RuntimeError('Outside authorized new-batch repair scope '+key)
         cut = cb.api('GET', '/video-cuts/'+v['cut_id'])
         tts = td.load(root/'task-bulk'/key/'tts.json')

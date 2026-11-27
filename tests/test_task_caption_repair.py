@@ -58,5 +58,13 @@ class CaptionRepairTest(unittest.TestCase):
         self.assertTrue(any(c['props'].get('text_color')=='pink' for c in result['clips']))
 
 
+class ExplicitDisplayChunksTest(unittest.TestCase):
+    def test_semantic_punctuation_preserves_real_whole_word_boundaries(self):
+        text='洗出柔顺亮泽，随手一撩。'
+        items=[{'text':c,'start_ms':i*100,'end_ms':(i+1)*100} for i,c in enumerate(text)]
+        cues=semantic_cues({'timeline':{'items':items}},[text],30,max_units=12,chunks=['洗出柔顺亮泽，随手一撩'])
+        self.assertEqual(cues[0]['text'],'洗出柔顺亮泽，随手一撩')
+        self.assertEqual(norm(cues[0]['text']),norm(text))
+
 if __name__=='__main__':
     unittest.main()

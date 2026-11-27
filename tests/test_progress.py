@@ -138,3 +138,11 @@ import unittest.mock  # noqa: E402
 
 if __name__ == "__main__":
     unittest.main()
+
+class CheckedBatchProgressTest(unittest.TestCase):
+    def test_conditional_batch_is_not_reported_as_waiting_for_demo_customer(self):
+        b={'brief_id':'B','quantity':10,'status':'draft','segments':[{'id':'1','text':'checked'}],'checked_batch_authorization':{'mode':'check_then_bulk'}}
+        counts={'ok':1,'failed':0,'rejected':0,'in_flight':0,'quality_pending':0}
+        with unittest.mock.patch.object(progress,'permits_checked_batch',return_value=True):
+            stage,_=progress.next_step({},b,{'stage':'generating','demo_stage':'bulk'},counts,0,False,lambda *x:'cmd')
+        self.assertEqual(stage,'生产中')

@@ -24,6 +24,7 @@ import clipo_batch as cb
 from common import aigc_problem, approval_problem, demo_first, demo_problem, load_config, out_name
 from lint_copy import lint_brief
 from demo_authorization import permits_preview
+from checked_batch_authorization import permits_checked_batch
 
 # ---------- 每条视频的阶段 ----------
 IN_FLIGHT = ("generated", "rendering", "rendered", "reviewing", "demo_prepare_pending")
@@ -75,13 +76,21 @@ def next_step(cfg, b, job, counts, lint_errs, shared, cmd):
         return '批量返工', '先核逐条文案与整组人物/来源分配，task_bulk.py budget --dry-run → allocate --dry-run / allocate；未复核前不补产'
     if counts["ok"] >= q:  # 够数优先：成片按当时审过的文案生产，之后新增的 lint 规则不把它打回「改文案」
         return ("已交付", "-") if shared else ("可交付", f"{cmd('qc.py', bid)} → {cmd('clipo_batch.py share', bid)}")
-    preview=permits_preview(b)
+    preview=permits_preview(b) and not b.get('checked_batch_authorization')
     if counts.get('quality_pending') and not preview:
         return '成片自查', f"{cmd('qc.py', bid)} → media_qc.py --run <本批目录> --key <待检视频编号> → 实际看图/看片并记录，勿直接补产"
     if not b.get("segments"):
         return "写脚本", f"{cmd('brief_card.py', bid)} → 写 segments → {cmd('lint_copy.py', bid)}"
     if lint_errs:
         return "改文案", f"改 {lint_errs} 个 lint 错误 → {cmd('lint_copy.py', bid)}"
+    if b.get('checked_batch_authorization'):
+        if not permits_checked_batch(b):
+            return '条件许可需重核', '当前demo/配置/实际检查证据已变化；先核对原9条范围，不自动追加TTS'
+        if cb.generating(job or {}) or counts['in_flight']:
+            return '生产中', '继续poll现有批量任务；逐条检查已出成片，失败只修现有视频'
+        if counts['failed'] or counts['rejected']:
+            return '批量待修复', '查看明确失败项，保留原配音并局部修复，不自动扩数量'
+        return '缺口待核', '核对现有原任务和剩余视频编号，不把条件授权当作新增配额'
     if preview:
         if counts["failed"]:
             return "demo 制作失败", "只修本条失败环节，不自动补产或新增TTS"
@@ -213,10 +222,15 @@ def day_progress(cfg, run, only=None):
             "ok": counts["ok"], "in_flight": counts["in_flight"], "rejected": counts["rejected"],
             "failed": counts["failed"], "aigc_pending": counts["aigc_pending"], "quality_pending": counts["quality_pending"],
             "short": max(b["quantity"] - counts["ok"], 0), "stage": stage, "next": todo,
-            "demo_pre_review": permits_preview(b),
+            "demo_pre_review": permits_preview(b) and not b.get("checked_batch_authorization"),
+            "conditional_batch_authorized": permits_checked_batch(b) if b.get("checked_batch_authorization") else False,
+            "generation_task_running": cb.generating(job),
+            "uncollected_target": max(b["quantity"]-len(vids),0) if cb.generating(job) else 0,
+            "generation_last_error": job.get("last_error") or job.get("error"),
             "demo_rendered": sum(bool(v.get("object_key")) and v.get("stage")=="done" for v in vids.values()),
             "reasons": dict(reasons.most_common()),
             "details": ([{"video": "文案", "why": m} for m in lint_msgs] +
+                        ([{"video":"生成任务","why":str(job.get("last_error") or job.get("error"))}] if job.get("last_error") or job.get("error") else []) +
                         [{"video": k, "why": why_not(v)} for k, v in sorted(vids.items())
                          if video_bucket(v) in ("rejected", "failed")]) if only else [],
             "share": (shares.get(bid) or {}).get("id") and cb.share_url(shares[bid]["id"]) if bid in shares else None,
