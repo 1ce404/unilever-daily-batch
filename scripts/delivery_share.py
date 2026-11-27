@@ -474,17 +474,59 @@ def replace(cfg, args):
     print('DELIVERY_LINK', journal['url'], '视频总数', sum(s['video_count'] for s in after['shares']), flush=True)
 
 
+def consolidate(cfg,args):
+    """Reuse one existing brand group; preserve every original share/media link."""
+    plan=load(args.plan);gid=plan['group_id'];source_ids=plan['source_group_ids']
+    if not plan.get('instruction') or not plan.get('name') or not source_ids or gid not in source_ids or len(set(source_ids))!=len(source_ids):
+        raise RuntimeError('Explicit unique existing-group consolidation scope required')
+    groups=[cb.api('GET','/video-share-groups/'+x) for x in source_ids]
+    if [g['id'] for g in groups]!=source_ids:raise RuntimeError('Group identity mismatch')
+    ids=list(dict.fromkeys(s['id'] for g in groups for s in g['shares']))
+    allowed={p['clipo_product_id'] for p in cfg['products'].values()}
+    shares=[cb.api('GET','/video-shares/'+sid) for sid in ids]
+    if any(s.get('product_id') not in allowed or not s.get('videos') for s in shares):raise RuntimeError('Cross-brand or empty share in consolidation')
+    root=Path(args.out);root.mkdir(parents=True,exist_ok=True);snapshot={'plan':plan,'groups':groups,'shares':shares,'wanted':ids}
+    stable=lambda x:{'id':x['id'],'name':x.get('name'),'shares':sorted(s['id'] for s in x['shares'])}
+    if args.dry_run:
+        save(root/'consolidate-budget.json',{'plan':plan,'groups':[stable(g) for g in groups],'wanted':ids})
+        print('DRY-RUN existing master group',gid,'shares',len(ids),'videos',sum(len(s['videos']) for s in shares));return
+    receipt=root/'consolidate-receipt.json'
+    if receipt.exists():
+        prior=load(receipt)
+        if prior['plan']!=plan:raise RuntimeError('Prior consolidation plan mismatch')
+        actual=cb.api('GET','/video-share-groups/'+gid)
+        if actual['name']!=plan['name'] or not set(prior['wanted'])<=set(s['id'] for s in actual['shares']):raise RuntimeError('Previously consolidated group changed')
+        print('DELIVERY_LINK',cb.BASE.replace('/api/v1','')+'/share/group/'+gid);return
+    budget=load(root/'consolidate-budget.json')
+    if budget!={'plan':plan,'groups':[stable(g) for g in groups],'wanted':ids}:raise RuntimeError('Group membership changed since dry-run')
+    save(root/'consolidate-before.json',snapshot)
+    cb.api('PATCH','/video-share-groups/'+gid,{'name':plan['name'],'video_share_ids':ids},tries=1)
+    after=cb.api('GET','/video-share-groups/'+gid);save(root/'consolidate-after.json',after)
+    if after['name']!=plan['name'] or set(s['id'] for s in after['shares'])!=set(ids):raise RuntimeError('Consolidated group readback mismatch')
+    for old in shares:
+        new=cb.api('GET','/video-shares/'+old['id'])
+        objects=lambda sh:[key(v.get('video_object_key') or v['video_url']) for v in sh['videos']]
+        if new['title']!=old['title'] or objects(new)!=objects(old):raise RuntimeError('Original share changed during grouping')
+    if args.run:
+        st=cb.State(args.run)
+        if (st.data.get('share_group') or {}).get('id')!=gid:raise RuntimeError('Task master group identity changed')
+        st.data['share_group']={'id':gid,'name':plan['name']};st.save()
+    save(receipt,{'plan':plan,'wanted':ids,'verified':True})
+    print('DELIVERY_LINK',cb.BASE.replace('/api/v1','')+'/share/group/'+gid,'videos',sum(len(s['videos']) for s in shares),flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description='指定新渲染的交付分享；不删旧链接')
-    ap.add_argument('cmd', choices=['share', 'batch', 'pack', 'collect', 'replace'])
+    ap.add_argument('cmd', choices=['share', 'batch', 'pack', 'collect', 'replace', 'consolidate'])
     ap.add_argument('--config', required=True)
     ap.add_argument('--plan', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--run', help='consolidate: owning current run for master name readback')
     args = ap.parse_args()
     cfg = load_config(args.config)
     cb.BASE, cb.CFG = cfg['clipo']['base_url'].rstrip('/') + '/api/v1', cfg
-    {'share': share, 'batch': batch, 'pack': pack, 'collect': collect, 'replace': replace}[args.cmd](cfg, args)
+    {'share': share, 'batch': batch, 'pack': pack, 'collect': collect, 'replace': replace, 'consolidate': consolidate}[args.cmd](cfg, args)
 
 
 if __name__ == '__main__':

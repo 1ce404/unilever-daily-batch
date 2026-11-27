@@ -50,3 +50,5 @@
 用户明确说“你确认满足要求后批量”时，保存原话与精确brief/V02..V10范围。先实际检查当前demo、字体/音色/素材与包装数量、声音资源及时间轴、改写与人物/包装分配计划。检查有未过项就先修；不能将条件授权写成客户亲自看过或伪造approval/demo_approval。`checked_batch_authorization`是独立条件生产许可，绑定当前demo render/output、文案指纹、AI标签及7类检查证据文件的SHA256；`load_briefs`每次从当前State和检查文件现读临时context，变化即失效。每条全篇改写先进入精确key的检查计划，批量回调核该行哈希后合成，保留平台原改写供追溯。它不增加预算，仍执行quantity、dry-run、whole TTS幂等和实际成片复核。默认三道人审流程保持；本分支只适用这份明确委托、已履行检查的范围。
 
 用户明确立即重做被退demo时，用task_configuration精确revision_authorization绑定当前脚本指纹与新待审文案；task_demo只恢复该首条，历史退回原因留档，续产仍拦。continuous_demo_hooks绑定已看素材ID/证据与完整动作帧数，允许一镜跨字幕句，不循环或慢放补时。
+
+用户要求Clipo内统一品牌入口时，delivery_share consolidate --dry-run / consolidate复用指定已有group_id，source_group_ids逐个现读，name为总入口；保留日期brief标题及旧独立分享，不用本地文件夹冒充。
