@@ -138,6 +138,20 @@ def random_title_templates(effects,key,count):
   order=list(effects);random.Random(seed).shuffle(order);return [order[index%len(order)]]
  return random.Random(seed+'|'+key).sample(effects,count)
 
+def title_template_instance(template,params,cfg):
+ """Apply inspected template-specific coordinates without restricting style types."""
+ options=cfg.get('batch_native_variants') or {};rule=(options.get('title_adapters') or {}).get(template['id']);code=template['code'];out=copy.deepcopy(params)
+ if not rule:
+  if options.get('require_title_adapters'):raise RuntimeError('Current title template lacks inspected parameter adapter')
+  return code,out
+ if hashlib.sha256(code.encode()).hexdigest()!=rule.get('source_code_sha256'):raise RuntimeError('Title template changed after its content/parameter inspection')
+ out.update(copy.deepcopy(rule.get('params') or {}));out['text']=params['text']
+ for replacement in rule.get('code_replacements') or []:
+  before=replacement['from'];after=replacement['to']
+  if not before or code.count(before)!=1:raise RuntimeError('Inspected title anchor no longer matches')
+  code=code.replace(before,after)
+ return code,out
+
 def budget(a,cfg):
  if not a.dry_run:raise RuntimeError('Budget requires --dry-run; no paid operations here')
  st=cb.State(a.run);b=next(x for x in cb.load_briefs(a.run) if x['brief_id']==a.brief)
@@ -149,6 +163,7 @@ def budget(a,cfg):
  if len(ids)<3 or len(set(ids))!=len(ids):raise RuntimeError('At least three distinct current inspected title templates required')
  save(root/'fonts.json',read(Path(a.run)/'clipo/task-inventory/fonts.json'))
  with ThreadPoolExecutor(max_workers=4) as pool:effects=list(pool.map(lambda x:cb.api('GET','/resource/remotion-effect-template/'+x),ids))
+ for template in effects:title_template_instance(template,{'text':'资源检查'},cfg)
  save(root/'effects.json',effects)
  n=a.quantity
  if n!=b['quantity']-1:raise RuntimeError('Only remaining quota after one approved demo')
@@ -281,7 +296,7 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
   x['component']='SubtitleClip';x['props']=p
  effects=read(assets/'effects.json');fxrows=[(j,s) for j,s in enumerate(script['segments']) if s.get('effect')];chosen_titles=random_title_templates(effects,key,len(fxrows));draft['clips']=[x for x in draft['clips'] if x['trackId']!='effect']
  for j,(segment_index,s) in enumerate(fxrows):
-  template=chosen_titles[j];td.validate_code(template['code']);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':template['code'],'params':s['effect']['params'],'x':0,'y':0,'scale':1}})
+  template=chosen_titles[j];code,params=title_template_instance(template,s['effect']['params'],cfg);td.validate_code(code);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':code,'params':params,'x':0,'y':0,'scale':1}})
  from quality_contract import contract
  if contract(cfg).get('require_title_entry_sound'):
   from title_audio import from_inventory

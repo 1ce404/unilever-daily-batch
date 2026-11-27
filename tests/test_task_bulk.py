@@ -3,7 +3,7 @@ import sys,unittest,tempfile,json,argparse
 from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from task_bulk import validate_budget,allocate,trim_title_ends,random_title_templates
+from task_bulk import validate_budget,allocate,trim_title_ends,random_title_templates,title_template_instance
 class TaskBulkBudgetTest(unittest.TestCase):
  def setUp(self):self.plan={'at':100,'keys':['B-V02','B-V03']}
  def test_approved_remaining_video_is_allowed(self):validate_budget(self.plan,'B-V02',101)
@@ -39,5 +39,16 @@ class RandomTitleSelectionTest(unittest.TestCase):
  def test_missing_and_duplicate_templates_are_rejected(self):
   for rows in [[{'id':'a'}],[{'id':'a'},{'id':'a'}]]:
    with self.assertRaises(RuntimeError):random_title_templates(rows,'B-V02',2)
+
+class TitleAdapterTest(unittest.TestCase):
+ def test_real_copy_is_preserved_and_inspected_coordinates_are_applied(self):
+  import hashlib
+  code='const Y = 1;';template={'id':'native','code':code};cfg={'batch_native_variants':{'require_title_adapters':True,'title_adapters':{'native':{'source_code_sha256':hashlib.sha256(code.encode()).hexdigest(),'params':{'text':'DEFAULT','y':0,'scale':.92},'code_replacements':[{'from':'Y = 1','to':'Y = 2'}]}}}}
+  result,params=title_template_instance(template,{'text':'柔顺亮泽','y':-80},cfg)
+  self.assertEqual(result,'const Y = 2;');self.assertEqual(params,{'text':'柔顺亮泽','y':0,'scale':.92});self.assertEqual(template['code'],code)
+ def test_changed_or_uninspected_template_stops_before_paid_work(self):
+  cfg={'batch_native_variants':{'require_title_adapters':True,'title_adapters':{'native':{'source_code_sha256':'wrong'}}}}
+  for item in [{'id':'native','code':'changed'},{'id':'new','code':'new'}]:
+   with self.assertRaises(RuntimeError):title_template_instance(item,{'text':'柔顺亮泽'},cfg)
 
 if __name__=='__main__':unittest.main()
