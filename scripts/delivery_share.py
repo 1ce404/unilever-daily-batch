@@ -453,7 +453,7 @@ def replace(cfg, args):
         verify_share(renamed, payload)
         save(root / 'renamed-share.json', renamed)
     before_ids = [s['id'] for s in journal['before_group']['shares']]
-    wanted = [sid if old == plan['old_share_id'] else old for old in before_ids]
+    wanted = list(dict.fromkeys(sid if old == plan['old_share_id'] else old for old in before_ids))
     current = cb.api('GET', '/video-share-groups/' + group['id'])
     current_ids = [s['id'] for s in current['shares']]
     if set(current_ids) != set(wanted):
@@ -496,6 +496,10 @@ def consolidate(cfg,args):
         if prior['plan']!=plan:raise RuntimeError('Prior consolidation plan mismatch')
         actual=cb.api('GET','/video-share-groups/'+gid)
         if actual['name']!=plan['name'] or not set(prior['wanted'])<=set(s['id'] for s in actual['shares']):raise RuntimeError('Previously consolidated group changed')
+        if args.run:
+            st=cb.State(args.run)
+            if (st.data.get('share_group') or {}).get('id')!=gid:raise RuntimeError('Task master group identity changed')
+            st.data['share_group']={'id':gid,'name':plan['name']};st.save()
         print('DELIVERY_LINK',cb.BASE.replace('/api/v1','')+'/share/group/'+gid);return
     budget=load(root/'consolidate-budget.json')
     if budget!={'plan':plan,'groups':[stable(g) for g in groups],'wanted':ids}:raise RuntimeError('Group membership changed since dry-run')
