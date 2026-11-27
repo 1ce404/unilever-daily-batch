@@ -240,6 +240,10 @@ def main():
      x['props']['src']=change['replacement_src'];x['props']['alt']=change['replacement_description']
     x['props']['startFrom']=change['startFrom']
     if x['props']['startFrom']+x['durationInFrames']>change['available_frames']:raise RuntimeError('Source overrun')
+  if entry.get('effect_instance_transforms'):
+   if entry.get('expected_render_job')!=v.get('render_job'):raise RuntimeError('Effect repair current render changed')
+   from task_caption_repair import fit_native_effect_instances
+   draft=fit_native_effect_instances(draft,entry['effect_instance_transforms'])
   if entry.get('add_configured_cta'):
    if entry.get('expected_render_job')!=v.get('render_job'):raise RuntimeError('CTA current render changed')
    from task_bulk import random_title_templates,title_template_instance
