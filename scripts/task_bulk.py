@@ -35,6 +35,15 @@ def continuous_source_framing(draft,evidence,visuals):
    if row['clip'] in changes:raise RuntimeError('Ambiguous source and clip framing')
    changes[row['clip']]=rule
  result=frame_main(draft,changes)
+ maximum=visuals.get('merge_short_bridge_max_frames',0)
+ bridges=[c for c in result['clips'] if c['trackId']=='main' and c['id'].split('-')[0]=='2']
+ if maximum and len(bridges)==1 and bridges[0]['durationInFrames']<maximum:
+  bridge=bridges[0];product=next(c for c in result['clips'] if c['trackId']=='main' and c['id']=='3-0');extra=bridge['durationInFrames']
+  if product['from']!=bridge['from']+extra or product['props']['startFrom']+product['durationInFrames']+extra>visuals['merged_product_safe_end_frame']:raise RuntimeError('Unsafe short-bridge merge')
+  product['from']=bridge['from'];product['durationInFrames']+=extra;result['clips'].remove(bridge)
+  evidence['source_windows']=[x for x in evidence['source_windows'] if x['clip']!=bridge['id']]
+  next(x for x in evidence['source_windows'] if x['clip']=='3-0')['used_frames']+=extra
+  evidence['short_bridge_merge']={'removed':bridge['id'],'frames':extra,'kept_full_product':'3-0'}
  for cid in visuals.get('title_end_at_first_main_ids',[]):
   title=next(c for c in result['clips'] if c['id']==cid and c['trackId']=='effect')
   shot=next(c for c in result['clips'] if c['trackId']=='main' and c['id']==cid.split('-')[0]+'-0')
@@ -189,6 +198,10 @@ def resume(a,cfg):
  root=Path(a.run)/'task-bulk';plan=read(root/(a.brief+'-budget.json'));st=cb.State(a.run);job=st.data['briefs'][a.brief]
  if not job.get('generation_id') or any(key not in st.videos or not st.videos[key].get('cut_id') for key in plan['keys']):raise RuntimeError('Resume requires all existing budgeted cuts')
  if a.dry_run:print('DRY-RUN resume same native generation/cuts; zero new video generations');return
+ for key in plan['keys']:
+  v=st.videos[key]
+  if v.get('stage')=='failed' and not v.get('render_job') and (root/key/'tts.json').exists() and (cfg.get('task_batch_copy_variants') or {}).get(a.brief):
+   v['stage']='preparing';v.pop('error',None);v.pop('qc_issues',None)
  job['stage']='generating';st.save();print('Resumed existing generation collection only, zero generation submission')
 
 def refresh(a,cfg):
@@ -345,6 +358,9 @@ def prepare(api_module,st,b,v,key,cut,d,repair_revision=None,repair_budget=None)
   for rule in (cfg.get('caption_highlights') or {}).get('rules',[]):
    if any(term in text for term in rule['terms']):p['text_color']=('#8F5700' if rule['color']=='#FFD36A' else '#944868') if p.get('text_color')=='#000000' else rule['color'];break
   x['component']='SubtitleClip';x['props']=p
+ if ref:
+  from task_caption_repair import reflow
+  draft=reflow(draft,tts,got,cfg,chunks=read(ref['path'])['videos'][key].get('caption_chunks'))
  effects=read(assets/'effects.json');fxrows=[(j,s) for j,s in enumerate(script['segments']) if s.get('effect')];chosen_titles=random_title_templates(effects,key,len(fxrows));draft['clips']=[x for x in draft['clips'] if x['trackId']!='effect']
  for j,(segment_index,s) in enumerate(fxrows):
   template=chosen_titles[j];code,params=title_template_instance(template,s['effect']['params'],cfg);td.validate_code(code);start,end=evidence['segment_frames'][segment_index:segment_index+2];draft['clips'].append({'id':s['id']+'-x0','trackId':'effect','from':start,'durationInFrames':min(end-start,66),'component':'RemotionClip','props':{'code':code,'params':params,'x':0,'y':0,'scale':1}})

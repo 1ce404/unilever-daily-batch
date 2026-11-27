@@ -240,6 +240,15 @@ def main():
      x['props']['src']=change['replacement_src'];x['props']['alt']=change['replacement_description']
     x['props']['startFrom']=change['startFrom']
     if x['props']['startFrom']+x['durationInFrames']>change['available_frames']:raise RuntimeError('Source overrun')
+  if entry.get('add_configured_cta'):
+   if entry.get('expected_render_job')!=v.get('render_job'):raise RuntimeError('CTA current render changed')
+   from task_bulk import random_title_templates,title_template_instance
+   fx=script['segments'][-1]['effect'];template=random_title_templates(load(r/'task-bulk/effects.json'),key+'-closing',1)[0];code,params=title_template_instance(template,fx['params'],cfg)
+   main=[c for c in draft['clips'] if c['trackId']=='main' and c['id'].split('-')[0]=='8'];start=min(c['from'] for c in main);end=max(c['from']+c['durationInFrames'] for c in main)
+   if any(c['id']=='8-x0' for c in draft['clips']):raise RuntimeError('Closing title already present')
+   draft['clips'].append({'id':'8-x0','trackId':'effect','from':start,'durationInFrames':min(66,end-start),'component':'RemotionClip','props':{'code':code,'params':params,'x':0,'y':0,'scale':1}})
+   from title_audio import from_inventory
+   draft=from_inventory(draft,r,key)
   from qc import cut_checks
   issues=cut_checks(b,draft,load(out/'voice-intent.json')['voice']['voice_type']);save(out/'draft.json',draft);save(out/'preflight.json',{'issues':issues,'draft_hash':digest(draft),'patch_plan':plan})
   if issues:raise RuntimeError('Patch gate: '+str(issues))
