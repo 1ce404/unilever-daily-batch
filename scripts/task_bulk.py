@@ -82,6 +82,14 @@ def repair(a,cfg):
  if not plan.get('authorization') or b['brief_id']!=a.brief:raise RuntimeError('Repair authorization or task mismatch')
  cut=cb.api('GET','/video-cuts/'+v['cut_id']);draft=copy.deepcopy(cut['draft']);library={x['id']:x for x in cb.list_segments(cfg['products'][b['product_key']]['clipo_product_id'])};fps=draft['composition']['fps']
  cb._SEGMENTS[b['product_key']]={m['object_url'].split('?')[0].rsplit('/',1)[-1]:m for m in library.values() if m.get('object_url')}
+ hook=plan.get('ai_hook_replacement')
+ if hook:
+  m=library[hook['segment_id']];proof=Path(hook['evidence_path'])
+  if hook['segment_id'] not in (cfg.get('approved_ai_hook_ids') or {}).get(a.brief,[]) or not m.get('ai_generated') or hashlib.sha256(proof.read_bytes()).hexdigest()!=hook['evidence_sha256']:raise RuntimeError('Replacement hook lacks exact current approved source evidence')
+  first=next(c for c in draft['clips'] if c['id']=='1-0' and c['trackId']=='main')
+  if first['from']!=0 or first['durationInFrames']!=150:raise RuntimeError('Only the existing five-second AI hook may be replaced')
+  first['props'].update(src=m['object_url'],startFrom=0,alt=m.get('description',''))
+  match=next(c for c in draft['clips'] if c['id']=='opening-match-dissolve');match['props']['params']['src']=hook['match_dissolve_src']
  for c in draft['clips']:
   if c['id'] in plan.get('remove_transition_ids',[]):
    if c['trackId']!='main':raise RuntimeError('Only selected main-shot transitions may be removed')
